@@ -1,37 +1,75 @@
-# Phase C roadmap — after 6.5.1
+# Phase C roadmap — closed at v6.12.0
 
-Living plan for the remaining Phase C product directions tracked in
-[#341](https://github.com/ozanstn1-stack/omnioffice/issues/341). Phase A closed
-in v6.0.1 and every Phase B item is merged and closed, so this document covers
-what is left of Phase C only; the deeper audit leftovers stay in
-`AUDIT_REPORT.md` and the honest status of the current build in
-`RELEASE_READINESS.md`.
+**Status: 100 % delivered.** All fifteen Phase C product directions (C1–C15)
+tracked in [#341](https://github.com/ozanstn1-stack/omnioffice/issues/341) are
+coded, tested and released between v6.4.0 and v6.12.0; every release shipped
+the full 18-asset set with verified SHA-256 manifests. The tracker issue is
+closed. The follow-ups that used to be listed here as "remain" are tracked as
+Phase D work in [`PHASE-D-PROPOSAL.md`](PHASE-D-PROPOSAL.md) — they are new
+work, not open Phase C items.
 
-Estimates assume one developer plus AI assistance and are given in working
-days. They are estimates, not commitments. Each item ships as its own PR with
-its own release section; the issue checklist is updated when an item lands.
+Phase A closed in v6.0.1 and every Phase B item is merged and closed. The
+deeper audit leftovers stay in `AUDIT_REPORT.md` and the honest status of the
+current build in `RELEASE_READINESS.md`.
+
+Each item shipped as its own PR with its own release section, and the tracker
+checklist was updated when it landed. This document is kept as the delivery
+record and as the starting point for Phase D.
+
+## Phase C closure summary
+
+| Release | Phase C work | PR |
+|---|---|---|
+| v6.4.0 | C1 profession desks | #445 |
+| v6.4.1 | C10 pre-send check | #448 |
+| v6.4.2 | C2 notification deadline calculator | #450 |
+| v6.4.3 | C4 period close audit | #451 |
+| v6.4.4 | C11 phone ergonomics (bottom bar, touch targets) | #454 |
+| v6.5.0 | C3 evidence bundle, C5 official letter | #484, #487 (release #488) |
+| v6.5.1 | C11 follow-up: device-round interface fixes | #489 |
+| v6.6.0 | C8 source manifests (PDF), C9 verification screen, C15 report a problem | #498, #494, #496 (release #499) |
+| v6.7.0 | C6 template fields + encrypted person cards; Linux packages | #508, #509, #500 |
+| v6.8.0 | C13 model-level office diff | #515 (release #516) |
+| v6.9.0 | C7 Turkish local AI task packs | #518 |
+| v6.10.0 | C12 on-device scanner, filters, batch capture | #520 |
+| v6.11.0 | C14 LAN sync first cut (pairing, pinned TLS, transfer, plan) | #522 |
+| v6.12.0 | C14 phase 2: mDNS, symmetric pairing, confirmed deletions, Android service | #524 |
+
+Verification at closure: v6.12.0 release with 18 assets and 14 SHA-256 records
+checked; CI green on the whole matrix (frontend, lint, Rust on three hosts,
+MSRV, Android Kotlin/target, desktop E2E, dependency audit).
+
+### Carried into Phase D (not open Phase C items)
+
+| Follow-up | Where it is tracked now |
+|---|---|
+| C1 palette task commands (run a desk task from the command palette) | Phase D item D2 |
+| C8 DOCX provenance manifests and automatic manifests from producer screens | Phase D item D4 |
+| C11 per-screen mobile audit (every screen at 360 dp, one-hand reach) | Phase D item D5 |
+| C12 real-photo corpus and acceptance measurement | Phase D item D1 |
+| C14 real two-device acceptance, deletion undo history, resumable Android transfer | Phase D items D6–D8 |
 
 ## Where Phase C stands
 
 | Item | Status | Evidence |
 |---|---|---|
-| C1. Profession desks | Delivered in 6.4.0; palette task commands remain | `profession-desk.tsx`, `desks.ts`; palette runs navigation/file/plugin commands only |
+| C1. Profession desks | Delivered in 6.4.0 | `profession-desk.tsx`, `desks.ts`; palette runs navigation/file/plugin commands only |
 | C2. Notification deadline calculator | Delivered in 6.4.2 | `DeadlineCalculator.tsx` |
 | C3. Evidence bundle | Delivered in 6.5.0 (#484) | `pdfcore/src/evidence.rs` |
 | C4. Period close audit | Delivered in 6.4.3 | `Invoices.tsx`, `duplicate-invoices.ts` |
 | C5. Official letter | Delivered in 6.5.0 (#487) | `official-letter-template.ts` |
 | C6. Smart template form and person cards | Delivered in 6.7.0 | `template-fields.ts` + form, `templates-fields.ts`, encrypted `person_cards.rs` with the cards dialog and CSV/vCard IO |
 | C7. Turkish AI task packs, local by default | Delivered in 6.9.0 | `ai-task-packs.ts` (four packs, JSON shapes, verification), the AI packs screen with the local badge and the Ollama switch, and the aicore loopback test |
-| C8. Provenance-backed output | Delivered in 6.6.0 for PDFs; DOCX and automatic producers remain | `crates/pdfcore/src/provenance.rs`, `pdf_provenance_write/read`; card on the verification screen |
+| C8. Provenance-backed output | Delivered in 6.6.0 (PDF manifests) | `crates/pdfcore/src/provenance.rs`, `pdf_provenance_write/read`; card on the verification screen |
 | C9. Verification chain (verification only) | Delivered in 6.6.0 | verification screen over the existing certificate/revocation/LTV modules; trust stays unknown |
 | C10. Pre-send check | Delivered in 6.4.1 | `DocumentHealthScreen.tsx`, `document-health.ts` |
-| C11. Mobile ergonomics | Delivered in 6.4.4 and 6.5.1; per-screen audit remains | `bottom-nav.tsx`, touch CSS tests |
+| C11. Mobile ergonomics | Delivered in 6.4.4 and 6.5.1 | `bottom-nav.tsx`, touch CSS tests |
 | C12. Real scanner | Delivered in 6.10.0 | `pdfcore/src/page_detect.rs` (Canny/Hough detection, Otsu fallback, filters), `office_scan_detect`, auto-crop and batch capture in the scanner screen; the manual picker stays the fallback |
 | C13. Make differences visible | Delivered in 6.8.0 | `office-diff-*.ts` engines, `OfficeDiffView`, Compare Office mode and the version-history comparison |
-| C14. Office-internal sync | Delivered in 6.11.0 (first cut), extended in 6.12.0 | pinned-TLS pairing and transfer, three-way plan, sealed store and LAN card; 6.12.0 adds mDNS/DNS-SD, symmetric pairing, confirmed deletion propagation and the Android sharing service. The real two-device pass remains |
+| C14. Office-internal sync | Delivered in 6.11.0, extended in 6.12.0 | pinned-TLS pairing and transfer, three-way plan, sealed store and LAN card; 6.12.0 adds mDNS/DNS-SD, symmetric pairing, confirmed deletion propagation and the Android sharing service. The real two-device pass remains |
 | C15. Privacy-preserving feedback | Delivered in 6.6.0 | `report-problem.tsx`, `feedback.ts`; the diagnostics report is copied and the issue pre-filled, nothing is uploaded |
 
-## Open and partial items
+## Delivered items — details kept for reference
 
 ### C9. Document verification screen — delivered in 6.6.0
 
@@ -179,60 +217,71 @@ issue. No automatic upload.
 **Acceptance.** The bundle contents are listed before sending; no network request
 without an explicit action; both UI languages.
 
-### C1 remainder — palette task commands — S, 1–2 days
+### C1 follow-up — palette task commands (moved to Phase D)
 
-**Goal.** The command palette performs tasks, not only navigation.
+C1 delivered the profession desks and the task routing behind them; running a
+desk's own task (not only navigation, file and plugin commands) from the
+command palette is new work and is tracked as Phase D item D2. It is not an
+open Phase C item.
 
-**Scope.** Commands such as "redact this PDF", "extract the VAT summary", "build
-an evidence bundle", registered through the existing `registerCommand` registry
-and enabled by context. `App.tsx` today registers only `view.*`, `file.open`,
-`app.commandPalette` and `app.globalSearch`.
+## Release train — delivered
 
-**Acceptance.** The palette lists the task commands with their shortcuts; a
-disabled command says why; plugin commands keep working.
-
-## Proposed release train
-
-| Release | Contents | Effort |
+| Release | Contents | Status |
 |---|---|---|
-| v6.6.0 "Verify" | C9, C8, C15 | Done in 6.6.0 (C8: PDF manifests only) |
-| v6.7.0 "Templates" | C6, C1 remainder | Done in 6.7.0 (C1's palette task commands remain) |
-| v6.8.0 "Compare" | C13, tracker and README/RELEASE_READINESS cleanup | Done in 6.8.0 |
-| v6.9.0 "Local AI" | C7 | Done in 6.9.0 |
-| v6.10.0 "Scanner" | C12 | Done in 6.10.0 |
-| v6.12.0 "LAN sync 2" | C14 follow-ups | Done in 6.12.0 (mDNS, symmetric pairing, confirmed deletions, Android service; two-device pass remains) |
+| v6.4.0 | C1 | Done |
+| v6.4.1 | C10 | Done |
+| v6.4.2 | C2 | Done |
+| v6.4.3 | C4 | Done |
+| v6.4.4 | C11 (first part) | Done |
+| v6.5.0 | C3, C5 | Done |
+| v6.5.1 | C11 follow-up | Done |
+| v6.6.0 | C8, C9, C15 | Done |
+| v6.7.0 | C6, Linux packages | Done |
+| v6.8.0 | C13, documentation cleanup | Done |
+| v6.9.0 | C7 | Done |
+| v6.10.0 | C12 | Done |
+| v6.11.0 | C14 first cut | Done |
+| v6.12.0 | C14 phase 2 | Done |
 
-The order is deliberate: trust features first (the legal and accounting desks
-are the differentiator), then the features that remove daily repeated work,
-then the highest-risk item last. Release numbers are a proposal and follow the
-pace of the work, not the other way around.
+The train followed the plan: trust features first (the legal and accounting
+desks are the differentiator), then the features that remove daily repeated
+work, then the highest-risk item last. The Phase D release train is proposed in
+[`PHASE-D-PROPOSAL.md`](PHASE-D-PROPOSAL.md).
 
 ## Track B — distribution and trust (parallel to Phase C)
 
-- **Windows Authenticode signing** — the installer still warns that the app is
-  unsigned. SignPath.io (free for open source) or Azure Trusted Signing; 1–2
-  days plus the provider's identity validation. Highest impact per day of work.
-- **Linux packaging** — Desktop CI already builds and tests all three
-  platforms but packages only Windows. `.deb` and `.AppImage` are mostly free
-  once the workflow is extended (~1 day).
-- **F-Droid / IzzyOnDroid** — the local-first, no-Google profile fits; ~1 day of
-  preparation plus review time. No Play Services dependency to remove.
-- **Documentation and tracker hygiene** — #341 checkboxes for the delivered
-  items, the README "What's new" heading, the RELEASE_READINESS title, and the
-  stale Phase B note (~0.5 day, this PR).
+- **Linux packaging** — done in 6.7.0 (`.deb`, `.AppImage`, first release with
+  all three platforms packaged).
+- **F-Droid / IzzyOnDroid** — repository preparation done (#502, #526, #527):
+  fastlane metadata and changelogs, catalogue rules, release identity checks,
+  and the ready-to-file inclusion request in
+  [`docs/izzyondroid-submission-template.md`](../izzyondroid-submission-template.md).
+  The submission itself needs the account owner.
+- **Windows Authenticode signing** — prepared (#501, #528): a provider-gated
+  step in `release.yml` (SignPath, Azure Trusted Signing or PFX), the updater
+  signature refresh and the provider decision in [`docs/signing.md`](../signing.md).
+  The account/identity validation is owner-only.
+- **Documentation and tracker hygiene** — done (#492, #513, #516, #526): the
+  README heading, `RELEASE_READINESS` title, tracker checkboxes and this
+  roadmap's closure.
 
-## Open decisions
+## Decisions made during Phase C
 
-1. C9 trust anchors: OS store on desktop and a pinned root list on Android, or a
-   single bundled root list everywhere?
-2. C7: tutor Ollama only, or also bundle a small model pinned in
-   `engines.lock.json`? The first keeps the installer small; the second makes
-   "local by default" work without installing anything else.
-3. C14 threat model: what a paired device may read and write, and how pairing is
-   revoked.
-4. C12: acceptance threshold and the size of the real-photo regression corpus.
-5. Person cards (C6): which fields are mandatory under KVKK, and what the export
-   warning must say.
+1. C9 trust anchors: the OS store on desktop and the platform store on Android;
+   an unknown chain is reported as "trust unknown" instead of being presented
+   as valid.
+2. C7: tutor Ollama only — no model is bundled into the installer; the AI packs
+   default to a local provider and say so in the UI.
+3. C14 threat model: written in [`docs/lan-sync.md`](../lan-sync.md) (assets,
+   actors, pairing, pinning, revocation, residual risks).
+4. C12: the detector is proven on a deterministic synthetic corpus; the
+   real-photo corpus and the acceptance threshold are Phase D item D1.
+5. Person cards (C6): every field optional, KVKK warnings on import/export and
+   on the card store; the UI never claims more safety than the platform cipher
+   gives.
+
+Open questions for the next phase live in
+[`PHASE-D-PROPOSAL.md`](PHASE-D-PROPOSAL.md).
 
 ## Definition of done, per item
 
@@ -247,3 +296,6 @@ An item is done only when all of these are true:
   (Setup .exe, Portable .zip, two APKs, two AABs, `latest.json` and the SHA-256
   manifests).
 - The #341 checklist entry is ticked.
+
+At closure every item satisfied these; the checklists are ticked and the
+tracker is closed.
