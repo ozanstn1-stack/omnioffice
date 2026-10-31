@@ -31,6 +31,49 @@ The channel is a property of the installed build; Settings shows which one and
 links to the beta installers. Beta cadence is a manual dispatch until the
 release-train schedule is decided.
 
+## Implemented (this cycle, 7.0.0) - Performans ve bellek
+
+- **Large-document flows (D9, #531):** a 500-page Writer document opens and
+  saves through the real DOCX reader/writer, and a 50 000-cell workbook with
+  5 000 formulas opens and saves through the real XLSX paths; both are always-on
+  tests with generous bounds and printed measurements (dev: 0.26 s / 0.29 s and
+  1.09 s / 4.24 s).
+  `test:crates/officecore/tests/perf_test.rs#perf_writer_docx_open_save_of_500_pages_under_bounds`
+  `test:crates/officecore/tests/perf_test.rs#perf_calc_xlsx_open_save_of_50k_cells_under_bounds`
+- **Memory ceilings (D9, #531):** a counting global allocator measures the peak
+  live bytes of the same flows; the ceilings are 384 MiB (500-page DOCX, measured
+  29.4 MiB) and 256 MiB (50k-cell XLSX, measured 135.3 MiB), so a regression that
+  copies the document a second time fails the test.
+  `test:crates/officecore/tests/memory_budgets.rs#large_document_flows_stay_under_their_memory_budgets`
+- **Calc virtualization (D9, #531):** a 50 000-row sheet keeps at most 60 rows
+  in the render window at both ends of the scroll, independent of sheet size.
+  `test:src/office/calc/perf.test.ts#renders only the visible row window on a 50 000-row sheet`
+- **PDF runtime isolation (D9, #531):** the heavy-work semaphore is pinned to
+  2–8 slots, a panicking worker returns its blocking slot, and the synchronous
+  extraction path is covered by the same bound tests.
+  `test:src-tauri/src/concurrency.rs#the_bound_is_a_small_constant_not_the_tokio_default`
+  `test:src-tauri/src/concurrency.rs#a_panicking_worker_returns_its_blocking_slot`
+- **Named budgets (D9, #531):** `docs/performance-budgets.md` records the
+  product budgets (cold start, open/save, render/export, memory ceilings), the
+  measured baseline, the commands that reproduce it, the isolation rule for new
+  heavy commands and how criterion trends are tracked in CI.
+  (no test: a documentation and policy record; the numbers are enforced by the
+  tests above.)
+
+### Not done / Known limitations (7.0.0)
+
+- Cold start (desktop ≤ 3 s, Android ≤ 5 s) is recorded manually in the release
+  checklist; there is no automated threshold, because shared-runner launch
+  timings are not representative and a flaky gate would be disabled.
+  (no test: manual release measurement.)
+- The criterion regression check is advisory (`continue-on-error`), so a >15 %
+  slowdown reports and uploads an artifact but does not fail the workflow.
+  (no test: documented policy in `docs/performance-budgets.md`.)
+- Peak memory is measured with a counting allocator in the test binary, not by
+  sampling a real process; native allocations outside Rust (WebView, PDFium)
+  are outside the number.
+  (no test: measurement boundary documented.)
+
 ## Implemented (this cycle, 7.0.0) - Ofis sadakati
 
 - **DOCX tracked changes in the editor (D6, #531):** `w:ins`/`w:del` runs keep

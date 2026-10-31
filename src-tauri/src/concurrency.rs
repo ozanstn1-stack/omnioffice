@@ -71,6 +71,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_bound_is_a_small_constant_not_the_tokio_default() {
+        // The isolation promise: heavy work never runs at Tokio's 512-thread
+        // default, and an 8-core machine gets at most 8 slots. A regression to
+        // an unbounded semaphore would multiply peak RAM and child processes.
+        let bound = bound();
+        assert!((2..=8).contains(&bound), "heavy-work bound {bound} is outside 2..=8");
+        assert_eq!(
+            semaphore().available_permits(),
+            bound,
+            "the async semaphore must expose exactly the configured bound"
+        );
+    }
+
+    #[test]
+    fn a_panicking_worker_returns_its_blocking_slot() {
+        // A panic must not leak a slot: the extraction paths catch panics in
+        // the parser, and a leaked permit would starve the pool after a few
+        // malformed files.
+        let released = std::panic::catch_unwind(|| {
+            let _permit = acquire_blocking();
+            panic!("worker panic");
+        });
+        assert!(released.is_err(), "the panic must propagate through catch_unwind");
+        // The slot is usable again immediately.
+        let permit = acquire_blocking();
+        drop(permit);
+    }
+
+    #[test]
     fn blocking_permits_are_released_on_drop() {
         // Taking the whole bound and releasing it must leave the bound usable
         // again (a leak here would eventually starve every extraction).

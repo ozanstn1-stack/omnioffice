@@ -70,7 +70,7 @@
     "crates/officecore/tests/golden_v31_test.rs": 1038,
     "crates/officecore/tests/odf_objects.rs": 936,
     "crates/officecore/tests/odf_rtf_comments.rs": 470,
-    "crates/officecore/tests/office_fidelity.rs": 285,
+    "crates/officecore/tests/office_fidelity.rs": 283,
     "crates/officecore/tests/office_roundtrip_test.rs": 373,
     "crates/officecore/tests/pptx_v3_test.rs": 549,
     "crates/officecore/tests/xlsx_import_test.rs": 654,

@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultCellStyle, newSheet, newWorkbook, type Cell, type Workbook } from "../../lib/office-types";
 import { applyCellEdit, computeWorkbookValues, lastComputeStats } from "./cells";
+import { buildRowLayout } from "./row-layout";
 
 function numberCell(value: number): Cell {
   return { value: { kind: "number", value }, formula: null, style: defaultCellStyle(), comment: null, link: null };
@@ -26,6 +27,25 @@ function buildWorkbook(rows: number, formulas: number): Workbook {
   for (let row = 0; row < formulas; row += 1) cells[`B${row + 1}`] = formulaCell(`=A${row + 1}*2`);
   return { ...newWorkbook("Perf"), sheets: [{ ...sheet, cells, rowCount: rows + 10, colCount: 8 }] };
 }
+
+describe("large sheet virtualization (D9)", () => {
+  it("renders only the visible row window on a 50 000-row sheet", () => {
+    const layout = buildRowLayout(50_000, {});
+    const started = Date.now();
+    const visible = layout.visibleRows(0, 960);
+    const elapsed = Date.now() - started;
+    // 960 px / 24 px rows = 40 rows; the window must stay near that, not grow
+    // with the sheet. A regression that maps every row into the DOM fails here.
+    expect(visible.length).toBeLessThan(60);
+    expect(visible[0]).toBe(0);
+    expect(elapsed).toBeLessThan(50);
+
+    // Scrolling to the end returns a small window there as well.
+    const tail = layout.visibleRows(49_000 * 24, 49_000 * 24 + 960);
+    expect(tail.length).toBeLessThan(60);
+    expect(tail[tail.length - 1]).toBeGreaterThanOrEqual(49_000);
+  });
+});
 
 describe("large workbook smoke", () => {
   it("computes 10 000 cells, then recalculates a single dependent incrementally", () => {
