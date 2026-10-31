@@ -115,3 +115,21 @@ No `deny.toml` change was needed: every transitive crate is MIT/Apache-2.0 and
 the newest MSRV requirement in the added tree is Rust 1.89 (`safe_arch`/`wide`
 via `imageproc`), the workspace floor. `cargo deny check` in the dependency
 audit job is the gate.
+
+## Direct dependency: spake2 for code-authenticated pairing (E1/3)
+
+The six-digit pairing code is a weak password, so pairing runs SPAKE2 instead
+of sending it (`crates/synccore/src/lan/pairing.rs`). That adds one direct
+dependency to `synccore`:
+
+- **`spake2` 0.4** (MIT/Apache-2.0, `#![no_std]`, `forbid(unsafe_code)`) with
+  its default `Ed25519Group` parameter set and the `getrandom` feature, so it
+  draws its ephemeral scalars from the system RNG.
+- It pulls **`curve25519-dalek` 4.1.3** (BSD-3-Clause, already on the
+  `deny.toml` allow list) and **`hkdf` 0.12** (MIT/Apache-2.0, already in the
+  tree via the OAuth path). `rand_core` 0.6 is the only extra crate version,
+  because `spake2` pins the 0.6 line.
+
+`cargo deny check` stays the gate: the license list needed no change, and
+`curve25519-dalek` 4.1.3 is the release that carries the RUSTSEC-2024-0344
+timing fix, so no advisory exception was added.

@@ -7,7 +7,7 @@
 | Release | Items | Status |
 |---|---|---|
 | v7.1.1 | E0 quick wins | Delivered (#551) |
-| v7.2.0 | E1 security, E2.2–E2.4 | In progress: CSP/prototype freeze, unsafe-free crates and the raw-path policy landed; configured-output token migration, LAN MITM, secrets, ACL and plugin confirmation are next |
+| v7.2.0 | E1 security, E2.2–E2.4 | In progress: CSP/prototype freeze, unsafe-free crates, the raw-path policy and the code-authenticated LAN pairing landed; configured-output token migration, desktop secrets, ACL and plugin confirmation are next |
 | v7.3.0 | E4, E5, E2.5 | — |
 | v7.4.0 | E3 | — |
 | v8.0.0 | E2.1, E6 | — |
@@ -65,13 +65,15 @@ change, README counts refreshed.
    Fix: both validators pass through the policy with an explicit `FileAccess`;
    directory picks use a `file_token_pick_directory` token; regression tests
    prove a release-mode raw path is refused.
-2. **LAN pairing MITM.** `RecordingServerCert` accepts every certificate
-   (`transport.rs:120-131`), and the six-digit code is sent inside that TLS
-   session. Fix: SPAKE2 (`spake2`) binds the code to a PAKE key and to the two
-   certificate fingerprints, or a short authentication string
-   `SAS = H(fp_host‖fp_client‖code)` compared on both screens. Also cache seen
-   nonces for the replay window (`lan.rs:659,887`) and serve connections on
-   bounded worker threads instead of one at a time.
+2. **LAN pairing MITM. Delivered (E1/3).** `RecordingServerCert` accepts every
+   certificate during pairing (`transport.rs:120-131`) and the six-digit code
+   used to travel inside that TLS session. Pairing now runs SPAKE2 (`spake2`)
+   over the code and hashes both certificate fingerprints into the derived key
+   (`lan/pairing.rs`); the SAS/QR variant was not needed because a relay
+   derives two different keys and cannot confirm either side. A guessed
+   confirmation spends one of the five attempts, accepted nonces are cached for
+   the freshness window (`lan/replay.rs`), and four worker threads replace the
+   one-at-a-time accept loop. Regression tests: `lan/pairing_tests.rs`.
 3. **Secrets on desktop.** `secret.rs` writes `plain:` when the platform cipher
    is unavailable and does not set `0600`. Use the already-present `keyring`
    dependency behind `SecretCipher`, fall back to `plain:` with `0600` only

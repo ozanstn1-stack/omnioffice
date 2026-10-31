@@ -46,8 +46,8 @@ the best-effort rows are either passing or documented.
 | # | Scenario | Steps | Expected |
 |---|---|---|---|
 | S1 | Discover | On the phone: “Find devices”. | The PC appears within ~3 s with its device name; the discovery annotation says mDNS or fallback. |
-| S2 | Pair | Start sharing on the PC, read the six-digit code, enter it on the phone. | Phone stores the pairing; the PC lists the phone under host peers; the code disappears/expires and cannot be reused. |
-| S3 | Wrong code | Try a wrong code, then the right one before it expires. | Wrong attempt is refused and counted; the right code still pairs. |
+| S2 | Pair | Start sharing on the PC, read the six-digit code, enter it on the phone. Both devices on v7.2 or newer. | Phone stores the pairing; the PC lists the phone under host peers; the code disappears/expires and cannot be reused. A phone on an older build is told both devices need the same version. |
+| S3 | Wrong code | Try a wrong code, then the right one before it expires. | The phone refuses the code (it never leaves the device, so the PC's attempt budget is untouched) and then the right code pairs. A device that guesses *against* the PC spends one of the five attempts; the fifth closes the window. |
 | S4 | List and download | Phone: “Local folder”, “Compare”, then sync-safe. | The PC's files appear in the plan; a download arrives byte-identical (compare SHA-256); the Turkish file name stays intact. |
 | S5 | Upload | Phone: add a new file to its folder, compare, sync-safe. | The file appears on the PC, readable in the app, same SHA-256. |
 | S6 | Big file | Upload a ~50 MB PDF. | Progress is visible; memory stays bounded; the file verifies after the transfer. |
@@ -85,6 +85,9 @@ Failures: <scenario, symptom, log/screenshot link>
 
 `cargo test -p synccore --test lan_two_host` runs the flow end to end on
 loopback: two hosts, two folders, pair with the printed code, list, download,
-upload, a three-way conflict, a confirmed delete and an unpair refusal. It is
-the regression net for the manual rows; a failure there blocks the release
-before the device pass starts.
+upload, a three-way conflict, a confirmed delete and an unpair refusal.
+`crates/synccore/src/lan/pairing_tests.rs` runs the attacker side of S2/S3: a
+certificate-substituting relay, a device guessing codes against the host, a
+replayed signed request, a stalled peer and a pre-7.2 client. Both are the
+regression net for the manual rows; a failure there blocks the release before
+the device pass starts.
