@@ -64,13 +64,18 @@ function parsedManifest(patch: Record<string, unknown> = {}): PluginManifest {
   return result.manifest;
 }
 
+/** The Rust side's plugin record: the hash it recorded and the state of the files. */
+function installed(patch: Record<string, unknown> = {}) {
+  return { manifest: manifestJson(), sourceBytes: 24, sha256: "ab".repeat(32), integrity: "verified", ...patch };
+}
+
 function fakeTransport(): PluginTransport {
   return {
     list: vi.fn(async () => []),
     readSource: vi.fn(async () => "self.onPluginMessage = () => 'ok';"),
-    install: vi.fn(async () => ({ manifest: manifestJson(), sourceBytes: 24 })),
-    installFromDialog: vi.fn(async () => ({ manifest: manifestJson(), sourceBytes: 24 })),
-    installSample: vi.fn(async () => ({ manifest: manifestJson(), sourceBytes: 24 })),
+    install: vi.fn(async () => installed()),
+    installFromDialog: vi.fn(async () => installed()),
+    installSample: vi.fn(async () => installed()),
     remove: vi.fn(async () => undefined),
     readFile: vi.fn(async () => "file-contents"),
     writeFile: vi.fn(async () => undefined),
@@ -665,8 +670,8 @@ describe("plugin store", () => {
   it("loads backend manifests, skipping the invalid ones", async () => {
     const transport = fakeTransport();
     transport.list = vi.fn(async () => [
-      { manifest: manifestJson(), sourceBytes: 24 },
-      { manifest: { id: "broken" }, sourceBytes: 1 },
+      installed(),
+      installed({ manifest: { id: "broken" }, sourceBytes: 1 }),
     ]);
     setPluginTransport(transport);
     await usePluginStore.getState().load();

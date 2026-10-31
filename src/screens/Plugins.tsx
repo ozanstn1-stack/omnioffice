@@ -118,7 +118,7 @@ function PluginCard({
   onRun: (commandId: string) => void;
 }) {
   const t = useT();
-  const { manifest, status, error, lastError, logs, lastResult } = plugin;
+  const { manifest, status, integrity, sha256, error, lastError, logs, lastResult } = plugin;
   const waitingForDocument = manifestNeedsDocument(manifest) && !documentOpen;
 
   return (
@@ -127,6 +127,11 @@ function PluginCard({
         <strong>{manifest.name}</strong>
         <span className="muted small">{manifest.id}</span>
         <Badge tone={STATUS_TONE[status]}>{t(`plugins.status.${status}`)}</Badge>
+        {integrity === "verified" ? null : (
+          <Badge tone={integrity === "modified" ? "warning" : "muted"} title={sha256}>
+            {t(`plugins.integrity.${integrity}`)}
+          </Badge>
+        )}
         <span className="spacer" />
         <span className="muted small">{t("plugins.version", { version: manifest.version })}</span>
       </div>

@@ -3058,5 +3058,7 @@
   "desk.cleaner": "Clean the document",
   "desk.data": "Open the data tools",
   "palette.category.task": "Desk task",
-  "palette.taskNeedsFile": "Select a document first"
+  "palette.taskNeedsFile": "Select a document first",
+  "plugins.integrity.modified": "Plugin files changed since install",
+  "plugins.integrity.unrecorded": "Installed before integrity records"
 }

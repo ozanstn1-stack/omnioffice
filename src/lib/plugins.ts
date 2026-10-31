@@ -1129,14 +1129,32 @@ export async function runPluginBatchStep(
 // Store: installed plugins, session runtimes and the default host
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether the installed files still match the hash recorded at install time
+ * (E1/5): `modified` means the plugin changed on disk after the user approved
+ * it, `unrecorded` means it was installed before records existed.
+ */
+export type PluginIntegrity = "verified" | "modified" | "unrecorded";
+
 export interface PluginInfo {
   manifest: PluginManifest;
   status: PluginStatus;
+  /** The recorded (or, without a record, current) bundle SHA-256. */
+  integrity: PluginIntegrity;
+  sha256: string;
   /** Crash reason; command failures go to `lastError` instead. */
   error: string | null;
   lastError: string | null;
   logs: string[];
   lastResult: string | null;
+}
+
+/** Decodes the Rust side's integrity string; an unknown value reads as verified only when the hash is present. */
+function integrityOf(record: PluginArchivedRecord): { integrity: PluginIntegrity; sha256: string } {
+  const sha256 = typeof record.sha256 === "string" ? record.sha256 : "";
+  const integrity: PluginIntegrity =
+    record.integrity === "modified" ? "modified" : record.integrity === "unrecorded" ? "unrecorded" : "verified";
+  return { integrity, sha256 };
 }
 
 function summarizeResult(value: unknown): string {
@@ -1215,15 +1233,20 @@ export const usePluginStore = create<PluginStoreState>((set, get) => ({
         const result = validateManifest(record.manifest);
         if (!result.ok) continue;
         const existing = get().plugins.find((plugin) => plugin.manifest.id === result.manifest.id);
+        const integrity = integrityOf(record);
         plugins.push(
-          existing ?? {
-            manifest: result.manifest,
-            status: "disabled",
-            error: null,
-            lastError: null,
-            logs: [],
-            lastResult: null,
-          },
+          existing
+            ? { ...existing, integrity: integrity.integrity, sha256: integrity.sha256 }
+            : {
+                manifest: result.manifest,
+                status: "disabled",
+                integrity: integrity.integrity,
+                sha256: integrity.sha256,
+                error: null,
+                lastError: null,
+                logs: [],
+                lastResult: null,
+              },
         );
       }
       for (const id of [...runtimes.keys()]) {
