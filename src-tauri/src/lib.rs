@@ -147,6 +147,22 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            // E1: app-owned directories are the only raw paths a release
+            // webview may pass without a token (staging, cache, defaults).
+            for directory in [
+                app.path().app_cache_dir().ok(),
+                app.path().app_data_dir().ok(),
+                app.path().app_local_data_dir().ok(),
+                app.path().app_config_dir().ok(),
+                app.path().app_log_dir().ok(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                crate::paths_policy::register_owned_root(directory);
+            }
+            crate::paths_policy::register_owned_root(std::env::temp_dir());
+
             // Android: keep a foreground service up for as long as any job runs,
             // so the system does not freeze the process when the app leaves the
             // screen.

@@ -99,6 +99,11 @@ pub fn lookup(value: &str, access: FileAccess) -> Option<Result<PathBuf, String>
         if access == FileAccess::ReadWrite && entry.access != FileAccess::ReadWrite {
             return Some(Err("the file token was issued for reading only".to_string()));
         }
+        // A write target the human picked is trusted for the follow-up
+        // fingerprint/read commands (the path the command returns to the UI).
+        if access == FileAccess::ReadWrite {
+            crate::paths_policy::trust_path(&entry.path);
+        }
         Some(Ok(entry.path.clone()))
     })
 }

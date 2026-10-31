@@ -304,7 +304,7 @@ fn client_peer(store: &LanStore, device_id: &str) -> Result<PairedPeer, PdfError
 /// A folder the webview picked: a capability token resolved here (or a raw
 /// path in debug builds), never a path the UI invented.
 fn folder_path(folder: &str) -> Result<PathBuf, PdfError> {
-    let validated = crate::paths::directory(folder)?;
+    let validated = crate::paths::directory(folder, crate::files::FileAccess::ReadWrite)?;
     validated.as_path().canonicalize().map_err(PdfError::from_io)
 }
 

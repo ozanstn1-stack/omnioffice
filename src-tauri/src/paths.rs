@@ -209,17 +209,36 @@ fn validate_output_path(path: &Path) -> Result<ValidatedPath, PdfError> {
 /// prefixes. Unlike the other validators it does not require the path to exist,
 /// so it is the right check for paths the command intentionally creates (e.g.
 /// [`crate::commands::ensure_dir`]) or probes for absence.
-pub fn lexical(raw: &str) -> Result<ValidatedPath, PdfError> {
-    if let Some(resolved) = crate::files::lookup(raw, crate::files::FileAccess::Read) {
+pub fn lexical(raw: &str, access: crate::files::FileAccess) -> Result<ValidatedPath, PdfError> {
+    if let Some(resolved) = crate::files::lookup(raw, access) {
         return Ok(ValidatedPath(resolved.map_err(PdfError::InvalidInput)?));
     }
     let path = normalize(raw)?;
+    // The raw branch is the actual gap this closes: a release webview may only
+    // pass app-owned paths or paths the backend produced (see paths_policy).
+    crate::paths_policy::ensure_raw_path_allowed(path)?;
     Ok(ValidatedPath(path.to_path_buf()))
 }
 
 /// Validates a directory path coming from the webview. It must be absolute and
 /// already exist as a directory.
-pub fn directory(raw: &str) -> Result<ValidatedPath, PdfError> {
+pub fn directory(raw: &str, access: crate::files::FileAccess) -> Result<ValidatedPath, PdfError> {
+    if let Some(resolved) = crate::files::lookup(raw, access) {
+        let path = resolved.map_err(PdfError::InvalidInput)?;
+        return validate_directory_path(&path);
+    }
+    let path = normalize(raw)?;
+    crate::paths_policy::ensure_raw_path_allowed(path)?;
+    validate_directory_path(path)
+}
+
+/// Validates a folder the user configured as an **output destination**
+/// (Settings' default output folder, batch target). The path is a write
+/// destination, not a read capability, so a legacy raw value from Settings
+/// keeps working; reads and sharing folders still go through the strict
+/// [`directory`] policy. Migrating this surface to a directory token is the
+/// next E1 slice.
+pub fn directory_configured(raw: &str) -> Result<ValidatedPath, PdfError> {
     if let Some(resolved) = crate::files::lookup(raw, crate::files::FileAccess::ReadWrite) {
         let path = resolved.map_err(PdfError::InvalidInput)?;
         return validate_directory_path(&path);

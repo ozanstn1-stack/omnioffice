@@ -78,13 +78,34 @@ release-train schedule is decided.
   `#![forbid(unsafe_code)]`; the workspace compiles under it.
   `test:src/lib/security-config.test.ts#declares #![forbid(unsafe_code)] in every library crate`
 
+- **Raw-path policy (E1/2, #550):** `paths::lexical` and `paths::directory`
+  now run raw paths through the policy instead of accepting any absolute path:
+  a release webview may only pass app-owned directories (cache/data/config/log/
+  temp, registered at startup) or paths the backend produced (a resolved save
+  target and its folder become trusted). Fingerprint/output-exists reads,
+  `ensure_dir`, batch output validation and the LAN share folder therefore need
+  a token or an owned/trusted path.
+  `test:src-tauri/src/paths_policy.rs#debug_builds_accept_and_release_builds_need_trust`
+  `test:src-tauri/src/paths_policy.rs#registration_normalizes_and_deduplicates`
+  `test:src-tauri/src/paths_policy.rs#trusted_paths_cover_their_tree`
+
 ### Not done / Known limitations (7.2.0)
 
-- The raw-path gap (`paths::lexical`/`directory` bypassing
-  `ensure_raw_allowed`), the LAN pairing MITM (SPAKE2/SAS), desktop secrets on
-  the keyring, the command ACL and plugin-install confirmation are the next E1
-  slices; each needs its own regression test and, for the LAN item, a simulated
-  attacker test.
+- **Configured output destinations keep a legacy raw path.** Settings' default
+  output folder, batch targets and the AI library folder are write destinations
+  and still validate as before (`paths::directory_configured`); migrating them
+  to a persisted directory token is the next slice. The strict policy already
+  covers reads/hashing, `ensure_dir`, LAN sharing and save-target children.
+  (no test: documented compatibility surface; the strict branch is covered by
+  the decision-table tests above.)
+- The release-mode denial branch is exercised through the policy decision table
+  and code path; CI runs debug builds where raw paths are allowed, so a release
+  E2E remains the manual check.
+  (no test: requires a release build on a desktop device.)
+- The LAN pairing MITM (SPAKE2/SAS), desktop secrets on the keyring, the
+  command ACL and plugin-install confirmation are the next E1 slices; each
+  needs its own regression test and, for the LAN item, a simulated attacker
+  test.
   (no test: planned slices, tracked in #550.)
 
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
