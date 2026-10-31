@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0–v7.0.0 delivered (D1–D9); v7.1.0 in progress (D13 delivered, D10/D11 prepared, D12 decided).** Phase C is closed (all C1–C15 delivered between
+**Status: closed after v7.1.0.** All D1–D13 are resolved: delivered, or closed with a recorded decision (D10 unsigned by decision; D11 preparation delivered, IzzyOnDroid submission is the owner step). Phase E is proposed in [`PHASE-E-PROPOSAL.md`](PHASE-E-PROPOSAL.md).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
