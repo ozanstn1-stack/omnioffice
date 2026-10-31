@@ -43,11 +43,11 @@ MSRV, Android Kotlin/target, desktop E2E, dependency audit).
 
 | Follow-up | Where it is tracked now |
 |---|---|
-| C1 palette task commands (run a desk task from the command palette) | Phase D item D2 |
-| C8 DOCX provenance manifests and automatic manifests from producer screens | Phase D item D4 |
-| C11 per-screen mobile audit (every screen at 360 dp, one-hand reach) | Phase D item D5 |
-| C12 real-photo corpus and acceptance measurement | Phase D item D1 |
-| C14 real two-device acceptance, deletion undo history, resumable Android transfer | Phase D items D6–D8 |
+| C1 palette task commands (run a desk task from the command palette) | Phase D item D13 |
+| C8 DOCX provenance manifests and automatic manifests from producer screens | Phase D item D7 |
+| C11 per-screen mobile audit (every screen at 360 dp, one-hand reach) | Phase D item D8 |
+| C12 real-photo corpus and acceptance measurement | Phase D item D4 |
+| C14 real two-device acceptance, deletion undo history, resumable Android transfer | Phase D items D1–D3 |
 
 ## Where Phase C stands
 
