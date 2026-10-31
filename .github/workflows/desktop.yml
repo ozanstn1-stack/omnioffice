@@ -13,6 +13,14 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR supersedes the previous run: the full matrix (3 OS, 2 E2E
+# jobs, Android, fuzz, bench) is expensive, and a cancelled run cannot hide a
+# failure because the newest commit re-runs everything. Master pushes are not
+# cancelled: they are the release gate and must finish.
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Static checks that do not need a compiler or the native engines. Kept in
   # its own job so a lint failure is reported in seconds instead of waiting for
@@ -20,6 +28,7 @@ jobs:
   lint:
     name: Lint (ESLint, Prettier, rustfmt, i18n)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,6 +109,7 @@ jobs:
   frontend:
     name: Frontend (tests, type check, build)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -129,6 +139,7 @@ jobs:
   android-target:
     name: Android target compile
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -174,6 +185,7 @@ jobs:
   android-kotlin:
     name: Android Kotlin (Gradle compile + unit tests)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -221,6 +233,9 @@ jobs:
       - name: Install frontend dependencies
         if: steps.changed.outputs.run == '1'
         run: npm ci
+      - name: Lockfile preflight
+        if: steps.changed.outputs.run == '1'
+        run: cargo metadata --locked --format-version 1 > /dev/null
       # The Kotlin compile needs the Gradle project wiring in the gitignored
       # tauri.settings.gradle, which only a real Tauri Android build writes
       # (`tauri android init` alone does not). Building the single x86_64
@@ -244,6 +259,7 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-24.04, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -328,6 +344,7 @@ jobs:
   msrv:
     name: MSRV (declared Rust version)
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master branch
@@ -349,6 +366,7 @@ jobs:
   extension:
     name: Chrome extension
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: chrome-extension
@@ -386,6 +404,7 @@ jobs:
   e2e:
     name: Desktop E2E (tauri-driver)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -447,6 +466,7 @@ jobs:
   e2e-windows:
     name: Desktop E2E (Windows, WebView2)
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -583,6 +603,7 @@ jobs:
     name: Fuzz (nightly, short)
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
@@ -623,6 +644,10 @@ jobs:
       - name: UBL reader
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ubl -- -max_total_time=30
+      - name: PDF parser
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu pdf_parse -- -max_total_time=60
+
       # A crash must not disappear with the runner: the artifact is the input
       # that will become the regression test.
       - name: Upload crash artifacts
@@ -632,9 +657,6 @@ jobs:
           name: fuzz-artifacts
           path: fuzz/artifacts/
           if-no-files-found: ignore
-      - name: PDF parser
-        working-directory: fuzz
-        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu pdf_parse -- -max_total_time=60
 
   # Criterion trend benchmarks with a regression gate. The previous master
   # run's means are cached; a benchmark >15 % slower than the others moved
@@ -645,6 +667,7 @@ jobs:
     name: Benchmarks (criterion)
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
@@ -688,6 +711,7 @@ jobs:
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -705,18 +729,10 @@ jobs:
           # Prebuilt binaries: keeps the audit job under a minute instead of
           # compiling these tools on every push.
           tool: cargo-audit,cargo-deny
-      # cargo audit is the quick gate; deny.toml is the reviewed policy with an
-      # owner and a review date for every ignored advisory, plus the license,
-      # ban and source rules.
-      - name: cargo audit
-        run: |
-          cargo audit \
-            --ignore RUSTSEC-2023-0071 \
-            --ignore RUSTSEC-2026-0367 \
-            --ignore RUSTSEC-2026-0368 \
-            --ignore RUSTSEC-2026-0369 \
-            --ignore RUSTSEC-2026-0387
-      # `deny.toml` owns the advisory policy (owned, time-boxed exceptions) and
+      # `deny.toml` owns the advisory policy (owned, time-boxed exceptions with
+      # review dates) and the license, ban and source rules. The separate
+      # `cargo audit --ignore` list repeated it and could drift out of sync, so
+      # `cargo deny check advisories` is the single advisory gate.
       # the license/ban/source policy. A new advisory, an exception whose
       # review date has passed, or a dependency outside the allow lists fails
       # here.

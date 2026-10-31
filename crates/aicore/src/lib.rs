@@ -1,6 +1,7 @@
 //! aicore — DeepSeek API client and prompt pipeline for OmniOffice.
 //!
-//! This is the **only** component in the project that talks to the network.
+//! This is the only **AI** component that talks to the network (the updater
+//! and LAN sync have their own transports).
 //! It is opt-in: nothing is sent unless the user explicitly runs an AI action
 //! with their own API key, and the text that is sent is exactly the extracted
 //! document text the user chose to process.

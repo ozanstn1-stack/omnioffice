@@ -1,8 +1,9 @@
 //! Panic record for release builds.
 //!
-//! The release profile is `panic = "abort"`: a Rust panic ends the process
-//! immediately and, without this hook, leaves nothing behind but "the app
-//! closed". The hook appends one block per panic to `crash.log` in the app log
+//! The workspace keeps `panic = "unwind"` on purpose (see the workspace
+//! `Cargo.toml`): the hook records the panic, the message and the location
+//! before the unwind reaches the Tauri boundary, so a release crash leaves a
+//! record instead of only "the app closed". The hook appends one block per panic to `crash.log` in the app log
 //! directory (next to `frontend.log`) and then chains to the previous hook, so
 //! the default stderr report and the abort behave exactly as before.
 //!

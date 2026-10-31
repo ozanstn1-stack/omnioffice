@@ -29,6 +29,9 @@ function walk(directory, out = []) {
     const full = join(directory, entry);
     if (statSync(full).isDirectory()) {
       if (entry === "node_modules" || entry === "target" || entry === "dist") continue;
+      // Generated bindings are not hand-maintained source: their size follows
+      // the command surface, so a line budget would only add noise.
+      if (entry === "generated") continue;
       walk(full, out);
     } else if (EXTENSIONS.some((extension) => entry.endsWith(extension)) && !entry.includes(".test.")) {
       out.push(full);

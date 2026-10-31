@@ -101,7 +101,8 @@ fn crash_log_dir_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Release builds abort on panic: the panic hook writes crash.log first.
+    // Panics unwind through this boundary; the hook writes crash.log before
+    // the unwind reaches Tauri (the workspace keeps panic = "unwind").
     crash_log::install_panic_hook();
     // Persistent job history shared by the registry and the jobs_* commands.
     let job_store = JobStore::shared();
@@ -228,9 +229,9 @@ pub fn run() {
         .expect("error while running OmniOffice");
 }
 
-/// Writes the typed command bindings (tauri-specta, #316) to `path`. The
-/// command groups move one at a time (docs/dependencies.md); the vault is the
-/// first. Until a group is listed here, its hand-written `invoke` stays.
+/// Writes the typed command bindings (tauri-specta, #316) to `path`. Every
+/// command domain is listed here; the generated `specta.ts` is the single
+/// source the frontend wrappers are built on.
 #[cfg(feature = "bindings")]
 pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
     tauri_specta::Builder::<tauri::Wry>::new()

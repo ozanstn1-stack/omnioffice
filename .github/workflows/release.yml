@@ -68,6 +68,13 @@ jobs:
       # a merged config and no updater artifacts are produced (the release
       # then has no latest.json and the in-app check falls back to the release
       # page).
+      - name: Lockfile preflight
+        # `tauri build` runs cargo through the CLI; this check makes a stale
+        # Cargo.lock fail here instead of resolving new versions mid-release.
+        shell: pwsh
+        run: |
+          cargo metadata --locked --format-version 1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Tauri release build
         shell: pwsh
         env:

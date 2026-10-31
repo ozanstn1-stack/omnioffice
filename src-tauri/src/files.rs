@@ -12,8 +12,6 @@
 //! follow-up slices (PDF, office, tools). Until a command is migrated it still
 //! accepts a path, so nothing breaks while the slices land.
 
-#![allow(dead_code)] // esolve is used by the migration slices (#337); tests cover it now.
-
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -72,6 +70,11 @@ pub fn issue(path: &Path, access: FileAccess) -> FileRef {
 }
 
 /// Resolves a token; a read-only token cannot be used for writing.
+/// The migration gate the remaining command slices will move onto (#337). It is
+/// kept (and exercised by the tests) even though the current command set still
+/// resolves tokens through `lookup`; the targeted allowance keeps the file's
+/// other warnings visible.
+#[allow(dead_code)]
 pub fn resolve(token: &str, access: FileAccess) -> Result<PathBuf, String> {
     with_registry(|registry| {
         let entry = registry.get(token).ok_or_else(|| "the file token is unknown or expired".to_string())?;

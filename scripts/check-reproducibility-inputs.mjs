@@ -50,6 +50,24 @@ for (const name of workflows) {
     check(/@[0-9a-f]{40}$/.test(action), `${name}: action ${action} is not pinned to a commit SHA`);
   }
   check(!/npm install(?!\s)/.test(text), `${name}: use npm ci instead of npm install`);
+  // `tauri build` runs cargo through the CLI, which does not take --locked in
+  // every version; the workflows therefore run a `cargo metadata --locked`
+  // preflight before the build. Pin that preflight instead of trusting the
+  // passthrough.
+  // Local `--debug` builds (E2E/dev) are exempt: only a release build must be
+  // lock-pinned. Comment lines never count.
+  const tauriBuild = text
+    .split(/\r?\n/)
+    .some(
+      (line) =>
+        !line.trim().startsWith("#") &&
+        /tauri\s+(android\s+)?build/.test(line) &&
+        !/--debug/.test(line),
+    );
+  if (tauriBuild) {
+    check(/cargo metadata --locked/.test(text), `${name}: a tauri build must be preceded by cargo metadata --locked`);
+  }
+
   // Every `cargo build` line must carry --locked: a lockfile that would change
   // during a release build must fail the job, not silently resolve new versions.
   for (const line of text.split(/\r?\n/)) {
