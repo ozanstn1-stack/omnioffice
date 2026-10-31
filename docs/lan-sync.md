@@ -141,6 +141,20 @@ The phase-1 UDP broadcast on port 47821 stays as a fallback for networks that
 block multicast (some guests and CI sandboxes do); both results are merged by
 device id and the mDNS answer wins. No manual IP entry is needed.
 
+## Acceptance
+
+Two layers guard the feature:
+
+- **Automated contract:** `cargo test -p synccore --test lan_two_host` runs two
+  hosts with two folders on loopback through pair, list, download, upload, a
+  symmetric call, a three-way conflict, a confirmed deletion and an unpair
+  refusal. CI runs it with the rest of the Rust suite.
+- **Manual two-device pass:** [`docs/lan-sync-acceptance.md`](lan-sync-acceptance.md)
+  is the matrix (Windows ↔ Android, Android ↔ Android, plus best-effort rows),
+  with the scenarios, the record sheet and what the pass does not cover. Run it
+  for every release that touches the LAN code and paste the result into the
+  release notes.
+
 ## Residual risks (honest list)
 
 1. **Pairing MITM.** A six-digit code is not a PAKE. An active attacker that
