@@ -3,20 +3,32 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Detection = { detected: boolean; corners: number[][]; score: number };
+type BatchPage = { path: string; detected: boolean; score: number; pages: number[][][] };
 
 let detection: Detection = { detected: false, corners: [], score: 0 };
+/** When set, the batch detector answers with these pages instead of `detection`. */
+let batch: BatchPage[] | null = null;
 
-const invoke = vi.fn(async (command: string) => {
+const invoke = vi.fn(async (command: string, payload?: unknown) => {
   if (command === "file_token_pick")
     return ["C:/pages/a.png", "C:/pages/b.png"].map((path) => ({ token: path, name: path.split("/").pop(), path }));
   if (command === "file_token_save") return [{ token: "C:/out.pdf", name: "out.pdf", path: "C:/out.pdf" }];
   if (command === "office_scan_pages") return { output: "C:/out.pdf", pages: 2, corrected: 0, warnings: [] };
   if (command === "office_scan_preview") return { dataUrl: "data:image/jpeg;base64,AAAA", width: 1000, height: 2000 };
   if (command === "office_scan_detect") return detection;
+  if (command === "office_scan_detect_batch") {
+    if (batch) return batch;
+    const paths = (payload as { paths?: string[] } | undefined)?.paths ?? [];
+    return paths.map((path) =>
+      detection.detected
+        ? { path, detected: true, score: detection.score, pages: [detection.corners] }
+        : { path, detected: false, score: 0, pages: [] },
+    );
+  }
   return null;
 });
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string])) }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string, unknown])) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(async () => ["C:/pages/a.png", "C:/pages/b.png"]),
@@ -40,6 +52,7 @@ describe("document scanner scaffold", () => {
   beforeEach(() => {
     invoke.mockClear();
     detection = { detected: false, corners: [], score: 0 };
+    batch = null;
   });
 
   it("assembles a PDF from the picked page photos through the Rust scanner", async () => {
@@ -80,7 +93,11 @@ describe("document scanner scaffold", () => {
     render(<Scanner />);
     await user.click(screen.getByRole("button", { name: /Add page photos/i }));
     expect(await screen.findByText("a.png")).toBeInTheDocument();
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith("office_scan_detect", { path: "C:/pages/a.png" }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("office_scan_detect_batch", {
+        paths: ["C:/pages/a.png", "C:/pages/b.png"],
+      }),
+    );
     expect(await screen.findAllByText("auto")).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: /Build PDF/i }));
@@ -92,6 +109,50 @@ describe("document scanner scaffold", () => {
             pages: [
               { path: "C:/pages/a.png", corners: detectedPage.corners, filter: "colour" },
               { path: "C:/pages/b.png", corners: detectedPage.corners, filter: "colour" },
+            ],
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("shows a two-page spread as two pages of the same photo", async () => {
+    const left = [
+      [40, 60],
+      [250, 60],
+      [250, 340],
+      [40, 340],
+    ];
+    const right = [
+      [310, 60],
+      [520, 60],
+      [520, 340],
+      [310, 340],
+    ];
+    batch = [
+      { path: "C:/pages/a.png", detected: true, score: 0.9, pages: [left, right] },
+      { path: "C:/pages/b.png", detected: false, score: 0, pages: [] },
+    ];
+    const user = userEvent.setup();
+    render(<Scanner />);
+    await user.click(screen.getByRole("button", { name: /Add page photos/i }));
+
+    // The spread is two rows under the same photo, each labelled with its half.
+    expect(await screen.findAllByText("a.png")).toHaveLength(2);
+    expect(screen.getByText(/left page/i)).toBeInTheDocument();
+    expect(screen.getByText(/right page/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/double page/i)).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: /Build PDF/i }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "office_scan_pages",
+        expect.objectContaining({
+          request: expect.objectContaining({
+            pages: [
+              { path: "C:/pages/a.png", corners: left, filter: "colour" },
+              { path: "C:/pages/a.png", corners: right, filter: "colour" },
+              { path: "C:/pages/b.png", filter: "colour" },
             ],
           }),
         }),

@@ -1,20 +1,19 @@
 import { useRef, useState } from "react";
-import { call } from "../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
-import { writeFile } from "@tauri-apps/plugin-fs";
 import { Camera, FileText, Save, ScanText } from "lucide-react";
 import { Badge, Button, Card } from "../components/ui";
 import { Screen } from "../components/layout";
-import { uid } from "../lib/format";
 import { pickDocumentTokens } from "../lib/file-tokens";
 import { useT } from "../lib/i18n";
 import { reportError, useToasts } from "../lib/store";
 import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
-import { detectedCorners, scanDetect, scanPages, type ScanFilter } from "../lib/scan-detect";
+import { scanDetectBatch, scanPages, type ScanBatchPage, type ScanFilter } from "../lib/scan-detect";
 import type { ScreenId } from "../lib/nav";
 import { CornerPicker } from "./scanner-corners";
 import { ScannerPageList, type ScannerPage } from "./scanner-page-list";
+import { mergeScanDetection, pendingScanPages } from "./scanner-batch";
+import { stageCameraFiles } from "./scanner-capture";
 
 interface ScannerProps {
   onNavigate?: (screen: ScreenId, options?: { files?: string[] }) => void;
@@ -44,27 +43,19 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
   const [lastOutput, setLastOutput] = useState<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
-  /** Adds pages and runs the on-device detector for each new photo. */
+  /** Adds pages and runs the on-device batch detector for the new photos. */
   const addPaths = async (paths: string[]) => {
     const unique = [...new Set(paths.filter(Boolean))];
-    if (!unique.length) return;
-    setPages((current) => [
-      ...current,
-      ...unique.filter((path) => !current.some((page) => page.path === path)).map((path) => ({ path })),
-    ]);
+    const known = new Set(pages.map((page) => page.path));
+    const fresh = unique.filter((path) => !known.has(path));
+    if (!fresh.length) return;
+    setPages((current) => [...current, ...pendingScanPages(fresh)]);
     setDetecting(true);
     try {
-      const found = await Promise.all(
-        unique.map(async (path) => [path, await scanDetect(path).catch(() => null)] as const),
-      );
-      setPages((current) =>
-        current.map((page) => {
-          const match = found.find(([path]) => path === page.path);
-          const corners = detectedCorners(match?.[1]);
-          // A page the user already corrected keeps its corners.
-          return corners && !page.corners ? { ...page, corners, auto: true } : page;
-        }),
-      );
+      // One call for the whole capture (D4): batch auto-crop detects every
+      // picked photo up front, and a two-page spread comes back as two pages.
+      const found = await scanDetectBatch(fresh).catch(() => [] as ScanBatchPage[]);
+      setPages((current) => mergeScanDetection(current, found));
     } finally {
       setDetecting(false);
     }
@@ -86,20 +77,9 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
     if (!fileList || fileList.length === 0) return;
     setBusy(true);
     try {
-      const cache = await appCacheDir();
-      const directory = await join(cache, "scans", uid("scan"));
-      await call((c) => c.ensureDir(directory));
-      const staged: string[] = [];
-      for (const file of Array.from(fileList)) {
-        const cleanName = (file.name || `page-${staged.length + 1}.jpg`).replace(/[\\/:*?"<>|]/g, "_");
-        const dest = await join(directory, cleanName);
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        await writeFile(dest, bytes);
-        staged.push(dest);
-      }
-      // Batch capture: each shot is one page; the detector crops it without
+      // Batch capture: each shot is one photo; the detector crops it without
       // opening the picker, so the next shot can follow immediately.
-      await addPaths(staged);
+      await addPaths(await stageCameraFiles(fileList));
     } catch (error) {
       reportError(error, t);
     } finally {
@@ -116,9 +96,18 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
       return next;
     });
 
-  const setCorners = (path: string, corners: [number, number][] | undefined) => {
+  const setCorners = (id: string, corners: [number, number][] | undefined) => {
     setPages((current) =>
-      current.map((page) => (page.path === path ? (corners ? { path, corners } : { path }) : page)),
+      current.map((page) =>
+        page.id === id
+          ? {
+              id: page.id,
+              path: page.path,
+              ...(page.half !== undefined ? { half: page.half } : {}),
+              ...(corners ? { corners } : {}),
+            }
+          : page,
+      ),
     );
     setEditing(null);
   };
@@ -166,7 +155,15 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
     }
   };
 
-  const editingPage = editing ? pages.find((page) => page.path === editing) : undefined;
+  const editingPage = editing ? pages.find((page) => page.id === editing) : undefined;
+  const editingName = editingPage
+    ? [
+        editingPage.path.split(/[\\/]/).pop() || editingPage.path,
+        editingPage.half === 0 ? t("scanner.spreadLeft") : editingPage.half === 1 ? t("scanner.spreadRight") : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   return (
     <Screen
@@ -223,7 +220,7 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
             filter={filter}
             onFilter={setFilter}
             onMove={move}
-            onRemove={(path) => setPages((current) => current.filter((page) => page.path !== path))}
+            onRemove={(id) => setPages((current) => current.filter((page) => page.id !== id))}
             onAdjust={setEditing}
             onClear={() => setPages([])}
           />
@@ -233,11 +230,11 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
       </div>
       {editingPage ? (
         <CornerPicker
-          key={editingPage.path}
-          name={editingPage.path.split(/[\\/]/).pop() || editingPage.path}
+          key={editingPage.id}
+          name={editingName}
           path={editingPage.path}
           initial={editingPage.corners}
-          onSave={(corners) => setCorners(editingPage.path, corners)}
+          onSave={(corners) => setCorners(editingPage.id, corners)}
           onClose={() => setEditing(null)}
         />
       ) : null}

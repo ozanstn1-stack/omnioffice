@@ -24,8 +24,19 @@ export interface ScanPageRequest {
 /** What the detector found for one photo (generated from the Rust struct). */
 export type ScanDetection = import("./generated/specta").ScanDetection;
 
+/** One photo's pages as the batch detector returns them (generated). */
+export type ScanBatchPage = import("./generated/specta").ScanBatchPage;
+
 /** Finds the page's corners on the device. */
 export const scanDetect = (path: string): Promise<ScanDetection> => call((c) => c.officeScanDetect(path));
+
+/**
+ * Finds the pages in every photo of a capture in one call (D4). A two-page
+ * spread comes back as two quads under the same path, so the scanner can show
+ * each half as its own page.
+ */
+export const scanDetectBatch = (paths: string[]): Promise<ScanBatchPage[]> =>
+  call((c) => c.officeScanDetectBatch(paths));
 
 /** Flattens the detected pages and assembles the PDF. */
 export const scanPages = (pages: ScanPageRequest[], output: string) =>

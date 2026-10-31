@@ -130,3 +130,6 @@ scoring, or a paper-sheen term), not to a corpus edit.
   batch command the scanner screen calls: one spread becomes two page entries
   under the same photo path, a single page stays one, a blank wall reports
   nothing.
+- `src/screens/Scanner.test.tsx#shows a two-page spread as two pages of the same photo`
+  — the screen side: two rows with the spread badge, both halves sent to the
+  PDF builder.

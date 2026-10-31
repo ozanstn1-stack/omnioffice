@@ -52,6 +52,12 @@ release-train schedule is decided.
   instead of one by one; a spread returns two page entries under the same photo
   path.
   `test:src-tauri/src/scanner.rs#scan_detect_batch_splits_a_two_page_spread`
+- **Spread-aware batch auto-crop in the scanner (D4, #531):** the scanner screen
+  detects the whole capture in one call, shows a two-page photo as two page
+  rows labelled with their half, and sends both halves to the PDF builder as
+  their own pages; the page rows are keyed by page id, so reordering, removing
+  and correcting one half never touches the other.
+  `test:src/screens/Scanner.test.tsx#shows a two-page spread as two pages of the same photo`
 
 ### Not done / Known limitations (6.14.0)
 

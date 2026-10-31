@@ -141,11 +141,12 @@ which asks for the CAMERA permission the first time and launches
 `ACTION_IMAGE_CAPTURE`. The manifest's `<queries>` entry for that intent is
 what lets the chooser see a camera app on Android 11+; without it the button
 silently opened the file picker. Each photo is copied to `cacheDir/scans/` and
-scanned on the device: `office_scan_detect` runs the Canny/Hough page detector
-(`crates/pdfcore/src/page_detect.rs`, C12) on a downscaled copy and the corners
-appear on an upright, downscaled preview (`office_scan_preview`); the corner
-picker (`screens/scanner-corners.tsx`) stays for correcting a page the detector
-could not find. `office_scan_pages` then turns every page upright from its EXIF
+scanned on the device: `office_scan_detect_batch` runs the Canny/Hough page
+detector (`crates/pdfcore/src/page_detect.rs`, C12) on a downscaled copy of the
+whole capture in one call (D4), and the corners appear on an upright, downscaled
+preview (`office_scan_preview`). A book spread is split at the spine into two
+pages of the same photo. The corner picker (`screens/scanner-corners.tsx`) stays
+for correcting a page the detector could not find. `office_scan_pages` then turns every page upright from its EXIF
 orientation, flattens the ones with corners, applies the chosen filter (colour,
 greyscale or adaptive black and white) and writes a JPEG-page PDF.
 
