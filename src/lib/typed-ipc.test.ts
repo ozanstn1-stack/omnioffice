@@ -128,7 +128,7 @@ describe("typed bindings: the office group", () => {
   const generated = read("src/lib/generated/specta.ts");
 
   it("generates a typed wrapper for every office command", () => {
-    expect(officeCommands.length).toBe(45);
+    expect(officeCommands.length).toBe(46);
     for (const name of officeCommands) {
       expect(generated, name).toMatch(new RegExp(`__TAURI_INVOKE(?:<[^>]*>)?\\("${name}"`));
     }
