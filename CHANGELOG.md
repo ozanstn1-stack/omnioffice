@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.1] - Hızlı kazanımlar (Phase E / E0)
+
+### Changed
+
+- **Command surface and docs (E0, #551):** the unregistered `issue_tokens`
+  command attribute is gone and the counted command surface/README numbers were
+  refreshed; stale panic, bindings and network comments, the platform sentence
+  and the file-wide dead-code allowance in `files.rs` were corrected.
+- **Desktop CI guards (E0, #551):** superseded PR runs are cancelled (master
+  runs never are), every job has a wall-clock timeout, and the fuzz
+  crash-artifact upload now runs after the last target so a `pdf_parse` crash
+  keeps its input file.
+- **Lock-pinned release builds (E0, #551):** a `cargo metadata --locked`
+  preflight runs before every release Tauri build (release, beta, Linux
+  packages, Android, desktop Android target); the reproducibility gate requires
+  it and a negative test proves the gate fails without it.
+- **Single advisory policy (E0, #551):** the duplicated `cargo audit --ignore`
+  list is removed; `cargo deny check` is the only advisory/license/ban/source
+  gate, with the vendored-calamine (zip 9) and updater (zip 4) facts recorded.
+- **Impress undo/redo (E0, #551):** pure updaters; the deck edit and sibling
+  stack update are plain event-handler side effects, so StrictMode no longer
+  runs them twice.
+- **Hygiene (E0, #551):** generated `specta.ts` is out of the line ratchet,
+  `check:fast` (byte-identical to `check`) is removed, and `check:all` builds on
+  `check`.
+
 ## [7.1.0] - Dağıtım ve platform
 
 ### Added

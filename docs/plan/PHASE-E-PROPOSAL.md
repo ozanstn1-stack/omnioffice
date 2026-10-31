@@ -1,6 +1,18 @@
 # Phase E proposal — after v7.1.0
 
-**Status: proposed.** Phase C is closed (C1–C15) and Phase D is delivered
+**Status: approved; E0 delivered in v7.1.1.**
+
+## Progress
+
+| Release | Items | Status |
+|---|---|---|
+| v7.1.1 | E0 quick wins | Delivered (#551) |
+| v7.2.0 | E1 security, E2.2–E2.4 | Next |
+| v7.3.0 | E4, E5, E2.5 | — |
+| v7.4.0 | E3 | — |
+| v8.0.0 | E2.1, E6 | — |
+
+ Phase C is closed (C1–C15) and Phase D is delivered
 (D1–D13; D10 closed as "unsigned by decision", D11's listing submission is the
 owner's external step). This document defines **Phase E**: security hardening,
 quality infrastructure, architectural debt and product depth, in versioned

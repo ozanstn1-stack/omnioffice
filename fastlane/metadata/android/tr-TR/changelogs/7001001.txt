@@ -1,0 +1,5 @@
+7.1.1: Hızlı kazanımlar: release derlemeleri öncesi kilit dosyası ön kontrolü,
+masaüstü CI'da PR iptali ve iş zaman aşımıları, fuzz çökme artefaktının doğru
+sırada yüklenmesi, tek danışma politikası (cargo deny), Impress geri al/yinele
+düzeltmesi, üretilen bağların satır bütçesinden çıkarılması ve bayat
+yorum/doküman temizliği.
