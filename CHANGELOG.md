@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.13.0] - Yerel ağ kapanışı
+
+### Added
+
+- **Two-device LAN acceptance (D1, #532):** `crates/synccore/tests/lan_two_host.rs`
+  runs two hosts with two folders over loopback through pair, list, download,
+  upload, a symmetric call, a three-way conflict, a confirmed delete and an
+  unpair refusal as a release contract test, and
+  `docs/lan-sync-acceptance.md` is the manual matrix (Windows/Android pairs,
+  fourteen scenarios, record sheet) for the real Wi-Fi pass.
+- **Deletion trash, restore and tombstones (D2, #533):** every confirmed LAN
+  deletion first copies the document into a local trash (sealed index, 30-day
+  retention, 200 entries, transfer cap); "Recently deleted" in the LAN card
+  restores it into the selected folder. A sealed tombstone history per peer
+  stops the plan from resurrecting or re-reporting the file, and base entries
+  for paths gone on both sides are dropped so a later file with the same name
+  is not a fake conflict.
+- **Resumable chunked uploads (D3, #534):** uploads use begin/chunk/finish with
+  512 KiB chunks, byte offsets, a streamed SHA-256 at the end and hidden
+  `.parts/` partials that are cleaned after 24 hours; the client retries and
+  resumes from the host's offset, so an interrupted Android transfer (foreground
+  service restart, dropped Wi-Fi) continues instead of restarting. The LAN card
+  shows live "Uploading … % / bytes" progress from a `lan-progress` event.
+
+### Changed
+
+- `docs/lan-sync.md` documents the resumable protocol, the trash/tombstone
+  policy and the honest limits (downloads are still whole-file, the real
+  two-device pass is manual).
+
 ## [6.12.0] - Yerel ağ eşitleme, ikinci aşama
 
 ### Added

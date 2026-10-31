@@ -1,0 +1,3 @@
+6.13.0: Yerel ağ kapanışı: iki cihazlı kabul testi ve cihaz matrisi; 30 günlük
+silme çöp kutusu, geri yükleme ve tombstone geçmişi; kesintisiz, devam
+edebilen parçalı yükleme ve arayüzde canlı ilerleme.

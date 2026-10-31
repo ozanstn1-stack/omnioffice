@@ -10,12 +10,12 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 6.12.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 6.13.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
 
-## What's new (6.2 to 6.12.0)
+## What's new (6.2 to 6.13.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -178,15 +178,17 @@ was split into per-format modules.
   between their folders with a three-way plan; conflicts stay for the user
   (keep both, keep local, keep remote) and unpairing revokes access; it is
   found over mDNS, works in both directions and asks before propagating a
-  deletion, with an Android foreground service keeping the folder reachable.
-**Downloads (v6.12.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v6.12.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.12.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.12.0/OmniOffice-Setup-6.12.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.12.0/OmniOffice-Portable-6.12.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.12.0/OmniOffice-Linux-6.12.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.12.0/OmniOffice-Linux-6.12.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.12.0/OmniOffice-Android-6.12.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.12.0/OmniOffice-Android-6.12.0-armeabi-v7a.apk)
+  deletion, with an Android foreground service keeping the folder reachable;
+  6.13.0 adds the two-host acceptance contract, a 30-day deletion trash with
+  tombstones and resumable chunked uploads with live progress.
+**Downloads (v6.13.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v6.13.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v6.13.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.13.0/OmniOffice-Setup-6.13.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.13.0/OmniOffice-Portable-6.13.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.13.0/OmniOffice-Linux-6.13.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.13.0/OmniOffice-Linux-6.13.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.13.0/OmniOffice-Android-6.13.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v6.13.0/OmniOffice-Android-6.13.0-armeabi-v7a.apk)
 
 ## Release history
 
