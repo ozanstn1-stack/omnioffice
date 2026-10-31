@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useKeyboardOpen } from "../lib/viewport";
 import { BookOpen, Home, LayoutGrid, Menu, ScanLine } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { Navigate, ScreenId } from "../lib/nav";
@@ -26,22 +26,11 @@ const ICONS: Record<string, React.ReactNode> = {
 /**
  * The on-screen keyboard takes a large share of the visual viewport; with it
  * open the tab bar would sit on top of the keyboard and push the field away.
+ * The helper and the hook live in `lib/viewport` so the screen action bar
+ * uses the same measurement; the export keeps `keyboardLikelyOpen` reachable
+ * for the tests that pin the threshold.
  */
-export function keyboardLikelyOpen(viewportHeight: number, windowHeight: number): boolean {
-  return windowHeight > 0 && viewportHeight < windowHeight * 0.75;
-}
-
-function useKeyboardOpen(): boolean {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const viewport = typeof window !== "undefined" ? window.visualViewport : null;
-    if (!viewport) return;
-    const update = () => setOpen(keyboardLikelyOpen(viewport.height, window.innerHeight));
-    viewport.addEventListener("resize", update);
-    return () => viewport.removeEventListener("resize", update);
-  }, []);
-  return open;
-}
+export { keyboardLikelyOpen } from "../lib/viewport";
 
 export function BottomNav({
   screen,

@@ -144,6 +144,9 @@ body {
   }
   .screen-content {
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    /* A landscape notch sits on the left or right edge: keep the text clear. */
+    padding-left: calc(1.75rem + env(safe-area-inset-left));
+    padding-right: calc(1.75rem + env(safe-area-inset-right));
   }
 }
 
@@ -3480,3 +3483,82 @@ body {
   }
 }
 /* end C11 touch targets */
+/* ------------------------------------------------- mobile ergonomics (D8) */
+
+/* The focused field is kept clear of the on-screen keyboard (lib/viewport.ts):
+   scrollIntoView leaves room for the bottom bar and the action bar. */
+.input,
+.select,
+.textarea,
+textarea,
+input,
+select,
+[contenteditable="true"] {
+  scroll-margin-block: 128px;
+}
+
+/* Primary actions within thumb reach: the shared Screen shell moves its header
+   actions into this bar on phone-sized windows. It is in the flex column above
+   the bottom tabs, and lifts itself by the measured keyboard inset so a Save
+   button is never hidden behind the keyboard. */
+.screen-action-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+  margin-bottom: var(--keyboard-inset, 0px);
+  z-index: 25;
+}
+.screen-action-bar .btn {
+  flex: 1 1 auto;
+  min-height: 44px;
+  justify-content: center;
+}
+.screen-action-bar .btn-sm {
+  min-height: 40px;
+}
+.screen-action-bar .icon-btn {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+/* A screen whose header only carries a decorative icon shows no empty bar. */
+.screen-action-bar:not(:has(button, a, input, select, textarea)) {
+  display: none;
+}
+
+/* Landscape on a phone: the chrome must never eat the page. The tab bar keeps
+   icons only, the action bar becomes a compact row and dialogs scroll. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .screen-action-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-top: 6px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  }
+  .screen-action-bar .btn {
+    min-height: 40px;
+    flex: 0 0 auto;
+  }
+  .bottom-nav-item {
+    min-height: 44px;
+  }
+  .bottom-nav-label {
+    display: none;
+  }
+  .drawer {
+    width: min(360px, 60vw);
+  }
+  .modal-backdrop {
+    padding: 8px;
+  }
+  .modal-backdrop .modal {
+    max-height: calc(100vh - 16px);
+  }
+}
+/* end D8 mobile ergonomics */
