@@ -170,6 +170,16 @@ ARM64 is worth packaging.
 **Acceptance.** Each platform is either shipped with the same verification as
 Windows/Linux/Android, or explicitly declined with the reasons.
 
+### D13. Command palette task commands (C1 follow-up)
+
+**Scope.** The command palette today navigates and opens files; let it run the
+profession-desk tasks ("bu PDF'i karart", "KDV özeti çıkar", "delil klasörü
+oluştur") with their context, including a clear disabled reason when the
+current selection does not fit.
+
+**Acceptance.** Every desk task is reachable from the palette with a shortcut,
+a disabled command explains why, and the plugin command registry keeps working.
+
 ## Prioritisation
 
 | Order | Item | Impact | Effort | Risk | Depends on |
@@ -186,6 +196,7 @@ Windows/Linux/Android, or explicitly declined with the reasons.
 | 10 | D9 performance | keeps the suite usable at scale | 4–6 d | medium | benchmarks |
 | 11 | D11 listings + reproducible builds | distribution and verifiability | 3–5 d + reviews | medium | accounts |
 | 12 | D12 platform breadth | reach | 5–10 d per platform | high | decisions |
+| 13 | D13 palette task commands | daily speed for power users | 1–2 d | low | – |
 
 ## Proposed release train
 
