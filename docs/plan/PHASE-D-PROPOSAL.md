@@ -1,6 +1,6 @@
 # Phase D proposal — after Phase C
 
-**Status: approved; v6.13.0, v6.14.0 and v6.15.0 delivered (D1–D4, D8).** Phase C is closed (all C1–C15 delivered between
+**Status: approved; v6.13.0–v6.15.0 delivered (D1–D4, D8); v7.0.0 in progress (D7).** Phase C is closed (all C1–C15 delivered between
 v6.4.0 and v6.12.0, tracker #341 closed, every release verified with its
 18-asset SHA-256 manifest). This document proposes what comes next; nothing
 here is committed until the owner picks the items and a tracker issue is
@@ -15,6 +15,7 @@ opened.
 | D3. Resumable Android transfer | Delivered in v6.13.0 (uploads; downloads stay whole-file) |
 | D4. Real-photo scanner corpus and page separation | Delivered in v6.14.0 (photo-realistic corpus, measured 12/14 = 85 %, spread split and batch auto-crop) |
 | D8. Mobile ergonomics audit | Delivered in v6.15.0 (thumb-reach action bar, keyboard inset, safe areas, landscape, bilingual 360 dp matrix for 55 routes) |
+| D7. Provenance v2 | In progress for v7.0.0 (DOCX manifests, unified source chain, automatic producer embedding) |
 
 The rest of this document is the original proposal, kept as the planning record.
 
@@ -143,6 +144,15 @@ as a source chain.
 
 **Acceptance.** A generated DOCX and an OCR'd PDF both carry a manifest; a
 tampered source is detected on verify.
+
+**Status (v7.0.0).** Delivered: DOCX manifests (one package part, canonical
+content digest so re-compression does not report a false change), the unified
+source chain with `intact`/`changed`/`absent`/`unsupported` verdicts and the
+four producer hooks (convert to DOCX, OCR PDF, merge PDF, plus the generic
+write path for a manual copy). The chain puts a red tamper warning before the
+recorded sources when the digest no longer matches, and
+`docs/provenance-v2.md` documents the format, the rules and the limits (no
+XMP in DOCX, a self-consistent forged manifest is out of scope).
 
 ### D8. Mobile ergonomics audit (C11 follow-up)
 

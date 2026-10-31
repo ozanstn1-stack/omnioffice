@@ -1,51 +1,53 @@
 /**
- * Source manifest card (C8): shows what a document was made from and lets the
- * user add the record to a copy. The heavy lifting is the local
- * `pdf_provenance_*` commands; this card only picks sources and renders the
- * answer, including the "changed after the manifest" verdict.
+ * Source manifest card (C8, D7): shows what a document was made from and lets
+ * the user add the record to a copy.
+ *
+ * The heavy lifting is the local `provenance_read_chain` / `provenance_write`
+ * commands: they sniff a PDF or DOCX container and return one derivation chain
+ * (sources → transformation → output) with an integrity verdict. A digest
+ * mismatch is shown as a tamper warning before the recorded sources, because a
+ * changed document makes every recorded source claim worthless.
  */
 import { useCallback, useEffect, useState } from "react";
-import { FilePlus2, Fingerprint, ListTree, ShieldAlert, ShieldCheck } from "lucide-react";
-import { Badge, Button, Card, Modal, Spinner, TextArea } from "./ui";
-import { FileList } from "./files";
+import { FilePlus2, ListTree } from "lucide-react";
+import { Badge, Button, Card, Spinner } from "./ui";
 import { appInfo, toAppError } from "../lib/api";
 import type { FileToken } from "../lib/file-tokens";
-import { fileBaseName, formatBytes } from "../lib/format";
+import { fileBaseName } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { ProvenanceAddDialog } from "./provenance-add-dialog";
+import { ProvenanceChain } from "./provenance-chain";
 import { isAndroid } from "../lib/mobile";
 import { pickDocumentTokens, pickSaveToken } from "../lib/file-tokens";
-import { readProvenance, writeProvenance, type ProvenanceManifest, type ProvenanceReport } from "../lib/provenance-api";
+import { readSourceChain, writeProvenance, type SourceChainReport } from "../lib/provenance-api";
 import { reportError, useToasts } from "../lib/store";
 
-function shortDigest(digest: string): string {
-  return digest.length > 16 ? `${digest.slice(0, 16)}…` : digest;
-}
-
-/** What a written manifest says; shown after a save so the user sees the result. */
-interface SavedManifest {
-  path: string;
-  manifest: ProvenanceManifest;
-}
+const TONE: Record<string, "ok" | "danger" | "warn" | "accent"> = {
+  intact: "ok",
+  changed: "danger",
+  unsupported: "warn",
+  absent: "accent",
+};
 
 export function ProvenanceCard({ path }: { path: string }) {
   const t = useT();
   const push = useToasts((state) => state.push);
-  const [report, setReport] = useState<ProvenanceReport | null>(null);
+  const [chain, setChain] = useState<SourceChainReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [sources, setSources] = useState<FileToken[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState<SavedManifest | null>(null);
+  const [savedTo, setSavedTo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setReport(await readProvenance(path));
+      setChain(await readSourceChain(path));
     } catch (caught) {
-      setReport(null);
+      setChain(null);
       setError(toAppError(caught).message);
     } finally {
       setLoading(false);
@@ -53,9 +55,9 @@ export function ProvenanceCard({ path }: { path: string }) {
   }, [path]);
 
   useEffect(() => {
-    // The loader owns the report/loading state; a new document starts a new read.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader owns the report state
-    setSaved(null);
+    // The loader owns the chain state; a new document starts a new read.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader owns the chain state
+    setSavedTo(null);
     void load();
   }, [load]);
 
@@ -69,8 +71,10 @@ export function ProvenanceCard({ path }: { path: string }) {
   };
 
   const save = async () => {
-    const suggested = `${fileBaseName(path).replace(/\.pdf$/i, "")}-provenance.pdf`;
-    const target = await pickSaveToken(suggested, ["pdf"]).catch(() => null);
+    const docx = /\.docx$/i.test(path);
+    const extension = docx ? "docx" : "pdf";
+    const suggested = `${fileBaseName(path).replace(/\.(pdf|docx)$/i, "")}-provenance.${extension}`;
+    const target = await pickSaveToken(suggested, [extension]).catch(() => null);
     if (!target) return;
     setSaving(true);
     try {
@@ -84,10 +88,11 @@ export function ProvenanceCard({ path }: { path: string }) {
         sources: sources.map((source) => ({ path: source.token, name: source.name, role: "source" })),
         ai: null,
       });
-      setSaved({ path: result.result.path, manifest: result.manifest });
+      setSavedTo(result.result.path);
       setOpen(false);
       setSources([]);
       setNote("");
+      await load();
       push({ kind: "success", title: t("provenance.saved"), detail: result.result.path });
     } catch (caught) {
       reportError(caught, t);
@@ -96,8 +101,10 @@ export function ProvenanceCard({ path }: { path: string }) {
     }
   };
 
-  const manifest = saved?.manifest ?? report?.manifest ?? null;
-  const intact = saved ? true : (report?.intact ?? false);
+  const verdict = chain?.verdict ?? "absent";
+  const present = Boolean(chain?.present);
+  const changed = verdict === "changed";
+  const docx = /\.docx$/i.test(path);
 
   return (
     <Card>
@@ -105,11 +112,12 @@ export function ProvenanceCard({ path }: { path: string }) {
         <div className="row">
           <ListTree size={16} />
           <strong>{t("provenance.title")}</strong>
-          {manifest ? (
-            <Badge tone={intact ? "ok" : "danger"}>{intact ? t("provenance.intact") : t("provenance.changed")}</Badge>
+          {present ? (
+            <Badge tone={TONE[verdict] ?? "accent"}>{t(`provenance.${changed ? "changed" : "intact"}`)}</Badge>
           ) : null}
+          {chain && chain.format ? <Badge tone="accent">{chain.format.toUpperCase()}</Badge> : null}
         </div>
-        {!isAndroid() && !saved ? (
+        {!isAndroid() ? (
           <Button size="sm" icon={<FilePlus2 size={14} />} disabled={loading} onClick={() => setOpen(true)}>
             {t("provenance.add")}
           </Button>
@@ -127,97 +135,35 @@ export function ProvenanceCard({ path }: { path: string }) {
         </p>
       ) : null}
 
-      {!loading && !error && manifest ? (
-        <div className="stack mt-3">
-          {!intact ? <p className="small">{t("provenance.changedHint")}</p> : null}
-          {saved ? <p className="muted small">{t("provenance.savedTo", { path: saved.path })}</p> : null}
-          <div className="flex flex-wrap gap-4">
-            <p className="muted small">
-              {t("provenance.module")}: <strong>{manifest.module}</strong>
-            </p>
-            <p className="muted small">
-              {t("provenance.createdAt")}: <strong>{manifest.createdAt}</strong>
-            </p>
-            <p className="muted small">
-              {t("provenance.appVersion")}: <strong>{manifest.appVersion || "?"}</strong>
-            </p>
-          </div>
-          {manifest.note ? <p className="small">{manifest.note}</p> : null}
-          {manifest.sources.length ? (
-            <div className="stack">
-              <p className="text-xs muted">{t("provenance.sources")}</p>
-              {manifest.sources.map((source, position) => (
-                <p key={position} className="muted small">
-                  {source.fileName} · {formatBytes(source.size)} · {shortDigest(source.sha256)}
-                  {source.role ? ` · ${source.role}` : ""}
-                </p>
-              ))}
-            </div>
-          ) : null}
-          {manifest.ai ? (
-            <p className="muted small">
-              {t("provenance.ai")}: {manifest.ai.provider} · {manifest.ai.model}
-              {manifest.ai.citations ? ` · ${t("provenance.citations", { count: manifest.ai.citations })}` : ""}
-            </p>
-          ) : null}
-          <p className="muted small row">
-            <Fingerprint size={13} /> {t("provenance.digest")}: {shortDigest(manifest.documentSha256)}
-          </p>
-        </div>
-      ) : null}
+      {!loading && !error && present && chain ? <ProvenanceChain chain={chain} savedTo={savedTo} /> : null}
 
-      {!loading && !error && !manifest ? (
+      {!loading && !error && chain && !present ? (
         <div className="stack mt-2">
-          <p className="muted small">{t("provenance.absent")}</p>
-          <p className="muted small">{isAndroid() ? t("provenance.android") : t("provenance.absentHint")}</p>
+          {verdict === "unsupported" ? (
+            <p className="muted small">
+              <Badge tone="warn">{t("provenance.chainUnsupported")}</Badge>
+            </p>
+          ) : (
+            <>
+              <p className="muted small">{t("provenance.absent")}</p>
+              <p className="muted small">{isAndroid() ? t("provenance.android") : t("provenance.absentHint")}</p>
+            </>
+          )}
         </div>
       ) : null}
 
-      {open ? (
-        <Modal
-          title={t("provenance.add")}
-          onClose={() => setOpen(false)}
-          width={720}
-          footer={
-            <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
-              <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-                {t("provenance.close")}
-              </Button>
-              <Button size="sm" variant="primary" disabled={saving} onClick={() => void save()}>
-                {saving ? t("provenance.saving") : t("provenance.save")}
-              </Button>
-            </div>
-          }
-        >
-          <div className="stack">
-            <p className="muted small">{t("provenance.subtitle")}</p>
-            <FileList
-              files={sources.map((source) => ({ path: source.token, name: source.name, sizeBytes: 0 }))}
-              onRemove={(index) => setSources((previous) => previous.filter((_, position) => position !== index))}
-              onAdd={() => void pickSources()}
-              addLabel={t("provenance.pickSources")}
-            />
-            <label className="text-xs muted" htmlFor="provenance-note">
-              {t("provenance.noteLabel")}
-            </label>
-            <TextArea
-              id="provenance-note"
-              rows={3}
-              value={note}
-              placeholder={t("provenance.notePlaceholder")}
-              onChange={(event) => setNote(event.target.value)}
-            />
-            {manifest ? (
-              <p className="muted small">
-                <ShieldCheck size={13} /> {t("provenance.replaces")}
-              </p>
-            ) : null}
-            <p className="muted small row">
-              <ShieldAlert size={13} /> {t("provenance.signedNote")}
-            </p>
-          </div>
-        </Modal>
-      ) : null}
+      <ProvenanceAddDialog
+        open={open}
+        docx={docx}
+        sources={sources}
+        note={note}
+        saving={saving}
+        onClose={() => setOpen(false)}
+        onPickSources={() => void pickSources()}
+        onRemoveSource={(index) => setSources((previous) => previous.filter((_, position) => position !== index))}
+        onNote={setNote}
+        onSave={() => void save()}
+      />
     </Card>
   );
 }

@@ -577,6 +577,34 @@ mod chain_tests {
         assert_eq!(chain.module, "merge");
     }
 
+    fn sample_docx() -> Vec<u8> {
+        let mut writer = officecore::zip::ZipWriter::new();
+        writer.add_text("[Content_Types].xml", "<Types/>");
+        writer.add_text("word/document.xml", "<w:document>OmniOffice</w:document>");
+        writer.finish()
+    }
+
+    #[test]
+    fn a_produced_docx_gets_the_manifest_attached_automatically() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("ceviri.docx");
+        std::fs::write(&output, sample_docx()).unwrap();
+        let source = dir.path().join("kaynak.docx");
+        std::fs::write(&source, b"office-model").unwrap();
+
+        attach_docx_manifest(&output, "convert", std::slice::from_ref(&source));
+
+        let bytes = std::fs::read(&output).unwrap();
+        let report = officecore::docx_provenance::read_provenance(&bytes).unwrap();
+        assert!(report.present, "the producer hook embeds a manifest");
+        assert!(report.intact);
+        let manifest = report.manifest.unwrap();
+        assert_eq!(manifest.module, "convert");
+        assert_eq!(manifest.sources.len(), 1);
+        assert_eq!(manifest.sources[0].file_name, "kaynak.docx");
+        assert!(!manifest.sources[0].sha256.is_empty());
+    }
+
     #[test]
     fn a_changed_document_says_changed_and_an_absent_manifest_says_absent() {
         let changed = ProvenanceReport {

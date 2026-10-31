@@ -511,6 +511,17 @@ export const commands = {
 	 *  it recorded.
 	 */
 	pdfProvenanceWrite: (request: ProvenanceWriteRequest_Deserialize) => typedError<ProvenanceWriteResult_Serialize, PdfError>(__TAURI_INVOKE("pdf_provenance_write", { request })),
+	/**
+	 *  Reads the derivation chain of a PDF or DOCX (D7): every source with its
+	 *  SHA-256, the transformation step, and the output digest that was checked.
+	 */
+	provenanceReadChain: (path: string) => typedError<SourceChainReport_Serialize, PdfError>(__TAURI_INVOKE("provenance_read_chain", { path })),
+	/**
+	 *  Writes a copy of a PDF or DOCX with a provenance manifest embedded (D7).
+	 *  The container is sniffed from the input bytes; a signed PDF is refused the
+	 *  same way the PDF-only command refuses it.
+	 */
+	provenanceWrite: (request: ProvenanceWriteRequest_Deserialize) => typedError<ProvenanceWriteResult_Serialize, PdfError>(__TAURI_INVOKE("provenance_write", { request })),
 	/**  Every saved card plus the platform's encryption state. */
 	personCardList: () => typedError<PersonCardList_Serialize, PdfError>(__TAURI_INVOKE("person_card_list")),
 	/**  Creates or updates a card; the id and `updatedAt` are assigned here. */
@@ -1479,6 +1490,40 @@ export type CertificateVerification_Serialize = {
 	contentMatches: boolean,
 	/**  SHA-256 of the file with the certificate stripped. */
 	actualSha256: string,
+};
+
+/**
+ *  One link in a document's derivation chain (D7): a source, the
+ *  transformation step, or the output itself.
+ */
+export type ChainLink = ChainLink_Serialize | ChainLink_Deserialize;
+
+/**
+ *  One link in a document's derivation chain (D7): a source, the
+ *  transformation step, or the output itself.
+ */
+export type ChainLink_Deserialize = {
+	/**  `source`, `transform` or `output`. */
+	kind: string,
+	/**  What the link is, e.g. the module name, a role or a file name. */
+	label: string,
+	sha256?: string,
+	size?: number | null,
+	role?: string,
+};
+
+/**
+ *  One link in a document's derivation chain (D7): a source, the
+ *  transformation step, or the output itself.
+ */
+export type ChainLink_Serialize = {
+	/**  `source`, `transform` or `output`. */
+	kind: string,
+	/**  What the link is, e.g. the module name, a role or a file name. */
+	label: string,
+	sha256: string,
+	size: number | null,
+	role: string,
 };
 
 export type CleanOptions = CleanOptions_Serialize | CleanOptions_Deserialize;
@@ -5182,6 +5227,51 @@ export type SignatureReport_Serialize = {
 	 *  example a file that could not be parsed at all. Without this an empty
 	 *  signature list read exactly like "this PDF is unsigned".
 	 */
+	warnings: string[],
+};
+
+/**  The whole derivation chain of a PDF or DOCX (D7). */
+export type SourceChainReport = SourceChainReport_Serialize | SourceChainReport_Deserialize;
+
+/**  The whole derivation chain of a PDF or DOCX (D7). */
+export type SourceChainReport_Deserialize = {
+	/**  `pdf`, `docx`, or empty when neither manifest container is recognised. */
+	format: string,
+	present: boolean,
+	intact: boolean,
+	/**  `intact`, `changed`, `absent` or `unsupported`. */
+	verdict: string,
+	/**  Digest recomputed from the document now. */
+	outputSha256: string,
+	/**  Digest the manifest recorded when it was written. */
+	recordedSha256: string,
+	module: string,
+	appVersion: string,
+	createdAt: string,
+	note?: string,
+	ai?: ProvenanceAi_Deserialize | null,
+	links: ChainLink_Deserialize[],
+	warnings?: string[],
+};
+
+/**  The whole derivation chain of a PDF or DOCX (D7). */
+export type SourceChainReport_Serialize = {
+	/**  `pdf`, `docx`, or empty when neither manifest container is recognised. */
+	format: string,
+	present: boolean,
+	intact: boolean,
+	/**  `intact`, `changed`, `absent` or `unsupported`. */
+	verdict: string,
+	/**  Digest recomputed from the document now. */
+	outputSha256: string,
+	/**  Digest the manifest recorded when it was written. */
+	recordedSha256: string,
+	module: string,
+	appVersion: string,
+	createdAt: string,
+	note: string,
+	ai: ProvenanceAi_Serialize | null,
+	links: ChainLink_Serialize[],
 	warnings: string[],
 };
 
