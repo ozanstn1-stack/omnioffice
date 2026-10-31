@@ -44,14 +44,17 @@ const goodContract = JSON.stringify({
 const codes = (issues: Array<{ code: string }>) => issues.map((issue) => issue.code);
 
 describe("TASK_PACKS", () => {
-  it("ships the four requested Turkish packs with unique ids", () => {
+  it("ships the seven Turkish packs (C7 + D5) with unique ids", () => {
     expect(TASK_PACKS.map((pack) => pack.id)).toEqual([
       "duzelt-dilekce",
       "ozetle-sozlesme",
       "kdv-ozeti",
       "tebligat-sure",
+      "efatura-analiz",
+      "kep-tebligat",
+      "mahkeme-dilekce",
     ]);
-    expect(new Set(TASK_PACKS.map((pack) => pack.id)).size).toBe(4);
+    expect(new Set(TASK_PACKS.map((pack) => pack.id)).size).toBe(7);
     for (const pack of TASK_PACKS) {
       expect(pack.prompt.length).toBeGreaterThan(40);
       expect(pack.fields.length).toBeGreaterThan(0);

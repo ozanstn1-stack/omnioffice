@@ -3035,5 +3035,15 @@
   "provenance.chainUnsupported": "Not a PDF or DOCX package, so it cannot carry a source manifest.",
   "provenance.recorded": "Recorded SHA-256",
   "provenance.outputDigest": "Output SHA-256",
-  "provenance.docxSupported": "The manifest is embedded in the DOCX package as one extra part."
+  "provenance.docxSupported": "The manifest is embedded in the DOCX package as one extra part.",
+  "aiPacks.pack.efatura.title": "Analyze an e-invoice",
+  "aiPacks.pack.efatura.description": "Supplier, customer, lines with VAT and the three totals, checked against the line arithmetic.",
+  "aiPacks.pack.efatura.hint": "The answer lists each line with quantity, unit price, rate, base and VAT; the app checks the arithmetic and the totals.",
+  "aiPacks.pack.kep.title": "Summarize a KEP notice",
+  "aiPacks.pack.kep.description": "Sender, subject, section summaries and the legal deadline from a KEP/e-Tebligat text.",
+  "aiPacks.pack.kep.hint": "The answer gives the sender, the subject, section summaries, the service date and the last day; the app checks the dates.",
+  "aiPacks.pack.mahkeme.title": "Classify a court petition",
+  "aiPacks.pack.mahkeme.description": "Court type, subject, requests and evidence, classified from the petition text.",
+  "aiPacks.pack.mahkeme.hint": "The answer picks a court type from the list, lists the requests and the evidence, and summarizes the subject.",
+  "aiPacks.repaired": "The answer did not verify; one repair turn was sent."
 }
