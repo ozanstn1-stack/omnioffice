@@ -52,7 +52,7 @@ export function LanSyncCard() {
     try {
       const [next, entries] = await Promise.all([lanStatus(), lanTrashList()]);
       setStatus(next);
-      setTrash(entries);
+      setTrash(entries ?? []);
       setError(null);
     } catch (reason) {
       setError(String(reason));
@@ -65,7 +65,7 @@ export function LanSyncCard() {
       .then(([next, entries]) => {
         if (!live) return;
         setStatus(next);
-        setTrash(entries);
+        setTrash(entries ?? []);
         setError(null);
       })
       .catch((reason: unknown) => {
@@ -135,7 +135,7 @@ export function LanSyncCard() {
       if (!folder) return;
       await lanSyncSafe(deviceId, folder.token);
       setPlan(await lanPlan(deviceId, folder.token));
-      setTrash(await lanTrashList());
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const resolveDeletion = (
@@ -148,7 +148,7 @@ export function LanSyncCard() {
       if (!folder) return;
       await lanResolveDeletion(deviceId, folder.token, path, side, resolution);
       setPlan(await lanPlan(deviceId, folder.token));
-      setTrash(await lanTrashList());
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const resolve = (deviceId: string, path: string, resolution: "keep_local" | "keep_cloud" | "keep_both") =>
@@ -156,20 +156,20 @@ export function LanSyncCard() {
       if (!folder) return;
       await lanApply(deviceId, folder.token, path, resolution);
       setPlan(await lanPlan(deviceId, folder.token));
-      setTrash(await lanTrashList());
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const restoreTrash = (id: string) =>
     run(async () => {
       if (!folder) return;
       setStatus(await lanTrashRestore(folder.token, id));
-      setTrash(await lanTrashList());
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const purgeTrash = () =>
     run(async () => {
       await lanTrashPurge();
-      setTrash(await lanTrashList());
+      setTrash((await lanTrashList()) ?? []);
     });
 
   const copyCode = () => {

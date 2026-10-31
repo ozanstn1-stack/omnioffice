@@ -298,3 +298,65 @@ fn a_timeout_discovery_still_returns_a_list() {
     }
     assert!(started.elapsed() < Duration::from_secs(5));
 }
+
+#[test]
+fn a_chunked_upload_resumes_where_the_previous_run_stopped() {
+    let root = folder();
+    let (host, ticket, address) = host_at(root.path());
+    let client = LanClient::new("client-chunk", "Tablet");
+    let peer = client.pair(&address, ticket.code()).expect("pairing");
+    // ~1.3 MiB, so the test crosses several chunks.
+    let bytes: Vec<u8> = (0..(CHUNK_BYTES * 2 + 12_345)).map(|index| (index % 251) as u8).collect();
+    let sha = hex_encode(&Sha256::digest(&bytes));
+
+    // First run: begin and send exactly one chunk, then "the app dies".
+    let offset = client.begin_upload(&peer, "buyuk.pdf", bytes.len() as u64, &sha).expect("begin");
+    assert_eq!(offset, 0);
+    let next =
+        client.upload_chunk(&peer, "buyuk.pdf", 0, &bytes[..CHUNK_BYTES], bytes.len() as u64).expect("first chunk");
+    assert_eq!(next, CHUNK_BYTES as u64);
+
+    // New client process: the host still knows the offset, the upload resumes.
+    let restarted = LanClient::new("client-chunk", "Tablet");
+    let resumed = restarted.begin_upload(&peer, "buyuk.pdf", bytes.len() as u64, &sha).expect("resume");
+    assert_eq!(resumed, CHUNK_BYTES as u64, "the offset survives the restart");
+    let mut seen = Vec::new();
+    let file = restarted
+        .push_resumable(&peer, "buyuk.pdf", &bytes, |sent, total| seen.push((sent, total)))
+        .expect("resumable upload");
+    assert_eq!(file.size, bytes.len() as u64);
+    assert_eq!(file.sha256, sha);
+    assert_eq!(std::fs::read(root.path().join("buyuk.pdf")).expect("written"), bytes);
+    assert_eq!(seen.last().copied(), Some((bytes.len() as u64, bytes.len() as u64)));
+    host.stop();
+}
+
+#[test]
+fn a_chunked_upload_checks_offsets_hashes_and_paths() {
+    let root = folder();
+    let (host, ticket, address) = host_at(root.path());
+    let client = LanClient::new("client-chunk-2", "Tablet");
+    let peer = client.pair(&address, ticket.code()).expect("pairing");
+    let bytes = vec![7u8; CHUNK_BYTES + 100];
+    let sha = hex_encode(&Sha256::digest(&bytes));
+    let total = bytes.len() as u64;
+
+    // The first chunk must start at the offset the host reports.
+    let offset = client.begin_upload(&peer, "deneme.pdf", total, &sha).expect("begin");
+    assert_eq!(offset, 0);
+    assert!(client.upload_chunk(&peer, "deneme.pdf", 1, &bytes[..100], total).is_err(), "a wrong offset is refused");
+    let next = client.upload_chunk(&peer, "deneme.pdf", 0, &bytes[..CHUNK_BYTES], total).expect("chunk");
+    assert_eq!(next, CHUNK_BYTES as u64);
+    client.upload_chunk(&peer, "deneme.pdf", next, &bytes[CHUNK_BYTES..], total).expect("last chunk");
+    // A finished upload whose hash is wrong is refused and the part is dropped.
+    assert!(client.finish_upload(&peer, "deneme.pdf", total, &"00".repeat(32)).is_err());
+    assert!(!root.path().join("deneme.pdf").exists(), "nothing lands under a wrong hash");
+    // The same upload then succeeds from scratch.
+    client.push_resumable(&peer, "deneme.pdf", &bytes, |_, _| {}).expect("retry");
+    assert_eq!(std::fs::read(root.path().join("deneme.pdf")).expect("written"), bytes);
+
+    // Path rules apply to the chunked path as well.
+    assert!(client.begin_upload(&peer, "../kacak.pdf", 10, &sha).is_err());
+    assert!(client.begin_upload(&peer, "program.exe", 10, &sha).is_err());
+    host.stop();
+}
