@@ -1,0 +1,5 @@
+7.0.0: Yerel, eksiksiz: DOCX kaynak bildirgesi ve türetim zinciri; Türkçe
+görev paketleri için değerlendirme koşum takımı (e-fatura, KEP/tebligat,
+mahkeme dilekçesi) ve tek onarım turlu katı JSON; DOCX değişiklik izleri,
+XLSX paylaşılan formüller ve PPTX geçiş süresi; round-trip sadakat korpusu;
+500 sayfa/50 000 hücre performans ve bellek bütçeleri.
