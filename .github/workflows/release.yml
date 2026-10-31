@@ -28,6 +28,8 @@ jobs:
     needs: version-consistency
     permissions:
       contents: write
+      # SignPath reads back the artifact uploaded in the signing step.
+      actions: read
       # Needed by actions/attest-build-provenance below.
       id-token: write
       attestations: write
@@ -92,8 +94,126 @@ jobs:
             npm run tauri build
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      # ---------------------------------------------------------------- signing
+      # Authenticode signing is optional and provider-gated (#501): with no
+      # signing secrets the job behaves exactly as before (unsigned installer),
+      # so forks and secret-less runs keep working. See docs/signing.md for the
+      # provider decision, required secrets and the verification commands.
+      - name: Detect the Authenticode provider
+        id: authenticode
+        shell: bash
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+        run: |
+          if [ -n "${SIGNPATH_API_TOKEN:-}" ]; then provider="signpath"
+          elif [ -n "${AZURE_CLIENT_SECRET:-}" ]; then provider="azure"
+          elif [ -n "${WINDOWS_CERT_PFX:-}" ]; then provider="pfx"
+          else provider="none"; fi
+          echo "provider=$provider" >> "$GITHUB_OUTPUT"
+          if [ "$provider" = "none" ]; then
+            echo "::notice::No Authenticode secrets are configured; the installer stays unsigned."
+          else
+            echo "::notice::Authenticode provider: $provider"
+          fi
+
+      - name: Sign the app exe and the installer (PFX / Azure Trusted Signing)
+        if: steps.authenticode.outputs.provider == 'pfx' || steps.authenticode.outputs.provider == 'azure'
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TS_ENDPOINT: ${{ secrets.AZURE_TS_ENDPOINT }}
+          AZURE_TS_ACCOUNT: ${{ secrets.AZURE_TS_ACCOUNT }}
+          AZURE_TS_PROFILE: ${{ secrets.AZURE_TS_PROFILE }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 -Action sign -Provider ${{ steps.authenticode.outputs.provider }}
+
+      - name: Stage the files for SignPath
+        if: steps.authenticode.outputs.provider == 'signpath'
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $stage = Join-Path $env:RUNNER_TEMP 'authenticode'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $appExe = 'target/release/OmniOffice.exe'
+          if (-not (Test-Path $appExe)) { $appExe = 'target/release/pdf-swiss-army-knife.exe' }
+          $installer = Get-ChildItem target/release/bundle/nsis -Filter "*-$version-*-setup.exe" |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $installer) { throw "the NSIS installer for $version was not found" }
+          $manifest = @{}
+          foreach ($file in @($appExe, $installer.FullName)) {
+            $name = Split-Path -Leaf $file
+            Copy-Item $file (Join-Path $stage $name) -Force
+            $manifest[$name] = (Resolve-Path $file).Path
+          }
+          $manifest | ConvertTo-Json | Set-Content (Join-Path $stage 'manifest.json') -Encoding ascii
+          Get-ChildItem $stage | Select-Object Name, Length
+
+      - name: Upload the files for SignPath
+        id: authenticode-upload
+        if: steps.authenticode.outputs.provider == 'signpath'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: authenticode-input
+          path: ${{ runner.temp }}/authenticode/*
+          if-no-files-found: error
+
+      - name: Sign through SignPath.io
+        if: steps.authenticode.outputs.provider == 'signpath'
+        uses: SignPath/github-action-submit-signing-request@ced31329c0317e779dad2eec2a7c3bb46ea1343e # v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.authenticode-upload.outputs.artifact-id }}
+          output-artifact-directory: ${{ runner.temp }}/authenticode-signed
+          wait-for-completion: true
+
+      - name: Restore the SignPath-signed files
+        if: steps.authenticode.outputs.provider == 'signpath'
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'authenticode'
+          $signed = Join-Path $env:RUNNER_TEMP 'authenticode-signed'
+          $manifest = Get-Content (Join-Path $stage 'manifest.json') -Raw | ConvertFrom-Json
+          $found = Get-ChildItem $signed -Recurse -File
+          foreach ($entry in $manifest.PSObject.Properties) {
+            $signedFile = $found | Where-Object { $_.Name -eq $entry.Name } | Select-Object -First 1
+            if (-not $signedFile) { throw "SignPath did not return $($entry.Name)" }
+            Copy-Item $signedFile.FullName $entry.Value -Force
+            Write-Host "restored the signed $($entry.Name)"
+          }
+
+      - name: Verify the Authenticode signature
+        if: steps.authenticode.outputs.provider != 'none'
+        shell: pwsh
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 -Action verify
+
+      # Authenticode rewrote the installer after Tauri produced the updater
+      # signature, so that minisign signature is refreshed before latest.json
+      # is generated (otherwise the in-app update would never verify).
+      - name: Refresh the updater signature over the signed installer
+        if: steps.authenticode.outputs.provider != 'none'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pwsh -NoProfile -File .github/scripts/refresh-updater-signature.ps1
+
       - name: Package installer and portable ZIP
         run: npm run package
+      - name: Verify the packaged installer is signed
+        if: steps.authenticode.outputs.provider != 'none'
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          pwsh -NoProfile -File .github/scripts/windows-signing.ps1 -Action verify -Paths "release-artifacts/OmniOffice-Setup-$version.exe"
       # Updater manifest (`release-artifacts/latest.json`) plus the signed
       # updater artifact it points at. Exits 0 without writing anything when
       # the build produced no updater artifacts (no signing key).

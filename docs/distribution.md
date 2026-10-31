@@ -33,28 +33,20 @@ Linux bundle ships without the bundled PDF engine and falls back to a system
 
 ## Windows Authenticode signing
 
-The installer is still unsigned, so Windows SmartScreen shows "unknown
-publisher". The updater manifest *is* signed (`latest.json.sig`), which is a
-different key and does not change the exe warning. Three ways to fix it:
+Status: **unsigned**. SmartScreen therefore shows "unknown publisher" on the
+first download; the updater manifest signature (`latest.json.sig`) is a
+different key and does not change that.
 
-| Provider | Cost | Pros | Cons |
-|---|---|---|---|
-| Azure Trusted Signing | ~$9.99/month + identity validation | Microsoft-hosted, CI-friendly (`azure/trusted-signing-action`), short-lived certs | needs an Azure account and a verified identity (individual allowed in supported regions) |
-| SignPath.io | free for open source | designed for OSS, GitHub Action, review by SignPath | request/approval flow, artifacts go through their service |
-| Own OV/EV certificate | yearly certificate | full control | most expensive, key management on us, EV is required for instant SmartScreen reputation |
+The release workflow is prepared: when one of the signing providers is
+configured through repository secrets, its optional step signs the app exe and
+the NSIS installer, verifies the result, refreshes the Tauri updater signature
+over the signed bytes and only then computes the checksums and uploads; with no
+secrets the step is skipped and the release is exactly as before.
 
-Whichever is chosen, the release workflow change lives in the Windows job of
-`.github/workflows/release.yml`: sign `OmniOffice-Setup-X.Y.Z.exe` (and the app
-exe inside the portable zip) after `tauri build`, before the release upload.
-The signing step must be skipped when its secrets are absent so a fork or a
-secret-less run still produces a working release. Required secrets per provider:
-
-- Azure Trusted Signing: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TS_ENDPOINT`, `AZURE_TS_ACCOUNT`, `AZURE_TS_PROFILE`.
-- SignPath: `SIGNPATH_API_TOKEN`, `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_POLICY_SLUG`.
-- Own certificate: `WINDOWS_CERT_PFX` (base64) and `WINDOWS_CERT_PASSWORD`.
-
-The README and this file say "unsigned" until the step is live; the release
-readiness must not claim a signature before the artifact is actually signed.
+Providers, costs, identity validation, required secrets, the ordering pitfall
+and the verification commands live in [`docs/signing.md`](signing.md). Start
+with SignPath.io (free for open source); Azure Trusted Signing is the
+supported fallback and a custom EV/OV certificate is the long-term option.
 
 ## F-Droid / IzzyOnDroid
 

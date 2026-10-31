@@ -807,11 +807,13 @@ These are real and honest:
   auto-merge and no delete propagation. Conflict resolution is manual by
   design.
 - **In-app updates**: the desktop updater verifies signed update manifests
-  from the project's GitHub releases (Windows; the installer still warns
-  because the app is not Authenticode-signed). Android downloads the APK from
-  the release, checks its SHA-256 and opens the system installer. When no
-  signed manifest/keys are configured the app falls back to opening the
-  release page.
+  from the project's GitHub releases (Windows). The installer is
+  Authenticode-signed only when a signing provider is configured for the
+  release job; until then SmartScreen shows "unknown publisher" on first
+  download (see [`docs/signing.md`](docs/signing.md)). Android downloads the
+  APK from the release, checks its SHA-256 and opens the system installer.
+  When no signed manifest/keys are configured the app falls back to opening
+  the release page.
 - **Plugins**: a Web Worker is not an OS/WASM sandbox - it protects documents
   and user data through the capability boundary, not against a WebView
   engine escape. Installation is folder-based (no zip), and `doc.applyEdits`
