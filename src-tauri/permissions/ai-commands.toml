@@ -1,0 +1,41 @@
+# Generated from src-tauri/src/ipc.rs by `npm run acl:sync` - do not edit by hand.
+# One permission per IPC domain: Tauri refuses any command a capability does not
+# allow once an application ACL manifest exists, so this file is the whole
+# permission for the commands below.
+
+[[permission]]
+identifier = "allow-ai-commands"
+description = "The optional AI assistant, its editor actions and the AI library."
+commands.allow = [
+  "ai_get_settings",
+  "ai_save_settings",
+  "ai_clear_key",
+  "ai_test_connection",
+  "ai_document_preview",
+  "ai_summarize",
+  "ai_translate",
+  "ai_ask",
+  "ai_chat",
+  "ai_chat_save",
+  "ai_chat_list",
+  "ai_chat_load",
+  "ai_chat_delete",
+  "ai_clear_data",
+  "ai_extract_table",
+  "ai_batch_run",
+  "ai_cleanup_text",
+  "ai_suggest_metadata",
+  "ai_cancel",
+  "ai_edit_text",
+  "ai_save_output",
+  "ai_example_prompts",
+  "ai_models",
+  "ai_discover_models",
+  "ai_library_save",
+  "ai_library_list",
+  "ai_library_text",
+  "ai_library_delete",
+  "ai_library_clear",
+  "ai_library_export",
+  "ai_library_default_dir",
+]

@@ -1,0 +1,26 @@
+# Generated from src-tauri/src/ipc.rs by `npm run acl:sync` - do not edit by hand.
+# One permission per IPC domain: Tauri refuses any command a capability does not
+# allow once an application ACL manifest exists, so this file is the whole
+# permission for the commands below.
+
+[[permission]]
+identifier = "allow-lan-commands"
+description = "Same-network document sync (C14): identity, host, peers and transfers."
+commands.allow = [
+  "lan_status",
+  "lan_rename",
+  "lan_host_start",
+  "lan_host_open_pairing",
+  "lan_host_stop",
+  "lan_host_unpair",
+  "lan_discover",
+  "lan_pair",
+  "lan_unpair",
+  "lan_plan",
+  "lan_apply",
+  "lan_sync_safe",
+  "lan_resolve_deletion",
+  "lan_trash_list",
+  "lan_trash_restore",
+  "lan_trash_purge",
+]

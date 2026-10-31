@@ -1,0 +1,25 @@
+# Generated from src-tauri/src/ipc.rs by `npm run acl:sync` - do not edit by hand.
+# One permission per IPC domain: Tauri refuses any command a capability does not
+# allow once an application ACL manifest exists, so this file is the whole
+# permission for the commands below.
+
+[[permission]]
+identifier = "allow-sync-commands"
+description = "Folder sync with WebDAV and the OAuth providers."
+commands.allow = [
+  "sync_get_config",
+  "sync_save_config",
+  "sync_test_connection",
+  "sync_status",
+  "sync_upload",
+  "sync_download",
+  "sync_list",
+  "sync_resolve",
+  "sync_forget",
+  "sync_delete_remote",
+  "sync_capabilities",
+  "oauth_status",
+  "oauth_save_client",
+  "oauth_connect",
+  "oauth_disconnect",
+]

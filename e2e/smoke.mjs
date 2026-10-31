@@ -13,6 +13,7 @@
  *   node e2e/smoke.mjs --persona public      # Official letter check
  *   node e2e/smoke.mjs --persona lawyer      # KVKK redaction of synthetic identifiers
  *   node e2e/smoke.mjs --persona all         # the four personas in sequence
+ *   node e2e/smoke.mjs --acl              # command ACL: unknown command refused
  *   node e2e/smoke.mjs --all              # office + merge + sanitize
  *
  * Environment:
@@ -74,6 +75,11 @@ function webdriver(port, path, method = "GET", body) {
 
 const execute = (session, script) =>
   webdriver(session.port, `/session/${session.id}/execute/sync`, "POST", { script, args: [] });
+
+// `execute/sync` cannot return a promise, and `invoke` is async: WebDriver's
+// async endpoint hands the script a callback as its last argument.
+const executeAsync = (session, script) =>
+  webdriver(session.port, `/session/${session.id}/execute/async`, "POST", { script, args: [] });
 
 function findElement(session, selector) {
   return webdriver(session.port, `/session/${session.id}/element`, "POST", { using: "css selector", value: selector });
@@ -453,6 +459,36 @@ async function sanitizeFlow(session) {
 }
 
 /**
+ * The application command ACL (E1/4b). With the ACL manifest active the webview
+ * may only invoke commands its capability allows: this proves both directions
+ * against the running app - an unknown command is refused before dispatch, and
+ * a granted one (`app_info`, which backs the About panel) still answers. The
+ * static half lives in `src-tauri/src/command_acl.rs` and `npm run acl:check`.
+ */
+async function aclGate(session) {
+  const raw = await executeAsync(
+    session,
+    `const done = arguments[arguments.length - 1];
+     const ipc = window.__TAURI_INTERNALS__;
+     if (!ipc || typeof ipc.invoke !== "function") { done(JSON.stringify({ error: "no ipc bridge" })); return; }
+     const outcome = (name) =>
+       ipc.invoke(name).then(() => "allowed", (error) => String((error && error.message) || error));
+     Promise.all([outcome("acl_probe_not_a_command"), outcome("app_info")]).then(
+       ([unknown, known]) => done(JSON.stringify({ unknown, known })),
+       (error) => done(JSON.stringify({ error: String(error) })),
+     );`,
+  );
+  const result = JSON.parse(raw);
+  if (result.error) throw new Error(`the ACL scenario could not reach the IPC bridge: ${result.error}`);
+  if (result.known !== "allowed") throw new Error(`app_info must be allowed by the ACL, got: ${result.known}`);
+  if (!/not allowed|not found/i.test(result.unknown)) {
+    throw new Error(`an unknown command must be refused by the ACL, got: ${result.unknown}`);
+  }
+  await screenshot(session, "acl");
+  console.log(`PASS: the command ACL refused an unknown command and allowed app_info`);
+}
+
+/**
  * Accountant persona: a UBL-TR invoice opens through the real `open_invoice`
  * command (nothing is mocked), the row shows the parsed payable total in the
  * Turkish format, and the KDV summary modal recomputes the declaration
@@ -624,6 +660,7 @@ async function main() {
   if (argv.includes("--office") || argv.includes("--all")) scenarios.push("office");
   if (argv.includes("--merge") || argv.includes("--all")) scenarios.push("merge");
   if (argv.includes("--sanitize") || argv.includes("--all")) scenarios.push("sanitize");
+  if (argv.includes("--acl")) scenarios.push("acl");
 
   if (pdf) {
     await withSession("reader", { PDFSAK_START_SCREEN: "reader", PDFSAK_DEV_FILES: resolve(pdf) }, reader);
@@ -676,6 +713,8 @@ async function main() {
         { PDFSAK_START_SCREEN: "merge", PDFSAK_DEV_FILES: `${first};${second}`, PDFSAK_DEV_RUN: "1" },
         mergeFlow,
       );
+    } else if (scenario === "acl") {
+      await withSessionRetry("acl", {}, aclGate);
     } else if (scenario === "sanitize") {
       const input = prepareWorkFile("sample-1.pdf");
       await withSessionRetry("sanitize", { PDFSAK_START_SCREEN: "pdfStudio", PDFSAK_DEV_FILES: input }, sanitizeFlow);

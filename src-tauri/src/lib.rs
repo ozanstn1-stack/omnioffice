@@ -17,6 +17,8 @@ mod android_update;
 #[cfg(any(target_os = "android", test))]
 mod background_work;
 pub mod cli;
+#[cfg(test)]
+mod command_acl;
 mod commands;
 mod concurrency;
 mod crash_log;
