@@ -7,9 +7,10 @@
 | Release | Items | Status |
 |---|---|---|
 | v7.1.1 | E0 quick wins | Delivered (#551) |
-| v7.2.x | E1 security | **Shipped.** E1 delivered in full: CSP/prototype freeze, unsafe-free crates, raw-path policy, LAN pairing PAKE, keyring secret tier, command ACL and plugin-install confirmation. E2.2–E2.4 moved to v7.3.0; the configured-output token migration and the clippy hygiene item stay open under E1.7/E2 |
+| v7.2.x | E1 security | **Shipped.** E1 delivered in full: CSP/prototype freeze, unsafe-free crates, raw-path policy, LAN pairing PAKE, keyring secret tier, command ACL and plugin-install confirmation. E2.2–E2.4 moved to v7.3.0. The two E1 leftovers (configured-output token migration, clippy hygiene) were taken up in the v7.4.0 work |
 | v7.3.0 | E2 (isolation) | **Shipped.** Worker containment (E2.2), async engine probe + command audit (E2.3) and typed command errors (E2.4). E4/E5/fuzz move to v7.4.0 |
-| v7.4.0 | E3 | — |
+| v7.4.0 | E1 leftovers + E4/E5 | **In progress.** Configured output destinations are persisted grants behind the strict policy (closed), the clippy unwrap/expect ratchet started in three crates; E4/E5 and the fuzz extension follow |
+| v7.5.0 | E3 | — |
 | v8.0.0 | E2.1, E6 | — |
 
  Phase C is closed (C1–C15) and Phase D is delivered
@@ -106,10 +107,12 @@ change, README counts refreshed.
    and writes nothing without consent; `install.json` records the hash and
    `plugin_list` reports a plugin changed after install as `modified` (see
    `docs/plugins.md`). A signed manifest stays a later step.
-7. **Rust hygiene.** Add `#![forbid(unsafe_code)]` to the six library crates,
-   warn on `clippy::unwrap_used`/`expect_used` (biggest offenders:
-   `officecore/src/docx/writer.rs`, `xml.rs`), and schedule the
-   `RUSTSEC-2023-0071` review (2027-01-01).
+7. **Rust hygiene. Partly delivered.** `#![forbid(unsafe_code)]` shipped in
+   E1/1. `clippy::unwrap_used`/`expect_used` are now denied in production code
+   (`cfg_attr(not(test), deny(...))`) for `turkish`, `pdfcore` and `aicore`,
+   whose three offenders were fixed; the remaining counts (`officecore` 34,
+   `compat` 36, `synccore` 11) are the ratchet's next steps, one crate per
+   slice. The `RUSTSEC-2023-0071` review stays scheduled for 2027-01-01.
 
 Acceptance: a regression test per item (raw-path refusal, simulated MITM,
 secret migration, ACL capability list, CSP header, install confirmation), and

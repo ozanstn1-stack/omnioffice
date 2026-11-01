@@ -232,20 +232,6 @@ pub fn directory(raw: &str, access: crate::files::FileAccess) -> Result<Validate
     validate_directory_path(path)
 }
 
-/// Validates a folder the user configured as an **output destination**
-/// (Settings' default output folder, batch target). The path is a write
-/// destination, not a read capability, so a legacy raw value from Settings
-/// keeps working; reads and sharing folders still go through the strict
-/// [`directory`] policy. Migrating this surface to a directory token is the
-/// next E1 slice.
-pub fn directory_configured(raw: &str) -> Result<ValidatedPath, PdfError> {
-    if let Some(resolved) = crate::files::lookup(raw, crate::files::FileAccess::ReadWrite) {
-        let path = resolved.map_err(PdfError::InvalidInput)?;
-        return validate_directory_path(&path);
-    }
-    validate_directory_path(normalize(raw)?)
-}
-
 fn validate_directory_path(path: &Path) -> Result<ValidatedPath, PdfError> {
     if !path.exists() {
         return Err(PdfError::NotFound(path.display().to_string()));

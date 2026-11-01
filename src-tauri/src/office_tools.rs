@@ -125,7 +125,8 @@ pub async fn office_pdf_to_images(request: PdfToImagesRequest) -> Result<Vec<Str
             _ => pdfcore::images::ImageFormat::Jpeg,
         };
         let input = crate::paths::input_file(&request.input).map_err(pdf_error)?;
-        let output_dir = crate::paths::directory_configured(&request.output_dir).map_err(pdf_error)?;
+        let output_dir =
+            crate::paths::directory(&request.output_dir, crate::files::FileAccess::ReadWrite).map_err(pdf_error)?;
         let result = pdfcore::convert::pdf_to_images(
             input.as_path(),
             output_dir.as_path(),

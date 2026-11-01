@@ -20,6 +20,12 @@ use std::sync::{Mutex, OnceLock};
 
 use pdfcore::error::PdfError;
 
+/// Where the persisted directory grants live, under the app config directory.
+const GRANTS_FILE: &str = "path-grants.json";
+/// How many configured folders the app remembers. A user configures a handful;
+/// the bound keeps a tampered file from growing the trusted set without limit.
+const MAX_GRANTS: usize = 32;
+
 /// Whether any raw path from the webview is accepted (debug/E2E and Android's
 /// SAF bridge return real cache paths).
 pub(crate) fn raw_paths_allowed() -> bool {
@@ -64,6 +70,61 @@ pub(crate) fn trust_path(path: impl AsRef<Path>) {
             trusted.push(path);
         }
     }
+}
+
+/// Loads the persisted directory grants and trusts them for this process.
+///
+/// A grant is created when the human picks a folder in the Rust dialog (see
+/// `file_dirs::issue_dir`), so it is the durable form of "the user chose this
+/// folder": the configured default output folder and the AI library keep working
+/// after a restart, without a live token and without trusting whatever path the
+/// webview sends. Returns how many grants were loaded.
+pub(crate) fn load_grants(config_dir: &Path) -> usize {
+    let path = config_dir.join(GRANTS_FILE);
+    let Ok(text) = std::fs::read_to_string(&path) else { return 0 };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { return 0 };
+    let mut loaded = 0;
+    if let Some(entries) = value.get("grants").and_then(serde_json::Value::as_array) {
+        for entry in entries.iter().take(MAX_GRANTS) {
+            let Some(text) = entry.as_str() else { continue };
+            let candidate = PathBuf::from(text);
+            if !candidate.is_absolute() {
+                continue;
+            }
+            trust_path(&candidate);
+            loaded += 1;
+        }
+    }
+    loaded
+}
+
+/// Records a folder the human picked and trusts it now. Best effort: a folder
+/// that cannot be persisted still works for this session.
+pub(crate) fn persist_grant(config_dir: &Path, path: &Path) -> Result<(), PdfError> {
+    let normalized = normalize_for_policy(path);
+    if normalized.as_os_str().is_empty() || !normalized.is_absolute() {
+        return Err(PdfError::InvalidInput("the output folder is not an absolute path".into()));
+    }
+    trust_path(&normalized);
+    let file = config_dir.join(GRANTS_FILE);
+    let mut grants: Vec<PathBuf> = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| value.get("grants").and_then(serde_json::Value::as_array).cloned())
+        .map(|entries| entries.iter().filter_map(|entry| entry.as_str()).map(PathBuf::from).collect())
+        .unwrap_or_default();
+    grants.retain(|known| known != &normalized);
+    grants.push(normalized);
+    if grants.len() > MAX_GRANTS {
+        grants.drain(..grants.len() - MAX_GRANTS);
+    }
+    let payload = serde_json::json!({
+        "grants": grants.iter().map(|grant| grant.display().to_string()).collect::<Vec<_>>(),
+    });
+    let text = payload.to_string();
+    officecore::io::write_atomic(&file, text.as_bytes())
+        .map_err(|error| PdfError::Internal(format!("the folder grant could not be saved: {error}")))?;
+    Ok(())
 }
 
 fn normalize_for_policy(path: &Path) -> PathBuf {
@@ -150,6 +211,43 @@ mod tests {
         let roots = owned_roots().lock().unwrap().clone();
         let matches: Vec<&PathBuf> = roots.iter().filter(|root| root.ends_with("ownership-test/cache")).collect();
         assert_eq!(matches.len(), 1, "duplicate roots are collapsed: {roots:?}");
+    }
+
+    #[test]
+    fn a_grant_survives_a_restart_and_only_covers_its_own_folder() {
+        // A folder the human picked is persisted as a grant; the next launch
+        // trusts it, which is what keeps the configured output folder working
+        // without a live token (E1).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let config = dir.path().join("config");
+        std::fs::create_dir_all(&config).expect("config dir");
+        let output = dir.path().join("Chosen Output");
+        std::fs::create_dir_all(&output).expect("output dir");
+
+        persist_grant(&config, &output).expect("persist the grant");
+        let file = config.join(GRANTS_FILE);
+        let saved = std::fs::read_to_string(&file).expect("grant file");
+        assert!(saved.contains("Chosen Output"), "{saved}");
+
+        // The next launch loads it into the trusted set. The decision is asked
+        // with `raw_allowed = false` (what a release build does): the test
+        // process is a debug build, where every raw path is accepted on purpose.
+        assert!(load_grants(&config) >= 1);
+        let trusted = trusted_paths().lock().unwrap().clone();
+        let accepted = output.join("rapor.pdf");
+        assert!(raw_path_decision(&accepted, false, &[], &trusted), "a granted folder is accepted");
+        let refused = dir.path().join("Elsewhere/rapor.pdf");
+        assert!(!raw_path_decision(&refused, false, &[], &trusted), "a folder the user never picked is not");
+    }
+
+    #[test]
+    fn a_grant_must_be_an_absolute_path() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let config = dir.path().join("config");
+        std::fs::create_dir_all(&config).expect("config dir");
+        let error = persist_grant(&config, Path::new("relative/output")).expect_err("relative paths are refused");
+        assert!(error.to_string().contains("absolute"), "{error}");
+        assert!(!config.join(GRANTS_FILE).exists(), "nothing is written for a refused grant");
     }
 
     #[test]
