@@ -471,37 +471,31 @@ fn format_revision_xml(state: &mut DocxState, revision: &RevisionMark) -> Option
 
 fn write_text_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run) {
     let revision = run.revision.clone();
-    match revision.as_ref().map(|mark| mark.kind.as_str()) {
-        Some("delete") => {
-            let id = state.revision_id(&revision.as_ref().unwrap().id);
-            writer.raw(&format!(
-                "<w:del w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">",
-                crate::xml::escape_attr(&revision.as_ref().unwrap().author),
-                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() {
-                    "1970-01-01T00:00:00Z"
-                } else {
-                    &revision.as_ref().unwrap().date
-                })
-            ));
-            write_run_content(state, writer, run, true);
-            writer.raw("</w:del>");
-        }
-        Some("insert") => {
-            let id = state.revision_id(&revision.as_ref().unwrap().id);
-            writer.raw(&format!(
-                "<w:ins w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">",
-                crate::xml::escape_attr(&revision.as_ref().unwrap().author),
-                crate::xml::escape_attr(if revision.as_ref().unwrap().date.is_empty() {
-                    "1970-01-01T00:00:00Z"
-                } else {
-                    &revision.as_ref().unwrap().date
-                })
-            ));
-            write_run_content(state, writer, run, false);
-            writer.raw("</w:ins>");
-        }
+    match revision.as_ref() {
+        Some(mark) if mark.kind == "delete" => write_revision_run(state, writer, run, mark, "w:del", true),
+        Some(mark) if mark.kind == "insert" => write_revision_run(state, writer, run, mark, "w:ins", false),
         _ => write_run_content(state, writer, run, false),
     }
+}
+
+/// One tracked-change wrapper around the run content (`w:del` or `w:ins`).
+fn write_revision_run(
+    state: &mut DocxState,
+    writer: &mut XmlWriter,
+    run: &Run,
+    mark: &RevisionMark,
+    tag: &str,
+    deleted: bool,
+) {
+    let id = state.revision_id(&mark.id);
+    let date = if mark.date.is_empty() { "1970-01-01T00:00:00Z" } else { mark.date.as_str() };
+    writer.raw(&format!(
+        "<{tag} w:id=\"{id}\" w:author=\"{}\" w:date=\"{}\">",
+        crate::xml::escape_attr(&mark.author),
+        crate::xml::escape_attr(date)
+    ));
+    write_run_content(state, writer, run, deleted);
+    writer.raw(&format!("</{tag}>"));
 }
 
 fn write_run_content(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, deleted: bool) {
@@ -558,7 +552,9 @@ fn write_run_content(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, d
                 target: String::new(),
                 cached: "1".into(),
             });
-            write_field_run(state, writer, &field_run, field_run.field.as_ref().unwrap());
+            if let Some(field) = field_run.field.as_ref() {
+                write_field_run(state, writer, &field_run, field);
+            }
             remaining = &remaining[index + token.len()..];
         }
         return;

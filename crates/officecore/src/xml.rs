@@ -139,13 +139,13 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
                     ));
                 }
                 let node = node_from_start(&start)?;
-                stack.last_mut().unwrap().children.push(node);
+                current_element(&mut stack)?.children.push(node);
                 depth -= 1;
             }
             Ok(Event::End(_)) => {
                 if stack.len() > 1 {
-                    let node = stack.pop().unwrap();
-                    stack.last_mut().unwrap().children.push(node);
+                    let node = stack.pop().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))?;
+                    current_element(&mut stack)?.children.push(node);
                     depth = depth.saturating_sub(1);
                 }
             }
@@ -154,11 +154,11 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
                 let value = quick_xml::escape::unescape(&raw)
                     .map(|value| value.into_owned())
                     .unwrap_or_else(|_| raw.into_owned());
-                stack.last_mut().unwrap().text.push_str(&value);
+                current_element(&mut stack)?.text.push_str(&value);
             }
             Ok(Event::CData(data)) => {
                 let value = data.into_inner().into_owned();
-                stack.last_mut().unwrap().text.push_str(&value);
+                current_element(&mut stack)?.text.push_str(&value);
             }
             Ok(Event::GeneralRef(reference)) => {
                 let name = reference.into_inner();
@@ -177,13 +177,13 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
                                 rest.parse::<u32>().ok()
                             };
                             if let Some(ch) = code.and_then(char::from_u32) {
-                                stack.last_mut().unwrap().text.push(ch);
+                                current_element(&mut stack)?.text.push(ch);
                             }
                         }
                         continue;
                     }
                 };
-                stack.last_mut().unwrap().text.push_str(value);
+                current_element(&mut stack)?.text.push_str(value);
             }
             Ok(Event::Eof) => break,
             Ok(_) => {}
@@ -193,15 +193,24 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
         }
     }
     while stack.len() > 1 {
-        let node = stack.pop().unwrap();
-        stack.last_mut().unwrap().children.push(node);
+        let node = stack.pop().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))?;
+        current_element(&mut stack)?.children.push(node);
     }
-    let mut root = stack.pop().unwrap();
+    let mut root = stack.pop().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))?;
     // Quick single-child unwrap keeps call sites predictable.
     if root.children.len() == 1 {
         root = root.children.remove(0);
     }
     Ok(root)
+}
+
+/// The element currently being filled.
+///
+/// The stack always starts with the document root, so this can only fail after
+/// a parser bug. It returns an error instead of unwrapping so that a malformed
+/// part can never unwind the caller.
+fn current_element(stack: &mut [XmlNode]) -> OfficeResult<&mut XmlNode> {
+    stack.last_mut().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))
 }
 
 fn node_from_start(start: &BytesStart<'_>) -> OfficeResult<XmlNode> {

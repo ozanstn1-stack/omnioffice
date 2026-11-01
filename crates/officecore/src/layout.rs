@@ -432,8 +432,8 @@ fn split_on_newlines(words: Vec<(String, TextStyle, bool)>) -> Vec<Vec<(String, 
     for (text, style, is_space) in words {
         if text == "\n" {
             segments.push(Vec::new());
-        } else {
-            segments.last_mut().unwrap().push((text, style, is_space));
+        } else if let Some(segment) = segments.last_mut() {
+            segment.push((text, style, is_space));
         }
     }
     segments
@@ -446,6 +446,12 @@ fn split_on_newlines(words: Vec<(String, TextStyle, bool)>) -> Vec<Vec<(String, 
 struct PageState<'a> {
     canvas: Canvas<'a>,
     page_index: usize,
+}
+
+/// A blank page for a section; `start_page_with` installs it and `canvas`
+/// uses it as the lazy fallback.
+fn page_state<'a>(page: &PageSetup, fonts: &'a FontSet, index: usize) -> PageState<'a> {
+    PageState { canvas: Canvas::new(page.width_pt, page.height_pt, fonts), page_index: index }
 }
 
 struct Renderer<'a> {
@@ -719,9 +725,9 @@ impl<'a> Renderer<'a> {
                 }
             }
         }
-        let canvas = self.current.as_mut().unwrap();
+        let canvas = self.canvas();
         for (x, y, text, style) in commands {
-            canvas.canvas.text(x, y, &text, &style);
+            canvas.text(x, y, &text, &style);
         }
     }
 
@@ -735,10 +741,8 @@ impl<'a> Renderer<'a> {
         self.section_first_page = true;
         self.note_reserve = 0.0;
         self.recompute_geometry();
-        let page = &self.section.page;
-        let canvas = Canvas::new(page.width_pt, page.height_pt, self.fonts);
-        let index = self.pages.len();
-        self.current = Some(PageState { canvas, page_index: index });
+        let state = page_state(&self.section.page, self.fonts, self.pages.len());
+        self.current = Some(state);
         self.column = 0;
         self.y = self.top;
         self.draw_header_footer();
@@ -759,7 +763,13 @@ impl<'a> Renderer<'a> {
         if self.current.is_none() {
             self.start_page();
         }
-        &mut self.current.as_mut().unwrap().canvas
+        // `start_page` always installs a page; `get_or_insert_with` keeps this
+        // accessor total without unwrapping and allocates only if it is missing.
+        let page = &self.section.page;
+        let fonts = self.fonts;
+        let index = self.pages.len();
+        let state = self.current.get_or_insert_with(|| page_state(page, fonts, index));
+        &mut state.canvas
     }
 
     fn remaining(&self) -> f64 {
@@ -935,10 +945,11 @@ impl<'a> Renderer<'a> {
                     canvas.begin_marked(&struct_tag, None);
                     marked_open = true;
                 }
-                if first_line && segment_index == 0 && list_marker.is_some() {
-                    let marker = list_marker.clone().unwrap();
-                    let style = text_style(&base);
-                    canvas.text(marker_x, baseline, &marker, &style);
+                if first_line && segment_index == 0 {
+                    if let Some(marker) = list_marker.clone() {
+                        let style = text_style(&base);
+                        canvas.text(marker_x, baseline, &marker, &style);
+                    }
                 }
                 for item in &line.items {
                     canvas.text(x + item.dx, baseline, &item.text, &item.style);

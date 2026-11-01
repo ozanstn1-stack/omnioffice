@@ -180,8 +180,9 @@ fn rtf_to_text(rtf: &str) -> String {
                         // character that must be skipped.
                         chars.next();
                         let mut digits = String::new();
-                        if chars.peek() == Some(&'-') {
-                            digits.push(chars.next().unwrap());
+                        if let Some('-') = chars.peek().copied() {
+                            digits.push('-');
+                            chars.next();
                         }
                         while let Some(digit) = chars.peek().copied() {
                             if digit.is_ascii_digit() {
@@ -215,8 +216,9 @@ fn rtf_to_text(rtf: &str) -> String {
                             }
                         }
                         let mut number = String::new();
-                        if chars.peek() == Some(&'-') {
-                            number.push(chars.next().unwrap());
+                        if let Some('-') = chars.peek().copied() {
+                            number.push('-');
+                            chars.next();
                         }
                         while let Some(digit) = chars.peek().copied() {
                             if digit.is_ascii_digit() {
