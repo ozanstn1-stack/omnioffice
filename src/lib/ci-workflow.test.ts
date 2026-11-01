@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -83,5 +83,42 @@ describe("release builds are lock-pinned (E0)", () => {
   it("keeps a single advisory policy (no cargo audit --ignore duplicate)", () => {
     expect(desktop).not.toContain("cargo audit \\");
     expect(desktop).toContain("cargo deny check");
+  });
+});
+
+describe("coverage is measured, published and only raised (E4)", () => {
+  it("publishes the coverage report from the frontend job", () => {
+    const job = jobBlocks().find((entry) => entry.name === "frontend");
+    expect(job, "frontend job").toBeDefined();
+    expect(job?.body).toContain("npm run test:coverage");
+    expect(job?.body).toContain("name: coverage-frontend");
+    expect(job?.body).toContain("path: coverage/");
+  });
+
+  it("never lowers a vitest coverage floor", () => {
+    // The floors are a ratchet: this pins the values measured on 2026-11-01
+    // (statements 78.4, branches 80.2, functions 65.9, lines 78.4), so a
+    // failing build cannot be made green by relaxing the gate.
+    const source = readFileSync(path.join(root, "vite.config.ts"), "utf8");
+    const block = source.slice(source.indexOf("thresholds: {"));
+    const floor = (name: string) => {
+      const match = new RegExp(`${name}: (\\d+)`).exec(block);
+      expect(match, `${name} threshold`).not.toBeNull();
+      return Number(match?.[1] ?? 0);
+    };
+    expect(floor("statements")).toBeGreaterThanOrEqual(77);
+    expect(floor("branches")).toBeGreaterThanOrEqual(79);
+    expect(floor("functions")).toBeGreaterThanOrEqual(64);
+    expect(floor("lines")).toBeGreaterThanOrEqual(77);
+  });
+});
+
+describe("Linux runners are pinned (E5)", () => {
+  it("no workflow falls back to ubuntu-latest", () => {
+    const dir = path.join(root, ".github", "workflows");
+    for (const file of readdirSync(dir).filter((name) => name.endsWith(".yml"))) {
+      const text = readFileSync(path.join(dir, file), "utf8");
+      expect(text, file).not.toContain("runs-on: ubuntu-latest");
+    }
   });
 });

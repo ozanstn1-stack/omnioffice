@@ -131,6 +131,15 @@ jobs:
         run: npm run test:coverage -- --reporter=default --reporter=junit --outputFile=junit.xml
       - name: Release claims (every claim's test passed)
         run: node scripts/claims-audit.mjs --junit junit.xml
+      # The coverage report is the evidence behind the thresholds in
+      # vite.config.ts: the gate fails the job, the artifact shows what moved.
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-frontend
+          path: coverage/
+          if-no-files-found: ignore
       - name: Production build
         run: npx vite build
       - name: Bundle budget
@@ -375,7 +384,7 @@ jobs:
 
   extension:
     name: Chrome extension
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -413,7 +422,7 @@ jobs:
   # pdfium-backed Reader step on the shipped platform.
   e2e:
     name: Desktop E2E (tauri-driver)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -618,7 +627,7 @@ jobs:
   fuzz:
     name: Fuzz (nightly, short)
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -682,7 +691,7 @@ jobs:
   bench:
     name: Benchmarks (criterion)
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -726,7 +735,7 @@ jobs:
   # not a note in the log. Fix or override an advisory explicitly.
   audit:
     name: Dependency audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
