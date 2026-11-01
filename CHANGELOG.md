@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.3.0] - İzolasyon ve dayanıklılık (Phase E / E2)
+
+### Added
+
+- **Contained worker child (E2.2, #550):** the untrusted-document parser child is
+  now contained before it executes. On Windows it is created suspended, assigned
+  to a job object with a 1.5 GiB process-memory limit and only then resumed (the
+  old code assigned the job after `spawn`), with the suspended thread resumed by
+  thread id; Linux/macOS install `RLIMIT_AS` and `RLIMIT_CPU` between `fork` and
+  `exec`. The child inherits an explicit environment allow-list (engine paths,
+  temp directory, locale, Windows system basics) instead of the parent's
+  environment, so a parser never sees API keys, provider tokens or the dev launch
+  context.
+- **Async engine probe and audit (E2.3, #550):** `engine_status` spawns
+  `tesseract --version`, so it runs on the blocking pool now and answers
+  `EngineStatus::missing()` when the probe cannot run. `docs/command-async-audit.md`
+  records the classification of the command surface and the rule for new
+  commands; it also corrects the Phase E proposal, which had named
+  `ocr_languages` (a directory listing) as the tesseract caller.
+- **Typed command errors (E2.4, #550):** the commands that returned a bare
+  string now return `PdfError`, so the UI receives `{code, message}` and
+  localizes by code: external links, the file/folder token picks, job status and
+  retry, the updater, and the two Android bridges.
+
+### Changed
+
+- **`--worker` counts only as the first argument (E2.2, #550):** it used to be
+  searched anywhere on the command line, so a document path containing the word
+  could turn the GUI into a worker process.
+
 ## [7.2.1] - Android derleme düzeltmesi
 
 ### Fixed
