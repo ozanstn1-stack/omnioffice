@@ -3058,5 +3058,7 @@
   "desk.cleaner": "Belgeyi temizle",
   "desk.data": "Veri araçlarını aç",
   "palette.category.task": "Masaüstü görevi",
-  "palette.taskNeedsFile": "Önce bir belge seçin"
+  "palette.taskNeedsFile": "Önce bir belge seçin",
+  "plugins.integrity.modified": "Eklenti dosyaları kurulumdan sonra değişmiş",
+  "plugins.integrity.unrecorded": "Bütünlük kaydından önce kurulmuş"
 }

@@ -107,6 +107,12 @@ export const commands = {
 	oauthDisconnect: (provider: string) => typedError<OAuthStatus[], PdfError>(__TAURI_INVOKE("oauth_disconnect", { provider })),
 	pluginList: () => typedError<PluginEntry[], PluginErrorPayload>(__TAURI_INVOKE("plugin_list")),
 	pluginReadSource: (id: string) => typedError<string, PluginErrorPayload>(__TAURI_INVOKE("plugin_read_source", { id })),
+	/**
+	 *  Installs the manifest/source pair the frontend holds, after the human
+	 *  confirms the plan in a native dialog the *Rust* side opens (E1/5): the
+	 *  webview cannot accept on its own behalf, and a declined dialog writes
+	 *  nothing.
+	 */
 	pluginInstall: (manifestJson: string, source: string) => typedError<PluginEntry, PluginErrorPayload>(__TAURI_INVOKE("plugin_install", { manifestJson, source })),
 	/**
 	 *  Installs a plugin from a folder the user picks in a native dialog that the
@@ -4137,6 +4143,17 @@ export type PluginEntry = {
 	/**  The raw manifest as stored on disk; the frontend validates it strictly. */
 	manifest: unknown,
 	sourceBytes: number,
+	/**
+	 *  SHA-256 of the bundle the user confirmed (see `install.rs`); the current
+	 *  hash when the install predates the record.
+	 */
+	sha256: string,
+	/**
+	 *  `verified` when the files still match the record, `modified` when they
+	 *  changed after installation, `unrecorded` for a plugin installed before
+	 *  the record existed.
+	 */
+	integrity: string,
 };
 
 export type PluginErrorPayload = {

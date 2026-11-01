@@ -23,6 +23,16 @@
 //! The sample plugin ships inside the binary with `include_str!`, so the
 //! "reload sample" action works in packaged builds with no resource paths.
 
+mod install;
+
+#[cfg(test)]
+use install::install_into;
+use install::{delete_plugin, install_confirmed, list_plugins, InstallPlan};
+// The folder install is desktop-only (Android has no folder picker), and so is
+// its only call site.
+#[cfg(any(desktop, test))]
+use install::install_from_dir;
+
 use crate::netpolicy::UrlPolicy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -90,6 +100,13 @@ pub struct PluginEntry {
     pub manifest: Value,
     #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
     pub source_bytes: u64,
+    /// SHA-256 of the bundle the user confirmed (see `install.rs`); the current
+    /// hash when the install predates the record.
+    pub sha256: String,
+    /// `verified` when the files still match the record, `modified` when they
+    /// changed after installation, `unrecorded` for a plugin installed before
+    /// the record existed.
+    pub integrity: String,
 }
 
 /// Read-only result of the `pdf` capability: page count, whether a text layer
@@ -263,129 +280,6 @@ fn require_permission(dir: &Path, permission: &str) -> PluginResult<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Install / list / delete (all testable without a Tauri handle)
-// ---------------------------------------------------------------------------
-
-pub fn install_into(root: &Path, manifest_json: &str, source: &str) -> PluginResult<PluginEntry> {
-    if manifest_json.len() > MAX_MANIFEST_BYTES {
-        return Err(PluginErrorPayload::too_large(format!(
-            "The manifest is larger than {} KB.",
-            MAX_MANIFEST_BYTES / 1024
-        )));
-    }
-    if source.trim().is_empty() {
-        return Err(PluginErrorPayload::invalid("main.js is empty."));
-    }
-    if source.len() > MAX_SOURCE_BYTES {
-        return Err(PluginErrorPayload::too_large(format!("main.js is larger than {} KB.", MAX_SOURCE_BYTES / 1024)));
-    }
-    let manifest: Value = serde_json::from_str(manifest_json)
-        .map_err(|_| PluginErrorPayload::invalid("The manifest is not valid JSON."))?;
-    let id = manifest
-        .get("id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| PluginErrorPayload::invalid("The manifest has no id."))?;
-    if !validate_plugin_id(id) {
-        return Err(PluginErrorPayload::invalid("Invalid plugin id."));
-    }
-    let dir = root.join(id);
-    // The plugin directory must not be a symlink: otherwise manifest.json and
-    // main.js would be written through a link to an arbitrary location.
-    if let Ok(meta) = std::fs::symlink_metadata(&dir) {
-        if meta.file_type().is_symlink() {
-            return Err(PluginErrorPayload::forbidden("Refusing to install into a symlinked plugin directory."));
-        }
-    }
-    std::fs::create_dir_all(&dir)
-        .map_err(|_| PluginErrorPayload::internal("Could not create the plugin directory."))?;
-    // Re-check after creation: a directory created concurrently (or a link)
-    // must not redirect the writes outside the plugins root.
-    if let Ok(meta) = std::fs::symlink_metadata(&dir) {
-        if meta.file_type().is_symlink() {
-            return Err(PluginErrorPayload::forbidden("Refusing to install into a symlinked plugin directory."));
-        }
-    }
-    write_text(&dir.join("manifest.json"), manifest_json, "manifest.json")?;
-    write_text(&dir.join("main.js"), source, "main.js")?;
-    Ok(PluginEntry { manifest, source_bytes: source.len() as u64 })
-}
-
-/// Reads a plugin folder the *user* selected. The folder and its two manifest
-/// files must be real files, not symlinks, so a plugin cannot smuggle host
-/// files into its own directory. Desktop only: Android has no folder install.
-#[cfg(any(desktop, test))]
-pub fn install_from_dir(root: &Path, source_dir: &Path) -> PluginResult<PluginEntry> {
-    let link_meta = std::fs::symlink_metadata(source_dir)
-        .map_err(|_| PluginErrorPayload::invalid("Choose a folder that contains manifest.json and main.js."))?;
-    if link_meta.file_type().is_symlink() {
-        return Err(PluginErrorPayload::forbidden("Refusing to install a plugin from a symlinked folder."));
-    }
-    if !link_meta.is_dir() {
-        return Err(PluginErrorPayload::invalid("Choose a folder that contains manifest.json and main.js."));
-    }
-    let manifest_path = source_dir.join("manifest.json");
-    let source_path = source_dir.join("main.js");
-    for (path, label) in [(&manifest_path, "manifest.json"), (&source_path, "main.js")] {
-        let meta = std::fs::symlink_metadata(path)
-            .map_err(|_| PluginErrorPayload::invalid(format!("{label} was not found.")))?;
-        if meta.file_type().is_symlink() || !meta.is_file() {
-            return Err(PluginErrorPayload::forbidden(format!(
-                "Refusing to install a plugin whose {label} is a symlink."
-            )));
-        }
-    }
-    let manifest_json = read_text(&manifest_path, MAX_MANIFEST_BYTES, "manifest.json")?;
-    let source = read_text(&source_path, MAX_SOURCE_BYTES, "main.js")?;
-    install_into(root, &manifest_json, &source)
-}
-
-pub fn list_plugins(root: &Path) -> Vec<PluginEntry> {
-    let mut entries = Vec::new();
-    let Ok(dir) = std::fs::read_dir(root) else {
-        return entries;
-    };
-    for item in dir.flatten() {
-        let path = item.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        if !validate_plugin_id(name) {
-            continue;
-        }
-        let Ok(manifest_json) = read_text(&path.join("manifest.json"), MAX_MANIFEST_BYTES, "manifest.json") else {
-            continue;
-        };
-        let Ok(manifest) = serde_json::from_str::<Value>(&manifest_json) else {
-            continue;
-        };
-        // The directory name and the manifest id must agree, otherwise two
-        // plugins could claim the same identity.
-        if manifest.get("id").and_then(Value::as_str) != Some(name) {
-            continue;
-        }
-        let source_bytes = std::fs::metadata(path.join("main.js")).map(|meta| meta.len()).unwrap_or(0);
-        entries.push(PluginEntry { manifest, source_bytes });
-    }
-    entries.sort_by(|a, b| {
-        let left = a.manifest.get("id").and_then(Value::as_str).unwrap_or_default();
-        let right = b.manifest.get("id").and_then(Value::as_str).unwrap_or_default();
-        left.cmp(right)
-    });
-    entries
-}
-
-pub fn delete_plugin(root: &Path, id: &str) -> PluginResult<()> {
-    let dir = plugin_dir(root, id)?;
-    if !dir.is_dir() {
-        return Err(PluginErrorPayload::not_found("The plugin is not installed."));
-    }
-    std::fs::remove_dir_all(&dir).map_err(|_| PluginErrorPayload::internal("Could not remove the plugin directory."))
-}
-
-// ---------------------------------------------------------------------------
 // Network guard
 // ---------------------------------------------------------------------------
 
@@ -439,10 +333,36 @@ pub fn plugin_read_source(app: AppHandle, id: String) -> PluginResult<String> {
     read_text(&dir.join("main.js"), MAX_SOURCE_BYTES, "main.js")
 }
 
+/// Installs the manifest/source pair the frontend holds, after the human
+/// confirms the plan in a native dialog the *Rust* side opens (E1/5): the
+/// webview cannot accept on its own behalf, and a declined dialog writes
+/// nothing.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn plugin_install(app: AppHandle, manifest_json: String, source: String) -> PluginResult<PluginEntry> {
-    install_into(&plugins_root(&app)?, &manifest_json, &source)
+pub async fn plugin_install(app: AppHandle, manifest_json: String, source: String) -> PluginResult<PluginEntry> {
+    let root = plugins_root(&app)?;
+    let dialog_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        install_confirmed(&root, &manifest_json, &source, |plan| confirm_install(&dialog_app, plan))
+    })
+    .await
+    .map_err(|_| PluginErrorPayload::internal("The plugin install task failed."))?
+}
+
+/// Asks the human to approve an install. The dialog blocks this worker thread,
+/// never the UI thread, and a platform that never answers counts as "no".
+fn confirm_install(app: &AppHandle, plan: &InstallPlan) -> bool {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog()
+        .message(plan.summary())
+        .title("Install plugin")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom("Install".into(), "Cancel".into()))
+        .show(move |confirmed| {
+            let _ = sender.send(confirmed);
+        });
+    receiver.recv_timeout(std::time::Duration::from_secs(300)).unwrap_or(false)
 }
 
 /// Installs a plugin from a folder the user picks in a native dialog that the
@@ -480,7 +400,9 @@ pub async fn plugin_install_from_dialog(app: AppHandle) -> PluginResult<Option<P
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn plugin_install_sample(app: AppHandle) -> PluginResult<PluginEntry> {
-    install_into(&plugins_root(&app)?, SAMPLE_MANIFEST, SAMPLE_SOURCE)
+    // Bundled content: the manifest and source ship inside the binary, so
+    // nothing here was chosen by the webview.
+    install_confirmed(&plugins_root(&app)?, SAMPLE_MANIFEST, SAMPLE_SOURCE, |_| true)
 }
 
 #[tauri::command]

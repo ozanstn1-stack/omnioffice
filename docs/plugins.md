@@ -156,6 +156,19 @@ and the recipe engine.
 - **Network proxy.** Requests go through Rust, are HTTPS-only (plain HTTP only
   for loopback), and private/loopback/metadata destinations are refused (SSRF).
 - **Bounded I/O.** File, source, response and PDF-text sizes are capped.
+- **A human confirms every install (E1/5).** `plugin_install` validates the pair,
+  then the *Rust* side opens a native dialog with the plan — name, id, version,
+  requested permissions, capabilities, size and the bundle SHA-256 — and writes
+  nothing unless the user accepts. The webview cannot approve on its own behalf.
+  The bundled sample and the folder picker skip the dialog because the bundle is
+  compiled in and the folder choice is the user's own action.
+- **The install is recorded.** `install.json` next to the plugin's files holds
+  the id, the bundle SHA-256, the time and the confirmation flag. `plugin_list`
+  compares the files on disk with that hash, so a plugin that was changed after
+  installation reads as `modified` (and a plugin installed before records
+  existed reads as `unrecorded`); the plugin list shows the state. The hash is
+  not a signature: it proves the bytes are the ones the user approved, not who
+  wrote them.
 
 ## Examples
 
