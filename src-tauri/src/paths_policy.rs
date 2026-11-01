@@ -99,7 +99,9 @@ pub(crate) fn load_grants(config_dir: &Path) -> usize {
 }
 
 /// Records a folder the human picked and trusts it now. Best effort: a folder
-/// that cannot be persisted still works for this session.
+/// that cannot be persisted still works for this session. Desktop only: Android
+/// picks folders through the SAF picker and keeps no durable output folder.
+#[cfg(any(desktop, test))]
 pub(crate) fn persist_grant(config_dir: &Path, path: &Path) -> Result<(), PdfError> {
     let normalized = normalize_for_policy(path);
     if normalized.as_os_str().is_empty() || !normalized.is_absolute() {

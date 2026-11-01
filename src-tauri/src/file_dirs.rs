@@ -7,7 +7,6 @@ use crate::files::FileRef;
 use crate::files::{issue, FileAccess};
 #[cfg(any(desktop, test))]
 use std::path::Path;
-use tauri::Manager;
 
 /// Registers a directory the human picked for output (the desktop folder
 /// dialog; Android picks folders through the SAF picker).
@@ -32,6 +31,7 @@ pub fn issue_dir(config_dir: Option<&Path>, path: &Path) -> FileRef {
 pub async fn file_token_pick_directory(app: tauri::AppHandle) -> Result<Option<FileRef>, pdfcore::error::PdfError> {
     #[cfg(desktop)]
     {
+        use tauri::Manager;
         use tauri_plugin_dialog::DialogExt;
         let (sender, receiver) = std::sync::mpsc::channel();
         app.dialog().file().pick_folder(move |path| {

@@ -168,7 +168,7 @@
     "src-tauri/src/oauth.rs": 420,
     "src-tauri/src/office_tools.rs": 478,
     "src-tauri/src/office.rs": 2576,
-    "src-tauri/src/paths_policy.rs": 260,
+    "src-tauri/src/paths_policy.rs": 262,
     "src-tauri/src/paths.rs": 249,
     "src-tauri/src/pdf_v3.rs": 369,
     "src-tauri/src/person_cards.rs": 339,
