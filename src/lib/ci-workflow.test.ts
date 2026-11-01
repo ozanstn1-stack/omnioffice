@@ -172,3 +172,23 @@ describe("supply chain and toolchain pinning (E5)", () => {
     expect(pkg.engines?.node).toBe(">=20");
   });
 });
+
+describe("i18n audit is a blocking gate (E4.5)", () => {
+  it("runs the audit with --check in the lint job", () => {
+    const lint = jobBlocks().find((entry) => entry.name === "lint");
+    expect(lint, "lint job").toBeDefined();
+    expect(lint?.body).toContain("npm run i18n:audit -- --check");
+  });
+
+  it("records a hardcoded-JSX baseline the audit compares against", () => {
+    // The baseline is a ratchet: moving a string into the dictionary lowers it
+    // with `npm run i18n:audit -- --update`, and the audit fails above it.
+    const baseline = JSON.parse(readFileSync(path.join(root, "scripts", "i18n-baseline.json"), "utf8")) as {
+      version: number;
+      files: Record<string, number>;
+    };
+    expect(baseline.version).toBe(1);
+    const total = Object.values(baseline.files).reduce((sum, count) => sum + count, 0);
+    expect(total).toBeLessThanOrEqual(113);
+  });
+});

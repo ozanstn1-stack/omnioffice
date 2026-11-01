@@ -271,6 +271,7 @@ export function Dialog({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const t = useT();
   return (
     <div
       className="modal-backdrop"
@@ -282,7 +283,7 @@ export function Dialog({
       <div className={`modal${wide ? " modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
           <h3>{title}</h3>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t("common.close")}>
             ×
           </button>
         </div>

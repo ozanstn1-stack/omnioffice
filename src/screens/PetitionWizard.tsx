@@ -210,7 +210,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-hairline">
             <Button variant="default" icon={<Edit3 className="w-4 h-4" />} disabled={busy} onClick={handleOpenInWriter}>
-              Writer&apos;da Aç
+              {t("petition.openInWriter")}
             </Button>
             <Button
               variant="default"
@@ -218,7 +218,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
               disabled={busy}
               onClick={() => void handleExport("docx")}
             >
-              DOCX Olarak Kaydet
+              {t("petition.saveDocx")}
             </Button>
             {udfEnabled ? (
               <Button
@@ -227,7 +227,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
                 disabled={busy}
                 onClick={() => void handleExport("udf")}
               >
-                UYAP UDF Olarak Kaydet
+                {t("petition.saveUdf")}
               </Button>
             ) : null}
             <Button
@@ -236,7 +236,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
               disabled={busy}
               onClick={() => void handleExport("pdf")}
             >
-              PDF Olarak Kaydet
+              {t("petition.savePdf")}
             </Button>
           </div>
         </Card>

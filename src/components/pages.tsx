@@ -28,6 +28,7 @@ function Thumb({
   password?: string;
   refreshedAt: number;
 }) {
+  const t = useT();
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,7 +75,7 @@ function Thumb({
       style={{ background: "var(--surface-2)" }}
     >
       {src ? (
-        <img src={src} alt={`Page ${page}`} className="w-full h-full object-contain" draggable={false} />
+        <img src={src} alt={t("common.pageAlt", { page })} className="w-full h-full object-contain" draggable={false} />
       ) : failed ? (
         <span className="text-xs muted">—</span>
       ) : (
@@ -277,6 +278,7 @@ export function PageCanvas({
   cropRect?: Rect | null;
   style?: React.CSSProperties;
 }) {
+  const t = useT();
   const [image, setImage] = useState<{ dataUrl: string; width: number; height: number } | null>(null);
   const [error, setError] = useState(false);
   const [rect, setRect] = useState<Rect | null>(null);
@@ -375,7 +377,12 @@ export function PageCanvas({
     >
       {image ? (
         <>
-          <img src={image.dataUrl} alt={`Page ${page}`} draggable={false} style={{ background: "white" }} />
+          <img
+            src={image.dataUrl}
+            alt={t("common.pageAlt", { page })}
+            draggable={false}
+            style={{ background: "white" }}
+          />
           {activeRect ? (
             <div
               className="canvas-overlay"
