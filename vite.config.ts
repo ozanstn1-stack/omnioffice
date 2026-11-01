@@ -52,15 +52,16 @@ export default defineConfig({
       reportsDirectory: "coverage",
       include: ["src/**/*.{ts,tsx}"],
       exclude: ["src/**/*.test.{ts,tsx}", "src/test-setup.ts"],
-      // Ratchet floors measured from the 3.5.3 suite (64.5/71.3/48.5/64.5);
-      // the 3.5.0 floors were 58/68/46/58.
-      // Raise them as coverage grows; never lower them to make a red build
-      // green - write the missing test instead.
+      // Ratchet floors, re-measured on the full suite (219 files / 2472 tests,
+      // 2026-11-01): statements 78.4, branches 80.2, functions 65.9, lines 78.4.
+      // Every floor sits one point under its measurement so run-to-run jitter
+      // cannot turn a green suite red. Raise them as coverage grows; never
+      // lower one to make a red build green - write the missing test instead.
       thresholds: {
-        statements: 62,
-        branches: 69,
-        functions: 46,
-        lines: 62,
+        statements: 77,
+        branches: 79,
+        functions: 64,
+        lines: 77,
       },
     },
   },

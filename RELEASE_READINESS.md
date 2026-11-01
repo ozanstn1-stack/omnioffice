@@ -65,6 +65,27 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (this cycle, 7.4.0) - E1 kalanları ve kalite altyapısı (E4/E5)
+
+- **Coverage floors raised to the measured suite (E4.1):** the vitest thresholds
+  move from 62/69/46/62 to 77/79/64/77 after re-measuring the full suite
+  (statements 78.4, branches 80.2, functions 65.9, lines 78.4 across 219 files /
+  2472 tests); each floor sits one point under its measurement so run-to-run
+  jitter cannot redden a green suite. The frontend job now uploads `coverage/` as
+  the `coverage-frontend` artifact, so a failing gate can be read instead of
+  guessed at. Rust coverage (`cargo llvm-cov`) is still unmeasured and is the
+  remaining half of E4.1.
+  `test:src/lib/ci-workflow.test.ts#publishes the coverage report from the frontend job`
+- **A coverage floor may only rise:** a workflow test reads `vite.config.ts` and
+  fails when any threshold drops below the 2026-11-01 measurement, so a red build
+  cannot be made green by relaxing the gate.
+  `test:src/lib/ci-workflow.test.ts#never lowers a vitest coverage floor`
+- **Linux runners pinned (E5):** every workflow asks for `ubuntu-24.04` instead
+  of `ubuntu-latest` (five jobs in `desktop.yml`, plus `auto-tag.yml` and
+  `fuzz-pr.yml`), so an image rollover cannot change a build between runs; a test
+  fails if a workflow brings the floating label back.
+  `test:src/lib/ci-workflow.test.ts#no workflow falls back to ubuntu-latest`
+
 ## Implemented (this cycle, 7.3.0) - İzolasyon ve dayanıklılık (E2, ilk dilim)
 
 - **Worker containment (E2.2, #550):** the untrusted-document parser child is

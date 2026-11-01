@@ -195,9 +195,11 @@ secret migration, ACL capability list, CSP header, install confirmation), and
 
 ## E4. Test, coverage and i18n (v7.3.0)
 
-1. **Coverage.** Raise vitest thresholds to the measured values and publish the
-   report as a CI artifact; add a `cargo llvm-cov` job (Rust coverage is not
-   measured today).
+1. **Coverage.** *Frontend delivered:* vitest floors raised from 62/69/46/62 to
+   77/79/64/77 against a measured 78.4/80.2/65.9/78.4 (2026-11-01), the report
+   uploaded as the `coverage-frontend` artifact, and a test that refuses to let a
+   floor drop. *Open:* the `cargo llvm-cov` job (Rust coverage is not measured
+   today).
 2. **Thinly tested large screens.** `PdfStudio` (1,901), `Reader` (1,415), `Ai`
    (1,915, 6 tests), `Vault` (4), `Annotate`, `PageTools`; screens with no tests:
    `PetitionWizard`, `lan-sync-plan`, `scanner-corners`, `scanner-page-list`.
@@ -223,9 +225,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
   `actions/cache`.
 - **Android build:** split the six sequential `tauri android build` calls into a
   parallel ABI matrix.
-- **Pinning:** add `rust-toolchain.toml` (reproducibility report lists its
-  absence), `.nvmrc` + `engines.node` (CI 22, README says 20+), pin runners to
-  `ubuntu-24.04`.
+- **Pinning:** *runners delivered* - every workflow asks for `ubuntu-24.04`
+  instead of `ubuntu-latest`, pinned by a test. *Open:* `rust-toolchain.toml`
+  (reproducibility report lists its absence) and `.nvmrc` + `engines.node`
+  (CI 22, README says 20+).
 - **Security:** CodeQL (JS/TS + Actions), OpenSSF Scorecard, `SECURITY.md`
   reporting channel.
 - **Dependency bot:** choose Renovate **or** Dependabot (currently only
