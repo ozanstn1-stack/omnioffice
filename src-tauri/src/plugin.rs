@@ -27,7 +27,11 @@ mod install;
 
 #[cfg(test)]
 use install::install_into;
-use install::{delete_plugin, install_confirmed, install_from_dir, list_plugins, InstallPlan};
+use install::{delete_plugin, install_confirmed, list_plugins, InstallPlan};
+// The folder install is desktop-only (Android has no folder picker), and so is
+// its only call site.
+#[cfg(any(desktop, test))]
+use install::install_from_dir;
 
 use crate::netpolicy::UrlPolicy;
 use serde::{Deserialize, Serialize};
