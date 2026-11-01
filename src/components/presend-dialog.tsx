@@ -127,7 +127,10 @@ export function PresendDialog({ onNavigate }: { onNavigate: Navigate }) {
                   {t(`presend.${finding.code}Title`, { count: finding.count })}
                 </span>
                 <span className="block text-xs muted mt-0.5 leading-relaxed">
-                  {t(`presend.${finding.code}Body`, { count: finding.count, items: describe(finding, t) })}
+                  {t.plural(`presend.${finding.code}Body`, finding.count, {
+                    count: finding.count,
+                    items: describe(finding, t),
+                  })}
                 </span>
               </span>
             </li>

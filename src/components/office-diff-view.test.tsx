@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { OfficeDiffView } from "./office-diff-view";
 import type { CalcDiff, ImpressDiff, WriterDiff } from "../lib/office-diff";
+import en from "../lib/i18n/en.json";
 
 const writerDiff: WriterDiff = {
   kind: "writer",
@@ -55,7 +56,7 @@ describe("OfficeDiffView", () => {
       cells: [{ sheet: "Veri", address: "A1", kind: "changed", before: "Ad", after: "Ad Soyad" }],
     };
     render(<OfficeDiffView diff={calc} />);
-    expect(screen.getByText(/1 sheet\(s\) added/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(en["diff.sheetsAdded.one"].replaceAll("{count}", "1")))).toBeInTheDocument();
     expect(screen.getByText("Veri!A1")).toBeInTheDocument();
     expect(screen.getByText("Ad Soyad")).toBeInTheDocument();
   });

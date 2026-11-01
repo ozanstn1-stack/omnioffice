@@ -17,6 +17,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefi
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null) }));
 
 import { MailMerge } from "./MailMerge";
+import en from "../lib/i18n/en.json";
 
 describe("mail merge screen", () => {
   beforeEach(() => {
@@ -47,7 +48,9 @@ describe("mail merge screen", () => {
         }),
       ),
     );
-    expect(await screen.findByText(/2 document\(s\) written/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(new RegExp(en["mailMerge.produced.other"].replaceAll("{count}", "2"), "i")),
+    ).toBeInTheDocument();
     expect(screen.getByText(/missing field\(s\): soyad/i)).toBeInTheDocument();
   });
 });

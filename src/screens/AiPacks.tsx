@@ -25,12 +25,14 @@ import { runTaskPack } from "../lib/ai-task-pack-runner";
 import { useScreenReady } from "../lib/screen-ready";
 import { reportError, useToasts } from "../lib/store";
 import type { AiSettingsView } from "../lib/types";
+import type { Translate } from "../lib/i18n";
 
-function issueText(
-  t: (key: string, params?: Record<string, string | number>) => string,
-  issue: VerificationIssue,
-): string {
-  const text = t(`aiPacks.issue.${issue.code}`, issue.params ?? {});
+function issueText(t: Translate, issue: VerificationIssue): string {
+  const text = t.plural(
+    `aiPacks.issue.${issue.code}`,
+    Number(issue.params?.min ?? issue.params?.count ?? 1),
+    issue.params ?? {},
+  );
   return issue.field ? `${issue.field}: ${text}` : text;
 }
 
@@ -214,7 +216,9 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
               <strong>{result.ok ? t("aiPacks.verified") : t("aiPacks.verificationFailed")}</strong>
               <Badge tone={result.parsed ? "ok" : "danger"}>{t("aiPacks.jsonLabel")}</Badge>
               <Badge tone={result.ok ? "ok" : "warn"}>
-                {result.ok ? t("aiPacks.checksPassed") : t("aiPacks.problemCount", { count: result.issues.length })}
+                {result.ok
+                  ? t("aiPacks.checksPassed")
+                  : t.plural("aiPacks.problemCount", result.issues.length, { count: result.issues.length })}
               </Badge>
             </div>
             <Button size="sm" variant="ghost" onClick={() => setShowRaw(!showRaw)}>

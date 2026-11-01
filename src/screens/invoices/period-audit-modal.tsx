@@ -182,7 +182,7 @@ export function PeriodAuditModal({
         {report.findings.length === 0 ? (
           <p className="flex items-center gap-2" role="status">
             <CheckCircle2 size={16} style={{ color: "var(--ok)" }} aria-hidden />
-            {t("periodAudit.clean", { count: report.inPeriod })}
+            {t.plural("periodAudit.clean", report.inPeriod, { count: report.inPeriod })}
           </p>
         ) : (
           <ul className="flex flex-col gap-2" aria-label={t("periodAudit.findings")}>
@@ -216,7 +216,10 @@ function FindingRow({ finding }: { finding: AuditFinding }) {
       <span className="flex-1 min-w-0">
         <span className="block font-semibold">{t(`periodAudit.code.${finding.code}Title`)}</span>
         <span className="block text-xs muted mt-0.5 leading-relaxed">
-          {t(`periodAudit.code.${finding.code}Body`, { detail, count: finding.items.length })}
+          {t.plural(`periodAudit.code.${finding.code}Body`, finding.items.length, {
+            detail,
+            count: finding.items.length,
+          })}
           {shown ? ` ${shown}${more}` : ""}
         </span>
       </span>

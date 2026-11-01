@@ -103,6 +103,17 @@ release-train schedule is decided.
   the pinned engines. The release, beta and nightly workflows still download
   fresh and are the next step.
   `test:src/lib/ci-workflow.test.ts#caches the engine downloads by lock hash`
+- **Plural forms come from `Intl.PluralRules` (E4.5):** `t.plural("key", n)`
+  picks `key.one` / `key.other` through the runtime's plural rules instead of the
+  `{count} file(s)` suffix that English readers saw in Turkish text. The 22
+  strings that spelled a plural as "(s)" now carry both variants (Turkish uses
+  the same sentence for both, because the noun is not pluralised after a
+  numeral), 15 literal call sites moved over, and the audit fails on a new
+  "(s)" value or on a `t.plural` key missing a variant. The proposal's "68 fake
+  plurals" counted both languages and every call site; the dictionary had 22
+  keys.
+  `test:src/lib/i18n.test.ts#picks the singular and plural English forms`
+  `test:src/lib/i18n.test.ts#keeps the Turkish sentence the same for every count`
 - **The i18n audit grew teeth (E4.5):** the audit now fails on a `{placeholder}`
   set that differs between English and Turkish (a Turkish value missing
   `{count}` rendered the literal `{count}`) and on more user-visible JSX text

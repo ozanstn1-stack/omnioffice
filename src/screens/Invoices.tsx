@@ -388,7 +388,9 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
               <AlertTriangle className="text-amber-500 shrink-0" size={20} />
               <div>
                 <strong className="text-amber-500">
-                  {t("invoices.duplicatesFound", { count: duplicateResult.totalDuplicates })}
+                  {t.plural("invoices.duplicatesFound", duplicateResult.totalDuplicates, {
+                    count: duplicateResult.totalDuplicates,
+                  })}
                 </strong>
                 <p className="text-xs muted">{t("invoices.duplicatesDetail")}</p>
               </div>
@@ -770,7 +772,9 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                         {report.unclassified > 0 ? (
                           <tr>
                             <td className="py-1 muted" colSpan={4}>
-                              {t("invoices.kdv.unclassified", { count: report.unclassified })}
+                              {t.plural("invoices.kdv.unclassified", report.unclassified, {
+                                count: report.unclassified,
+                              })}
                             </td>
                           </tr>
                         ) : null}

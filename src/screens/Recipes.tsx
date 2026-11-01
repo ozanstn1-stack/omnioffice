@@ -143,7 +143,10 @@ export function Recipes() {
     setBusy(true);
     try {
       const results = await watchedFolderScan();
-      notify(results.length ? "success" : "info", t("recipes.watchScan", { count: results.length }));
+      notify(
+        results.length ? "success" : "info",
+        t.plural("recipes.watchScan", results.length, { count: results.length }),
+      );
       for (const result of results) {
         if (!result.ok) notify("error", t("recipes.watchError"), `${result.input}: ${result.detail}`);
       }

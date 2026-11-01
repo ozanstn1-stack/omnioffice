@@ -1891,7 +1891,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
               >
                 {t("studio.applyEdits")}
               </button>
-              <span className="muted small">{t("studio.pendingEdits", { count: pendingEdits.length })}</span>
+              <span className="muted small">
+                {t.plural("studio.pendingEdits", pendingEdits.length, { count: pendingEdits.length })}
+              </span>
             </div>
           </Card>
         </>
