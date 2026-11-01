@@ -203,8 +203,7 @@ fn first_thread_of(pid: u32) -> Option<u32> {
     };
     unsafe {
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0).ok()?;
-        let mut entry = THREADENTRY32::default();
-        entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+        let mut entry = THREADENTRY32 { dwSize: std::mem::size_of::<THREADENTRY32>() as u32, ..Default::default() };
         let mut thread_id = None;
         if Thread32First(snapshot, &mut entry).is_ok() {
             loop {

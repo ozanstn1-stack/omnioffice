@@ -4,6 +4,7 @@
 
 use super::*;
 
+#[cfg(not(target_os = "android"))]
 #[test]
 fn the_child_environment_is_an_allow_list() {
     // The parser stack needs these (engine search path, temp dir, locale).
@@ -42,7 +43,7 @@ fn a_document_path_cannot_turn_the_gui_into_a_worker() {
 
 /// The unix ceilings must be in place before the child's first instruction:
 /// `ulimit` reads them back from the child that `pre_exec` configured.
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "android")))]
 #[test]
 fn the_child_inherits_the_resource_ceilings() {
     let mut command = Command::new("sh");

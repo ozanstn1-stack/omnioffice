@@ -46,9 +46,10 @@ mod containment;
 
 #[cfg(not(target_os = "android"))]
 use containment::{env_allowed, platform};
-// `RLIMIT_AS`/`RLIMIT_CPU` have no Windows counterpart: the job object in
-// `platform::spawn` is that platform's containment.
-#[cfg(unix)]
+// `RLIMIT_AS`/`RLIMIT_CPU` have no Windows counterpart (the job object in
+// `platform::spawn` is that platform's containment), and Android does not spawn
+// a worker at all.
+#[cfg(all(unix, not(target_os = "android")))]
 use containment::limit_resources;
 
 /// Wall-clock limit for one worker job.
