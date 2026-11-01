@@ -186,9 +186,12 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
     const baseline = JSON.parse(readFileSync(path.join(root, "scripts", "i18n-baseline.json"), "utf8")) as {
       version: number;
       files: Record<string, number>;
+      attributes: Record<string, number>;
     };
-    expect(baseline.version).toBe(1);
+    expect(baseline.version).toBe(2);
     const total = Object.values(baseline.files).reduce((sum, count) => sum + count, 0);
-    expect(total).toBeLessThanOrEqual(80);
+    const attributes = Object.values(baseline.attributes).reduce((sum, count) => sum + count, 0);
+    expect(total).toBeLessThanOrEqual(77);
+    expect(attributes).toBeLessThanOrEqual(9);
   });
 });

@@ -169,7 +169,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
       <TwoColumn
         main={
           <div className="flex flex-col gap-4">
-            <OptionCard title="Şablon Türü Seçimi">
+            <OptionCard title={t("kvkk.templateTypeTitle")}>
               <Segmented<KvkkTemplateType>
                 value={templateType}
                 onChange={setTemplateType}
@@ -182,7 +182,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
               />
             </OptionCard>
 
-            <OptionCard title="Üretilen KVKK Metni Önizlemesi">
+            <OptionCard title={t("kvkk.previewTitle")}>
               <TextArea rows={14} value={generatedText} readOnly spellCheck={false} className="font-mono text-xs" />
               <div className="flex flex-wrap justify-end gap-2 mt-2">
                 <Button variant="default" icon={<Copy className="w-4 h-4" />} onClick={handleCopy}>
@@ -218,12 +218,12 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
         }
         side={
           <div className="flex flex-col gap-4">
-            <OptionCard title="Kurum & Veri Sorumlusu Bilgileri">
+            <OptionCard title={t("kvkk.responsibleTitle")}>
               <Field label="Şirket / Kurum Unvanı">
                 <TextInput
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Örn: Örnek Bilişim Tic. A.Ş."
+                  placeholder={t("kvkk.companyPlaceholder")}
                 />
               </Field>
 
@@ -231,12 +231,16 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                 <TextInput
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
-                  placeholder="kvkk@sirketiniz.com"
+                  placeholder={t("kvkk.emailPlaceholder")}
                 />
               </Field>
 
               <Field label="Şirket Adresi">
-                <TextInput value={address} onChange={(e) => setAddress(e.target.value)} placeholder="İlçe / İl" />
+                <TextInput
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder={t("kvkk.addressPlaceholder")}
+                />
               </Field>
             </OptionCard>
 

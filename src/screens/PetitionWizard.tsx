@@ -130,7 +130,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
 
   return (
     <Screen
-      title="Dilekçe Sihirbazı"
+      title={t("petition.title")}
       subtitle={
         udfEnabled
           ? "Resmî makamlara sunulmak üzere standartlara uygun UDF, DOCX ve PDF dilekçe oluşturun."
@@ -148,7 +148,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
               <TextInput
                 value={data.recipientAuthority}
                 onChange={(e) => update("recipientAuthority", e.target.value)}
-                placeholder="Örn: ANKARA BÜYÜKŞEHİR BELEDİYE BAŞKANLIĞINA"
+                placeholder={t("petition.recipientPlaceholder")}
               />
             </Field>
           </div>
@@ -157,7 +157,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
             <TextInput
               value={data.subject}
               onChange={(e) => update("subject", e.target.value)}
-              placeholder="Örn: İkametgah Adres Düzeltme Talebi"
+              placeholder={t("petition.subjectPlaceholder")}
             />
           </Field>
 
@@ -166,7 +166,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
               className="w-full min-h-[140px] p-3 rounded-lg border border-hairline bg-surface text-text resize-y text-sm focus:outline-none focus:ring-1 focus:ring-accent"
               value={data.bodyText}
               onChange={(e) => update("bodyText", e.target.value)}
-              placeholder="Dilekçenizin ana metnini buraya yazın..."
+              placeholder={t("petition.bodyPlaceholder")}
             />
           </Field>
 
@@ -174,7 +174,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
             <TextInput
               value={data.demands}
               onChange={(e) => update("demands", e.target.value)}
-              placeholder="Örn: Gereğini saygılarımla arz ederim."
+              placeholder={t("petition.demandsPlaceholder")}
             />
           </Field>
 
@@ -187,7 +187,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
               <TextInput
                 value={data.tckn}
                 onChange={(e) => update("tckn", e.target.value)}
-                placeholder="11 haneli kimlik numarası"
+                placeholder={t("petition.idPlaceholder")}
               />
             </Field>
 
@@ -204,7 +204,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
             <TextInput
               value={data.attachments}
               onChange={(e) => update("attachments", e.target.value)}
-              placeholder="Örn: 1. Kimlik Fotokopisi, 2. Fatura"
+              placeholder={t("petition.attachmentsPlaceholder")}
             />
           </Field>
 

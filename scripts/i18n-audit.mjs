@@ -134,59 +134,93 @@ const fakePlurals = enKeys.filter((key) => /\(s\)/.test(String(en[key])) || /\(s
 // (`a > b`, `Map<K, V>`) cannot be mistaken for prose. The baseline is a
 // ratchet: it may only shrink, which is how the strings move into the table.
 // ---------------------------------------------------------------------------
-function jsxTextByFile() {
+const PROSE = /[A-Za-zÇĞİÖŞÜçğıöşü]{2,}/;
+// Attributes the user reads or hears. A model prompt example ("tr, en, de") or a
+// format name ("pdf, docx, md") is literal on purpose and still counted - which
+// is why the baseline exists instead of a zero target.
+const ATTRIBUTES = ["alt", "aria-label", "title", "placeholder"];
+
+function jsxStrings() {
   const counts = {};
+  const attributes = {};
   const samples = new Map();
   for (const file of walk(srcRoot)) {
     if (!file.endsWith(".tsx")) continue;
     const body = readFileSync(file, "utf8");
     const source = ts.createSourceFile(file, body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
     const visit = (node) => {
       if (ts.isJsxText(node)) {
         const text = node.text.replace(/\s+/g, " ").trim();
         // Letters are what makes text user-visible; "—", "·", "1" and "/" are
         // separators the table never needs to hold.
-        if (/[A-Za-zÇĞİÖŞÜçğıöşü]{2,}/.test(text)) {
-          const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
+        if (PROSE.test(text)) {
           counts[relative] = (counts[relative] ?? 0) + 1;
           if (!samples.has(relative)) samples.set(relative, []);
           if (samples.get(relative).length < 3) samples.get(relative).push(text.slice(0, 48));
+        }
+      }
+      if (ts.isJsxAttribute(node) && node.initializer && ts.isStringLiteral(node.initializer)) {
+        const name = node.name.getText(source);
+        if (ATTRIBUTES.includes(name) && PROSE.test(node.initializer.text.trim())) {
+          attributes[relative] = (attributes[relative] ?? 0) + 1;
         }
       }
       ts.forEachChild(node, visit);
     };
     visit(source);
   }
-  return { counts, samples };
+  return { counts, attributes, samples };
 }
 
-const { counts: jsxCounts, samples: jsxSamples } = jsxTextByFile();
-const baseline = existsSync(baselinePath) ? JSON.parse(readFileSync(baselinePath, "utf8")) : { version: 1, files: {} };
+const { counts: jsxCounts, attributes: attrCounts, samples: jsxSamples } = jsxStrings();
+const baseline = existsSync(baselinePath)
+  ? JSON.parse(readFileSync(baselinePath, "utf8"))
+  : { version: 2, files: {}, attributes: {} };
 const known = baseline.files ?? {};
+const knownAttributes = baseline.attributes ?? {};
 
 if (process.argv.includes("--update")) {
-  const grown = Object.entries(jsxCounts).filter(([file, count]) => known[file] !== undefined && count > known[file]);
+  const grown = [
+    ...Object.entries(jsxCounts).filter(([file, count]) => known[file] !== undefined && count > known[file]),
+    ...Object.entries(attrCounts).filter(
+      ([file, count]) => knownAttributes[file] !== undefined && count > knownAttributes[file],
+    ),
+  ];
   if (grown.length && !process.argv.includes("--allow-raise")) {
     for (const [file, count] of grown) {
-      console.error(`i18n:update: ${file} would grow ${known[file]} -> ${count}`);
+      console.error(`i18n:update: ${file} would grow ${known[file] ?? knownAttributes[file]} -> ${count}`);
     }
-    console.error("i18n:update: the JSX-text baseline may only shrink; pass --allow-raise to move it on purpose.");
+    console.error(
+      "i18n:update: the hardcoded-text baseline may only shrink; pass --allow-raise to move it on purpose.",
+    );
     process.exit(1);
   }
-  const sorted = Object.fromEntries(Object.entries(jsxCounts).sort(([a], [b]) => a.localeCompare(b)));
-  writeFileSync(baselinePath, `${JSON.stringify({ version: 1, files: sorted }, null, 2)}\n`);
+  const sort = (counts) => Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
+  const sorted = sort(jsxCounts);
+  const sortedAttributes = sort(attrCounts);
+  writeFileSync(
+    baselinePath,
+    `${JSON.stringify({ version: 2, files: sorted, attributes: sortedAttributes }, null, 2)}
+`,
+  );
   const total = Object.values(sorted).reduce((sum, count) => sum + count, 0);
-  console.log(`i18n:update: ${Object.keys(sorted).length} files, ${total} hardcoded JSX text nodes recorded`);
+  const attrTotal = Object.values(sortedAttributes).reduce((sum, count) => sum + count, 0);
+  console.log(`i18n:update: ${total} hardcoded JSX text nodes and ${attrTotal} attribute strings recorded`);
   process.exit(0);
 }
 
 const jsxProblems = Object.entries(jsxCounts)
   .filter(([file, count]) => count > (known[file] ?? 0))
   .map(([file, count]) => `${file}: ${count} hardcoded text node(s), baseline ${known[file] ?? 0}`);
+const attrProblems = Object.entries(attrCounts)
+  .filter(([file, count]) => count > (knownAttributes[file] ?? 0))
+  .map(([file, count]) => `${file}: ${count} hardcoded attribute string(s), baseline ${knownAttributes[file] ?? 0}`);
 
 const untranslated = enKeys.filter((key) => trKeys.has(key) && en[key] === tr[key]);
 const unused = enKeys.filter((key) => !usedKeys.has(key));
 const jsxTotal = Object.values(jsxCounts).reduce((sum, count) => sum + count, 0);
+const attrTotal = Object.values(attrCounts).reduce((sum, count) => sum + count, 0);
 
 console.log(
   "i18n: en=" +
@@ -204,7 +238,9 @@ console.log(
     " plural-usage=" +
     pluralKeys.size +
     " hardcoded-jsx=" +
-    jsxTotal,
+    jsxTotal +
+    " hardcoded-attrs=" +
+    attrTotal,
 );
 if (missing.length) {
   console.log("  missing (first 20): " + missing.slice(0, 20).join(", "));
@@ -242,9 +278,10 @@ const problems =
   placeholderMismatches.length +
   pluralProblems.length +
   fakePlurals.length +
-  jsxProblems.length;
+  jsxProblems.length +
+  attrProblems.length;
 if (check && problems) {
-  for (const problem of jsxProblems.slice(0, 20)) console.error("  " + problem);
+  for (const problem of [...jsxProblems, ...attrProblems].slice(0, 20)) console.error("  " + problem);
   console.error("i18n-audit: the translation tables are out of sync");
   process.exit(1);
 }
