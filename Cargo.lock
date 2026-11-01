@@ -63,7 +63,7 @@ dependencies = [
 
 [[package]]
 name = "aicore"
-version = "7.1.1"
+version = "7.2.0"
 dependencies = [
  "futures-util",
  "reqwest 0.12.28",
@@ -855,7 +855,7 @@ dependencies = [
 
 [[package]]
 name = "compat"
-version = "7.1.1"
+version = "7.2.0"
 dependencies = [
  "officecore",
  "pdfcore",
@@ -3672,7 +3672,7 @@ dependencies = [
 
 [[package]]
 name = "officecore"
-version = "7.1.1"
+version = "7.2.0"
 dependencies = [
  "ab_glyph",
  "base64 0.23.1",
@@ -3882,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "pdf-swiss-army-knife"
-version = "7.1.1"
+version = "7.2.0"
 dependencies = [
  "aicore",
  "base64 0.23.1",
@@ -3921,7 +3921,7 @@ dependencies = [
 
 [[package]]
 name = "pdfcore"
-version = "7.1.1"
+version = "7.2.0"
 dependencies = [
  "ab_glyph",
  "cbc 0.2.1",
@@ -5650,7 +5650,7 @@ dependencies = [
 
 [[package]]
 name = "synccore"
-version = "7.1.1"
+version = "7.2.0"
 dependencies = [
  "base64 0.23.1",
  "getrandom 0.2.17",
@@ -6661,7 +6661,7 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "turkish"
-version = "7.1.1"
+version = "7.2.0"
 dependencies = [
  "serde",
 ]

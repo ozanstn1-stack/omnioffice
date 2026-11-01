@@ -1,0 +1,5 @@
+7.2.0 "Güvenli sınırlar": LAN eşleştirme kodu artık bir SPAKE2 parolası ve iki
+sertifika parmak izine bağlı; kod tel üzerinden gitmiyor, yanlış tahmin tek
+denemeye mal oluyor. Masaüstünde API anahtarları ve parolalar OS anahtarlığında
+saklanıyor, dosyalar yalnız sahibine açık. Webview yalnız izin verilen komutları
+çağırabiliyor, plugin kurulumu onay istiyor ve SHA-256 kaydı tutuyor.

@@ -4,6 +4,66 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.2.0] - Güvenli sınırlar (Phase E / E1)
+
+### Added
+
+- **Code-authenticated LAN pairing (E1/3, #550):** pairing is a SPAKE2 handshake
+  over the six-digit code, so the code never crosses the wire and a wrong guess
+  costs one online attempt instead of leaving a recorded handshake testable
+  offline. Both certificate fingerprints are hashed into the derived key, so a
+  device that terminates TLS with its own certificate and relays the exchange
+  derives two different keys and can confirm neither side - the client pins
+  nothing and the host records nothing. The confirmation round runs on a
+  connection pinned to the first answer's certificate, pairing fields are
+  validated before the handshake, and the pre-7.2 handshake is refused with an
+  update message.
+- **OS keyring for desktop secrets (E1/4, #550):** where the platform has no
+  cipher (Linux, macOS) the API keys, WebDAV password and OAuth token move into
+  the OS credential vault (Secret Service, Keychain, Credential Manager) and the
+  file keeps only a `keyring:<slot>` marker. The fallback `plain:` file, and
+  every sealed store (LAN device key, person cards, signatures, trash copies),
+  is written owner-only (`0600`); legacy plain values migrate into the vault on
+  read and old files are tightened when read. The AI settings panel names the
+  tier in use.
+- **Application command ACL (E1/4b, #550):** the build declares a Tauri app ACL
+  manifest, so the webview may only invoke commands a capability allows. One
+  `allow-<domain>-commands` permission per IPC domain is generated from the IPC
+  registry (249 commands) and granted by the main-window capability; an
+  unregistered command cannot be called, and every registered one is proven
+  reachable by the Rust suite and by a WebDriver scenario.
+- **Plugin installs need a human and are recorded (E1/5, #550):** `plugin_install`
+  validates the manifest and source, shows the plan (permissions, capabilities,
+  size, bundle SHA-256) in a native Rust-side dialog and writes nothing without
+  consent. `install.json` records the hash, and the plugin list reports a plugin
+  changed after install as `modified` (before the record: `unrecorded`).
+
+### Changed
+
+- **CSP, prototype freeze and unsafe-free crates (E1/1, #550):** the webview
+  policy now blocks plugins/objects, base-tag rewrites, form posts and framing,
+  `freezePrototype` is on, and the six library crates declare
+  `#![forbid(unsafe_code)]`.
+- **Raw-path policy (E1/2, #550):** raw paths from the webview run through a
+  policy instead of being accepted: only app-owned directories (registered at
+  startup) and backend-produced paths pass, the validators take an explicit
+  access mode, and `ensure_dir`, fingerprint/output-exists, the LAN share folder
+  and the office output folders are all behind it.
+- **LAN pairing protocol and host loop (E1/3, #550):** pairing takes three
+  messages over two connections, accepted request nonces are remembered for the
+  five-minute freshness window so a captured request cannot be replayed, and four
+  worker threads with a bounded queue replace the one-connection-at-a-time loop,
+  so a stalled peer no longer queues other devices or holds "stop sharing".
+  Paired devices must both run 7.2 or newer.
+- **Dependency policy and CI gates:** `cargo deny` is the single advisory gate
+  and the command ACL, its generated permissions and the plugin install record
+  all have their own checks in the Lint and Rust jobs.
+
+### Fixed
+
+- The plugin list distinguishes files the user approved from files that changed
+  afterwards, instead of trusting whatever is on disk.
+
 ## [7.1.1] - Hızlı kazanımlar (Phase E / E0)
 
 ### Changed
