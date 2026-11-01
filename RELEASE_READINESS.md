@@ -78,8 +78,12 @@ release-train schedule is decided.
   sees API keys, provider tokens or the dev launch context. `--worker` counts
   only as the first argument, so a document path cannot select the worker.
   `test:src-tauri/src/worker_tests.rs#the_child_environment_is_an_allow_list`
-  `test:src-tauri/src/worker_tests.rs#the_child_inherits_the_resource_ceilings`
   `test:src-tauri/src/worker_tests.rs#a_document_path_cannot_turn_the_gui_into_a_worker`
+  The Unix ceilings are also proven by a probe test
+  (`the_child_inherits_the_resource_ceilings`) that reads `ulimit -v`/`-t` back
+  from a real child; it only exists where `setrlimit` does, so it is prose rather
+  than a marker. On Windows the job object path is exercised by the desktop E2E,
+  which opens documents through the real worker.
 
 ### Not done / Known limitations (7.3.0)
 
