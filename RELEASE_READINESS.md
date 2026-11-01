@@ -287,16 +287,22 @@ release-train schedule is decided.
   cannot be restyled or tested in the WebDriver suite; the plan text it shows is
   pinned by a unit test instead, and the dialog itself stays the manual check.
   (no test: platform UI; the plan summary is tested.)
-- **Clippy hygiene ratchet, started (E1.7).** `turkish`, `pdfcore` and `aicore`
-  now declare `#![cfg_attr(not(test), deny(clippy::unwrap_used,
-  clippy::expect_used))]`; their three production offenders were fixed (a
-  vanished page is skipped, an unavailable OS entropy source is a typed error, a
-  wrap width is destructured). The remaining counts are the ratchet's next
-  steps: `officecore` 34, `compat` 36, `synccore` 11 - each is a judgement call
-  (propagate, fall back, or document the invariant), and every slice moves one
-  crate.
-  (no test: a lint configuration; the crate attribute itself is what enforces
-  it in `cargo clippy --all-targets`.)
+- **Clippy hygiene ratchet, complete (E1.7).** Every crate now declares
+  `#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]`, so
+  production code in `turkish`, `pdfcore`, `aicore`, `officecore`, `synccore`
+  and the `compat` CLI cannot unwrap or expect. The first slice fixed the three
+  offenders in `turkish`/`pdfcore`/`aicore`; this one cleared the remaining 55
+  (`officecore` 34: the XML parser stack, ODF range and reference splitting, the
+  DOCX tracked-change writer, the layout page accessor, a UBL column letter;
+  `synccore` 11: the DAV listing parser and the WebDAV verb helpers; `compat`
+  10: CLI flag parsing and the JSON report). Each site became a typed error, an
+  explicit fallback, or an `if let` over the value - none was silenced. Two
+  calls are infallible by construction and stay as documented
+  `#[expect(..., reason = "...")]`: the embedded PDF face parses a build
+  artifact, and HMAC keys its block with a key of any length. The earlier note's
+  `compat` 36 was a miscount: `cargo clippy -p compat --lib` re-lints
+  `officecore` as a dependency, and `compat`'s own ten live in its binary.
+  `test:src/lib/security-config.test.ts#denies unwrap/expect in every crate outside tests`
 
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
 

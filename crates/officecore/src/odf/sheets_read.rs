@@ -424,10 +424,16 @@ fn ods_ranges_to_ours(addresses: &str) -> String {
         match ch {
             '\'' => {
                 quoted = !quoted;
-                parts.last_mut().unwrap().push(ch);
+                if let Some(last) = parts.last_mut() {
+                    last.push(ch);
+                }
             }
             ch if ch.is_whitespace() && !quoted => parts.push(String::new()),
-            ch => parts.last_mut().unwrap().push(ch),
+            ch => {
+                if let Some(last) = parts.last_mut() {
+                    last.push(ch);
+                }
+            }
         }
     }
     parts
@@ -461,7 +467,9 @@ pub(crate) fn split_ods_args(inner: &str) -> Vec<String> {
             }
             _ => {}
         }
-        args.last_mut().unwrap().push(ch);
+        if let Some(last) = args.last_mut() {
+            last.push(ch);
+        }
     }
     args.into_iter().map(|arg| arg.trim().to_string()).collect()
 }

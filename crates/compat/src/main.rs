@@ -6,6 +6,10 @@
 //! `score` exits 1 when a format lands on the review list or a golden is
 //! missing, 2 on a hard error, 0 otherwise.
 
+// Refuse panicking shortcuts in production code (E1.7 ratchet), the same rule
+// the library crates carry: a missing flag value is reported, not unwrapped.
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
 use std::path::PathBuf;
 
 fn main() {
@@ -16,17 +20,14 @@ fn main() {
     let mut json = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--corpus" => options.corpus = PathBuf::from(args.next().expect("--corpus değeri")),
-            "--golden" => options.golden = PathBuf::from(args.next().expect("--golden değeri")),
-            "--reference" => options.reference = Some(PathBuf::from(args.next().expect("--reference değeri"))),
-            "--threshold" => options.threshold = args.next().expect("--threshold değeri").parse().expect("sayı olmalı"),
-            "--dpi" => options.dpi = args.next().expect("--dpi değeri").parse().expect("sayı olmalı"),
-            "--out" => out = Some(PathBuf::from(args.next().expect("--out değeri"))),
+            "--corpus" => options.corpus = PathBuf::from(flag_value(&mut args, "--corpus")),
+            "--golden" => options.golden = PathBuf::from(flag_value(&mut args, "--golden")),
+            "--reference" => options.reference = Some(PathBuf::from(flag_value(&mut args, "--reference"))),
+            "--threshold" => options.threshold = flag_number(&mut args, "--threshold"),
+            "--dpi" => options.dpi = flag_number(&mut args, "--dpi"),
+            "--out" => out = Some(PathBuf::from(flag_value(&mut args, "--out"))),
             "--json" => json = true,
-            other => {
-                eprintln!("bilinmeyen argüman: {other}");
-                std::process::exit(2);
-            }
+            other => fail(&format!("bilinmeyen argüman: {other}")),
         }
     }
 
@@ -44,13 +45,20 @@ fn main() {
                     if let Some(parent) = path.parent() {
                         let _ = std::fs::create_dir_all(parent);
                     }
-                    if let Err(error) = std::fs::write(path, serde_json::to_string_pretty(&report).unwrap()) {
+                    let text = match serde_json::to_string_pretty(&report) {
+                        Ok(text) => text,
+                        Err(error) => fail(&format!("rapor JSON'a çevrilemedi: {error}")),
+                    };
+                    if let Err(error) = std::fs::write(path, text) {
                         eprintln!("rapor yazılamadı: {error}");
                         std::process::exit(2);
                     }
                 }
                 if json {
-                    println!("{}", serde_json::to_string(&report).unwrap());
+                    match serde_json::to_string(&report) {
+                        Ok(text) => println!("{text}"),
+                        Err(error) => fail(&format!("rapor JSON'a çevrilemedi: {error}")),
+                    }
                 } else {
                     println!("{:<8} {:>10} {:>10} {:>10} {:>6}", "biçim", "yapısal", "görsel", "referans", "örnek");
                     for (format, entry) in &report.formats {
@@ -86,4 +94,26 @@ fn main() {
             std::process::exit(2);
         }
     }
+}
+
+/// The value that follows a flag, or exit 2 naming the flag.
+fn flag_value(args: &mut impl Iterator<Item = String>, flag: &str) -> String {
+    match args.next() {
+        Some(value) => value,
+        None => fail(&format!("{flag} için değer yok")),
+    }
+}
+
+/// The numeric value that follows a flag, or exit 2 explaining what was wrong.
+fn flag_number<T: std::str::FromStr>(args: &mut impl Iterator<Item = String>, flag: &str) -> T {
+    let value = flag_value(args, flag);
+    match value.parse() {
+        Ok(number) => number,
+        Err(_) => fail(&format!("{flag} sayı olmalı: {value}")),
+    }
+}
+
+fn fail(message: &str) -> ! {
+    eprintln!("hata: {message}");
+    std::process::exit(2);
 }

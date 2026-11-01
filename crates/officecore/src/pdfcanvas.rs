@@ -68,6 +68,10 @@ pub struct FontFace {
 impl FontFace {
     pub fn load(bold: bool) -> Self {
         let bytes = if bold { FONT_BOLD } else { FONT_REGULAR };
+        // The faces are embedded with `include_bytes!`, so this parses a build
+        // artifact rather than untrusted input: a failure is a build defect and
+        // the panic is deliberate, which is why the ratchet expects this one.
+        #[expect(clippy::expect_used, reason = "the bundled face is a build artifact, not user input")]
         let font = FontVec::try_from_vec(bytes.to_vec()).expect("bundled font must parse");
         let units = font.units_per_em().unwrap_or(1000.0);
         let ascent = font.ascent_unscaled() as f64 / units as f64;

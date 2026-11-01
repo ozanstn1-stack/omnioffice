@@ -219,11 +219,17 @@ fn ods_range_to_ours(address: &str) -> String {
         match ch {
             '\'' => {
                 quoted = !quoted;
-                parts.last_mut().unwrap().push(ch);
+                if let Some(last) = parts.last_mut() {
+                    last.push(ch);
+                }
             }
             ':' if !quoted => parts.push(String::new()),
             ch if ch.is_whitespace() && !quoted => break,
-            ch => parts.last_mut().unwrap().push(ch),
+            ch => {
+                if let Some(last) = parts.last_mut() {
+                    last.push(ch);
+                }
+            }
         }
     }
     parts
@@ -708,11 +714,12 @@ fn ods_reference_to_ours(inner: &str) -> String {
         match ch {
             '\'' => {
                 quoted = !quoted;
-                let part = parts.last_mut().unwrap();
-                if after_dot {
-                    part.1.push(ch)
-                } else {
-                    part.0.push(ch)
+                if let Some(part) = parts.last_mut() {
+                    if after_dot {
+                        part.1.push(ch)
+                    } else {
+                        part.0.push(ch)
+                    }
                 }
             }
             ':' if !quoted => {
@@ -721,11 +728,12 @@ fn ods_reference_to_ours(inner: &str) -> String {
             }
             '.' if !quoted && !after_dot => after_dot = true,
             ch => {
-                let part = parts.last_mut().unwrap();
-                if after_dot {
-                    part.1.push(ch)
-                } else {
-                    part.0.push(ch)
+                if let Some(part) = parts.last_mut() {
+                    if after_dot {
+                        part.1.push(ch)
+                    } else {
+                        part.0.push(ch)
+                    }
                 }
             }
         }

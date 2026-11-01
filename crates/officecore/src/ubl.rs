@@ -799,7 +799,7 @@ pub fn vat_summary_workbook(invoices: &[UblInvoice]) -> Workbook {
     let mut sheet = Sheet::new("KDV Özeti");
     let headers = ["Ay", "Satıcı", "VKN/TCKN", "Oran (%)", "Matrah", "KDV", "Tevkifat", "Ödenecek"];
     for (index, title) in headers.iter().enumerate() {
-        let column = String::from_utf8(vec![b'A' + index as u8]).unwrap();
+        let column = crate::address::column_name(index as u32);
         sheet.set(&format!("{column}1"), text_cell(title, header.clone()));
     }
     // Supplier tax id per name, for the VKN column.

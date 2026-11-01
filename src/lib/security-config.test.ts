@@ -35,3 +35,16 @@ describe("library crates forbid unsafe code (E1)", () => {
     }
   });
 });
+
+describe("production code refuses panicking shortcuts (E1.7 ratchet)", () => {
+  it("denies unwrap/expect in every crate outside tests", () => {
+    const ratchet = "#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]";
+    for (const crate of ["aicore", "officecore", "pdfcore", "synccore", "turkish"]) {
+      const source = readFileSync(path.join(root, "crates", crate, "src", "lib.rs"), "utf8");
+      expect(source, crate).toContain(ratchet);
+    }
+    // `compat` is a CLI binary, so its crate root is `main.rs`.
+    const cli = readFileSync(path.join(root, "crates", "compat", "src", "main.rs"), "utf8");
+    expect(cli, "compat").toContain(ratchet);
+  });
+});

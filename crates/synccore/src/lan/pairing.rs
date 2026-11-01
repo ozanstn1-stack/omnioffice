@@ -99,6 +99,10 @@ fn transcript(client_fingerprint: &str, host_fingerprint: &str) -> String {
 }
 
 pub(super) fn tag(key: &[u8; 32], label: &str, client_fingerprint: &str, host_fingerprint: &str) -> String {
+    // HMAC keys its block with any length (it hashes the key first), so this
+    // constructor has no failing input; the expectation documents that rather
+    // than hiding a panic path.
+    #[expect(clippy::expect_used, reason = "HMAC accepts a key of any length, so this cannot fail")]
     let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts a 32-byte key");
     mac.update(format!("{PROTOCOL}:{label}\n{}", transcript(client_fingerprint, host_fingerprint)).as_bytes());
     hex_encode(&mac.finalize().into_bytes())

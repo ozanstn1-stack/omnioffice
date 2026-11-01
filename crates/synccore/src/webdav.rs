@@ -128,10 +128,7 @@ impl WebDavProvider {
         for segment in &segments {
             prefix.push(segment.clone());
             let url = self.url_for(&prefix);
-            let response = self
-                .request(reqwest::Method::from_bytes(b"MKCOL").expect("MKCOL is a valid method"), &url, &[])
-                .send()
-                .map_err(network_error)?;
+            let response = self.request(dav_method("MKCOL")?, &url, &[]).send().map_err(network_error)?;
             match response.status().as_u16() {
                 // 405: collection already exists (Apache/Nextcloud/ownCloud).
                 200 | 201 | 204 | 405 => {}
@@ -184,7 +181,7 @@ impl WebDavProvider {
     fn propfind(&self, url: &str, depth: &str) -> Result<reqwest::blocking::Response, SyncError> {
         let request = self
             .client
-            .request(reqwest::Method::from_bytes(b"PROPFIND").expect("PROPFIND is a valid method"), url)
+            .request(dav_method("PROPFIND")?, url)
             .header("Depth", depth)
             .header("Content-Type", "application/xml; charset=utf-8")
             .body(PROPFIND_BODY);
@@ -851,6 +848,20 @@ fn propstat_is_success(status: &str) -> bool {
     matches!(code, Some(code) if (200..300).contains(&code))
 }
 
+/// `reqwest` has no constant for the WebDAV verbs, and `Method::from_bytes`
+/// reports a malformed token instead of panicking.
+fn dav_method(name: &str) -> Result<reqwest::Method, SyncError> {
+    reqwest::Method::from_bytes(name.as_bytes())
+        .map_err(|_| SyncError::Protocol(format!("invalid HTTP method: {name}")))
+}
+
+/// The element currently being filled. The stack always starts with the
+/// document node, so this only fails after a parser bug; it returns an error
+/// instead of unwrapping so a malformed listing can never unwind the caller.
+fn current_element(stack: &mut [XmlNode]) -> Result<&mut XmlNode, SyncError> {
+    stack.last_mut().ok_or_else(|| SyncError::Protocol("malformed DAV XML: no current element".to_string()))
+}
+
 fn parse_xml_bounded(xml: &str) -> Result<XmlNode, SyncError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(false);
@@ -872,13 +883,15 @@ fn parse_xml_bounded(xml: &str) -> Result<XmlNode, SyncError> {
                     return Err(SyncError::Protocol("XML nesting is deeper than the safe limit".to_string()));
                 }
                 let node = node_from_start(&start)?;
-                stack.last_mut().expect("stack is never empty").children.push(node);
+                current_element(&mut stack)?.children.push(node);
                 depth -= 1;
             }
             Ok(Event::End(_)) => {
                 if stack.len() > 1 {
-                    let node = stack.pop().expect("length checked");
-                    stack.last_mut().expect("stack is never empty").children.push(node);
+                    let node = stack
+                        .pop()
+                        .ok_or_else(|| SyncError::Protocol("malformed DAV XML: no current element".to_string()))?;
+                    current_element(&mut stack)?.children.push(node);
                     depth = depth.saturating_sub(1);
                 }
             }
@@ -887,11 +900,11 @@ fn parse_xml_bounded(xml: &str) -> Result<XmlNode, SyncError> {
                 let value = quick_xml::escape::unescape(&raw)
                     .map(|value| value.into_owned())
                     .unwrap_or_else(|_| raw.into_owned());
-                stack.last_mut().expect("stack is never empty").text.push_str(&value);
+                current_element(&mut stack)?.text.push_str(&value);
             }
             Ok(Event::CData(data)) => {
                 let value = data.into_inner().into_owned();
-                stack.last_mut().expect("stack is never empty").text.push_str(&value);
+                current_element(&mut stack)?.text.push_str(&value);
             }
             Ok(Event::GeneralRef(reference)) => {
                 // Only predefined and numeric references; unknown entities are
@@ -911,13 +924,13 @@ fn parse_xml_bounded(xml: &str) -> Result<XmlNode, SyncError> {
                                 rest.parse::<u32>().ok()
                             };
                             if let Some(ch) = code.and_then(char::from_u32) {
-                                stack.last_mut().expect("stack is never empty").text.push(ch);
+                                current_element(&mut stack)?.text.push(ch);
                             }
                         }
                         continue;
                     }
                 };
-                stack.last_mut().expect("stack is never empty").text.push_str(value);
+                current_element(&mut stack)?.text.push_str(value);
             }
             Ok(Event::Eof) => break,
             // Decl, PI, Comment, DocType: deliberately ignored. A DTD is
@@ -933,7 +946,7 @@ fn parse_xml_bounded(xml: &str) -> Result<XmlNode, SyncError> {
         // accepted: it could hide part of a directory listing.
         return Err(SyncError::Protocol("malformed DAV XML: the document ends with unclosed elements".to_string()));
     }
-    let mut root = stack.pop().expect("root exists");
+    let mut root = stack.pop().ok_or_else(|| SyncError::Protocol("malformed DAV XML: no document node".to_string()))?;
     if root.children.len() == 1 {
         root = root.children.remove(0);
     }
