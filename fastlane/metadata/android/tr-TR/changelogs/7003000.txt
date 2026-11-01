@@ -1,0 +1,5 @@
+7.3.0 "İzolasyon ve dayanıklılık": güvenilmeyen belge ayrıştırıcısı artık
+çalışmadan önce kapatılıyor (Windows'ta askıda başlatma + job object, Linux/macOS
+kaynak sınırları, allow-list ortam). Motor yoklaması komut iş parçacığından
+blocking pool'a taşındı; düz metin hata dönen komutlar artık kod taşıyan tipli
+hata döndürüyor.

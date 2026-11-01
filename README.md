@@ -10,12 +10,12 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.2.1** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.3.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
 
-## What's new (6.2 to 7.2.1)
+## What's new (6.2 to 7.3.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -192,9 +192,13 @@ was split into per-format modules.
   keyring with an owner-only fallback, the webview may only invoke the commands
   its capability allows, plugin installs need an explicit confirmation and leave
   a recorded SHA-256, and the webview policy blocks objects, base rewrites, form
-  posts and framing. 7.2.1 fixes the Android release build (an Android-only
-  dead-code warning in the keyring tier) and moves the Android target gate to
-  the same clippy command the release runs.
+  posts and framing. 7.2.1 fixed the Android release build (an Android-only
+  dead-code warning in the keyring tier) and moved the Android target gate to
+  the same clippy command the release runs. 7.3.0 is the Phase E isolation
+  release: the document parser child is contained before it runs (suspended job
+  object on Windows, resource limits on Linux/macOS, an allow-list environment),
+  the engine probe moved off the command thread, and the commands that answered
+  with a bare string now send a code the UI can localize.
 - **LAN sync** (6.11.0): two devices on the same Wi-Fi pair with a one-time
   six-digit code, keep a pinned TLS connection and move office documents
   between their folders with a three-way plan; conflicts stay for the user
@@ -203,14 +207,14 @@ was split into per-format modules.
   deletion, with an Android foreground service keeping the folder reachable;
   6.13.0 adds the two-host acceptance contract, a 30-day deletion trash with
   tombstones and resumable chunked uploads with live progress.
-**Downloads (v7.2.1)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v7.2.1](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.2.1)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.2.1/OmniOffice-Setup-7.2.1.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.2.1/OmniOffice-Portable-7.2.1.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.2.1/OmniOffice-Linux-7.2.1-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.2.1/OmniOffice-Linux-7.2.1-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.2.1/OmniOffice-Android-7.2.1-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.2.1/OmniOffice-Android-7.2.1-armeabi-v7a.apk)
+**Downloads (v7.3.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v7.3.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.3.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.3.0/OmniOffice-Setup-7.3.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.3.0/OmniOffice-Portable-7.3.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.3.0/OmniOffice-Linux-7.3.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.3.0/OmniOffice-Linux-7.3.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.3.0/OmniOffice-Android-7.3.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.3.0/OmniOffice-Android-7.3.0-armeabi-v7a.apk)
 
 ## Release history
 

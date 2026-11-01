@@ -8,7 +8,7 @@
 |---|---|---|
 | v7.1.1 | E0 quick wins | Delivered (#551) |
 | v7.2.x | E1 security | **Shipped.** E1 delivered in full: CSP/prototype freeze, unsafe-free crates, raw-path policy, LAN pairing PAKE, keyring secret tier, command ACL and plugin-install confirmation. E2.2–E2.4 moved to v7.3.0; the configured-output token migration and the clippy hygiene item stay open under E1.7/E2 |
-| v7.3.0 | E4, E5, E2.5 | — |
+| v7.3.0 | E2 (isolation) | **Shipped.** Worker containment (E2.2), async engine probe + command audit (E2.3) and typed command errors (E2.4). E4/E5/fuzz move to v7.4.0 |
 | v7.4.0 | E3 | — |
 | v8.0.0 | E2.1, E6 | — |
 
