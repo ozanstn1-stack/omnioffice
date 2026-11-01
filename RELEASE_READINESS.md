@@ -232,13 +232,16 @@ release-train schedule is decided.
 
 ### Not done / Known limitations (7.2.0)
 
-- **Configured output destinations keep a legacy raw path.** Settings' default
-  output folder, batch targets and the AI library folder are write destinations
-  and still validate as before (`paths::directory_configured`); migrating them
-  to a persisted directory token is the next slice. The strict policy already
-  covers reads/hashing, `ensure_dir`, LAN sharing and save-target children.
-  (no test: documented compatibility surface; the strict branch is covered by
-  the decision-table tests above.)
+- **Configured output destinations are grants now (E1 follow-up, closed).**
+  Settings' default output folder, batch targets and the AI library folder used
+  to bypass the policy through `paths::directory_configured`. A folder the human
+  picks in the Rust dialog is persisted as a grant
+  (`<config>/path-grants.json`, at most 32 entries), the grants are trusted at
+  startup, and the four call sites (split, PDF→images, the office variant, the
+  output suggestion) now run the strict `paths::directory`; the legacy validator
+  is gone. A path the user never picked is refused again.
+  `test:src-tauri/src/paths_policy.rs#a_grant_survives_a_restart_and_only_covers_its_own_folder`
+  `test:src-tauri/src/paths_policy.rs#a_grant_must_be_an_absolute_path`
 - The release-mode denial branch is exercised through the policy decision table
   and code path; CI runs debug builds where raw paths are allowed, so a release
   E2E remains the manual check.
@@ -284,10 +287,16 @@ release-train schedule is decided.
   cannot be restyled or tested in the WebDriver suite; the plan text it shows is
   pinned by a unit test instead, and the dialog itself stays the manual check.
   (no test: platform UI; the plan summary is tested.)
-- **E1's clippy hygiene item stays open.** `clippy::unwrap_used`/`expect_used`
-  are not yet denied in the largest office writers; the `forbid(unsafe_code)`
-  half of that item shipped in E1/1.
-  (no test: planned work, tracked in #550.)
+- **Clippy hygiene ratchet, started (E1.7).** `turkish`, `pdfcore` and `aicore`
+  now declare `#![cfg_attr(not(test), deny(clippy::unwrap_used,
+  clippy::expect_used))]`; their three production offenders were fixed (a
+  vanished page is skipped, an unavailable OS entropy source is a typed error, a
+  wrap width is destructured). The remaining counts are the ratchet's next
+  steps: `officecore` 34, `compat` 36, `synccore` 11 - each is a judgement call
+  (propagate, fall back, or document the invariant), and every slice moves one
+  crate.
+  (no test: a lint configuration; the crate attribute itself is what enforces
+  it in `cargo clippy --all-targets`.)
 
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
 

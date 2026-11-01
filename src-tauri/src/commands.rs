@@ -590,7 +590,7 @@ pub async fn split_pdf(
 ) -> Result<SplitResponse, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let input = crate::paths::input_file(&request.input)?;
-        let output_dir = crate::paths::directory_configured(&request.output_dir)?;
+        let output_dir = crate::paths::directory(&request.output_dir, crate::files::FileAccess::ReadWrite)?;
         let parts = pdfcore::organize::split_pdf(
             input.as_path(),
             &request.mode,
@@ -873,7 +873,7 @@ pub async fn pdf_to_images(
 ) -> Result<PdfToImagesResponse, PdfError> {
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let input = crate::paths::input_file(&request.input)?;
-        let output_dir = crate::paths::directory_configured(&request.output_dir)?;
+        let output_dir = crate::paths::directory(&request.output_dir, crate::files::FileAccess::ReadWrite)?;
         let result = pdfcore::convert::pdf_to_images(
             input.as_path(),
             output_dir.as_path(),
@@ -1991,7 +1991,7 @@ pub fn suggest_output(input: String, suffix: String, directory: Option<String>) 
     // A configured output folder is validated like any other directory; the
     // token is issued here, never by the webview.
     let target = match directory {
-        Some(directory) => match crate::paths::directory_configured(&directory) {
+        Some(directory) => match crate::paths::directory(&directory, crate::files::FileAccess::ReadWrite) {
             Ok(base) => base.as_path().join(suggested.file_name().unwrap_or_default()),
             Err(_) => suggested,
         },

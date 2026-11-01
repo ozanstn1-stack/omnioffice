@@ -48,7 +48,7 @@ fn nul_and_control_characters_are_refused() {
 fn a_directory_token_resolves_through_the_directory_validator() {
     let dir = scratch_dir().join("token-dir");
     std::fs::create_dir_all(&dir).expect("temp dir");
-    let reference = crate::file_dirs::issue_dir(&dir);
+    let reference = crate::file_dirs::issue_dir(None, &dir);
     assert_eq!(directory(&reference.token, FileAccess::ReadWrite).unwrap().as_path(), dir);
     let file = dir.join("a.pdf");
     std::fs::write(&file, b"%PDF").expect("write");

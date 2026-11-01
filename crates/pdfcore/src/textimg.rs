@@ -50,11 +50,10 @@ fn wrap_text(font: &FontRef<'_>, size: f32, text: &str, wrap_width: Option<f32>)
     let scaled = font.as_scaled(PxScale::from(size));
     let mut lines = Vec::new();
     for raw_line in text.split('\n') {
-        if wrap_width.is_none() {
+        let Some(max_w) = wrap_width else {
             lines.push(raw_line.to_string());
             continue;
-        }
-        let max_w = wrap_width.unwrap();
+        };
         let mut current = String::new();
         let mut current_w = 0.0f32;
         for word in raw_line.split_whitespace() {

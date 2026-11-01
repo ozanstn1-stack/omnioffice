@@ -477,9 +477,8 @@ pub fn doc_chat_focus(question: &str, pages: &[(u32, String)], max_pages: usize)
     scored.sort_by_key(|(_, page)| *page);
     scored
         .into_iter()
-        .map(|(_, page)| {
-            let (_, text) = pages.iter().find(|(candidate, _)| *candidate == page).expect("page present");
-            (page, text.clone())
+        .filter_map(|(_, page)| {
+            pages.iter().find(|(candidate, _)| *candidate == page).map(|(_, text)| (page, text.clone()))
         })
         .collect()
 }

@@ -49,14 +49,15 @@ impl ProtectOptions {
     }
 }
 
-fn random_key() -> [u8; 32] {
+fn random_key() -> PdfResult<[u8; 32]> {
     let mut key = [0u8; 32];
     // OS entropy directly: a UUIDv4 only carries 122 random bits per value and
     // is not intended as key material. `getrandom` fails only when the OS
-    // entropy source is unavailable, which must never be papered over with a
-    // weaker key.
-    getrandom::getrandom(&mut key).expect("getrandom failed: OS entropy source unavailable");
-    key
+    // entropy source is unavailable, and that is a typed error rather than a
+    // panic - a weaker key would be worse than refusing.
+    getrandom::getrandom(&mut key)
+        .map_err(|error| PdfError::Internal(format!("the OS entropy source is unavailable: {error}")))?;
+    Ok(key)
 }
 
 /// Encrypts a PDF with AES-256. The input must not already be encrypted.
@@ -86,7 +87,7 @@ pub fn protect_pdf(
     let state = EncryptionState::try_from(EncryptionVersion::V5 {
         encrypt_metadata: true,
         crypt_filters: BTreeMap::from([(b"StdCF".to_vec(), crypt_filter)]),
-        file_encryption_key: &random_key(),
+        file_encryption_key: &random_key()?,
         stream_filter: b"StdCF".to_vec(),
         string_filter: b"StdCF".to_vec(),
         owner_password: &options.owner_password,

@@ -164,6 +164,12 @@ pub fn run() {
                 crate::paths_policy::register_owned_root(directory);
             }
             crate::paths_policy::register_owned_root(std::env::temp_dir());
+            // E1: a folder the human picked for output is a durable grant, so the
+            // configured destinations keep working after a restart without a
+            // live token.
+            if let Ok(config_dir) = app.path().app_config_dir() {
+                crate::paths_policy::load_grants(&config_dir);
+            }
 
             // Android: keep a foreground service up for as long as any job runs,
             // so the system does not freeze the process when the app leaves the

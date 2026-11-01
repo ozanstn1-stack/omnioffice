@@ -1,4 +1,8 @@
 #![forbid(unsafe_code)]
+// Refuse panicking shortcuts in production code (E1.7 ratchet): a library
+// crate that parses untrusted documents must return its errors, not unwind.
+// Tests keep their freedom; the gate is `cargo clippy --all-targets`.
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 //! Offline Turkish spell checking.
 //!
