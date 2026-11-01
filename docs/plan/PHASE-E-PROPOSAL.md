@@ -198,8 +198,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
 1. **Coverage.** *Frontend delivered:* vitest floors raised from 62/69/46/62 to
    77/79/64/77 against a measured 78.4/80.2/65.9/78.4 (2026-11-01), the report
    uploaded as the `coverage-frontend` artifact, and a test that refuses to let a
-   floor drop. *Open:* the `cargo llvm-cov` job (Rust coverage is not measured
-   today).
+   floor drop. *Rust:* a `rust-coverage` job runs `cargo llvm-cov --lib` over the
+   library crates and publishes `coverage-rust`; it measures rather than gates,
+   because a floor without data would be a guess. *Open:* turning that report
+   into a ratchet once a few runs show the variance.
 2. **Thinly tested large screens.** *Partly delivered:* the three components
    with no tests at all now have them - `LanSyncPlan` (6 cases),
    `ScannerPageList` (8) and `CornerPicker` (6). The large screens named here
@@ -237,8 +239,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
   hash, pinned by a test. *Open:* the release/beta/nightly workflows, replacing
   `cargo install tauri-driver` with `cargo-binstall`/cache, and
   `Swatinem/rust-cache` for Android.
-- **Android build:** split the six sequential `tauri android build` calls into a
-  parallel ABI matrix.
+- **Android build:** *partly delivered* - `--apk --aab` in one call per ABI took
+  the four artifact builds down to two. *Open:* the parallel ABI matrix itself
+  (one job per ABI with an artifact-merge job), which needs a tag or a
+  `workflow_dispatch` run to validate - it cannot be exercised by PR CI.
 - **Pinning:** *delivered* - every workflow asks for `ubuntu-24.04` instead of
   `ubuntu-latest`, `rust-toolchain.toml` pins the stable channel with
   clippy/rustfmt (the MSRV and fuzz jobs override it explicitly so the file

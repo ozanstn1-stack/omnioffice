@@ -129,6 +129,19 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **Rust coverage is measured and published (E4.1):** a `rust-coverage` job runs
+  `cargo llvm-cov --lib` over the library crates (the set that runs on every
+  platform), prints the summary and uploads `coverage-rust` (`lcov.info` plus
+  `coverage-summary.txt`). It is measurement, not a gate: no floor is invented
+  before the number exists, and the job deliberately skips the Tauri app crate
+  (GTK/WebKit) and the Windows-only engine integration tests, which would report
+  coverage for the wrong target.
+  `test:src/lib/ci-workflow.test.ts#measures Rust coverage and publishes the report instead of guessing a floor`
+- **Android builds both artifacts in one Gradle run per ABI (E5):** `--apk` and
+  `--aab` are independent flags, so the four sequential `tauri android build`
+  calls became two, each producing the APK and the AAB for its target and
+  keeping the same artifact names and the single `SHA256SUMS-android.txt`.
+  `test:src/lib/ci-workflow.test.ts#builds both Android artifacts in one Gradle run per ABI`
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`

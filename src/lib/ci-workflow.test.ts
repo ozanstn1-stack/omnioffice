@@ -195,3 +195,28 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
     expect(attributes).toBeLessThanOrEqual(9);
   });
 });
+
+describe("Rust coverage and Android build shape (E4.1, E5)", () => {
+  it("measures Rust coverage and publishes the report instead of guessing a floor", () => {
+    const coverage = jobBlocks().find((entry) => entry.name === "rust-coverage");
+    expect(coverage, "rust-coverage job").toBeDefined();
+    expect(coverage?.body).toContain("cargo llvm-cov --lcov");
+    expect(coverage?.body).toContain("cargo llvm-cov report --summary-only");
+    expect(coverage?.body).toContain("name: coverage-rust");
+    expect(coverage?.body).toContain("node scripts/workspace-crates.mjs release");
+  });
+
+  it("builds both Android artifacts in one Gradle run per ABI", () => {
+    // `--apk` and `--aab` are independent flags: four sequential builds were
+    // two Gradle runs that produce nothing extra.
+    const calls = [...android.matchAll(/tauri android build -- ([^\n]+)/g)].map((match) => match[1].trim());
+    const armCalls = calls.filter((call) => /--target (aarch64|armv7)/.test(call));
+    expect(armCalls).toHaveLength(2);
+    for (const call of armCalls) {
+      expect(call).toContain("--apk");
+      expect(call).toContain("--aab");
+    }
+    expect(android).toContain("OmniOffice-Android-$version-arm64-v8a.aab");
+    expect(android).toContain("sha256sum *.apk *.aab");
+  });
+});
