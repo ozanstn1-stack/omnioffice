@@ -129,6 +129,17 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **The end-to-end suite is modules, not one file (E4.3):** `e2e/smoke.mjs` went
+  from 735 lines to a 109-line entry point that parses the flags and dispatches.
+  The WebDriver plumbing (bounded calls, one session per scenario, screenshots,
+  relaunch-on-failure) lives in `e2e/lib/driver.mjs`, the sample working copies in
+  `e2e/lib/files.mjs`, and each flow in `e2e/flows/` (`home`, `reader`, `office`,
+  `pdf`, `acl`, `personas`). The binary check moved behind
+  `requireAppBinary()` so a module can be imported without a built app, and a
+  test pins the split: the entry point stays thin, every flow keeps its export,
+  every module in `flows/` is imported, and the guard stays out of module load.
+  `test:src/lib/e2e-structure.test.ts#keeps the entry point to argument parsing and dispatch`
+  `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
 - **Rust coverage is measured and published (E4.1):** a `rust-coverage` job runs
   `cargo llvm-cov --lib` over the library crates (the set that runs on every
   platform), prints the summary and uploads `coverage-rust` (`lcov.info` plus

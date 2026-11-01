@@ -210,10 +210,12 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    the remaining work is deepening those suites rather than creating files.
    *Open:* `PdfStudio`'s own interaction paths, `Annotate`, `PageTools` and
    `PetitionWizard` depth.
-3. **E2E.** Split `e2e/smoke.mjs` (696 lines) into scenario modules; add Calc,
-   Impress, Scanner, Vault, signature/verification and AI-pack flows against
-   `scripts/mock-deepseek.mjs`; make the Android emulator run label-triggerable
-   (`android-e2e`) on PRs.
+3. **E2E.** *Partly delivered:* the split is done - `e2e/smoke.mjs` is a
+   109-line dispatcher over `e2e/lib/driver.mjs`, `e2e/lib/files.mjs` and
+   `e2e/flows/{home,reader,office,pdf,acl,personas}.mjs`, with a structure test
+   pinning it. *Open:* the new flows (Calc, Impress, Scanner, Vault,
+   signature/verification, AI packs against `scripts/mock-deepseek.mjs`) and the
+   label-triggerable Android emulator run.
 4. **Benchmarks.** Make the criterion gate blocking with a two-consecutive-runs
    rule (or median of two), instead of advisory.
 5. **i18n.** *Partly delivered.* `i18n-audit.mjs` now fails on placeholder
