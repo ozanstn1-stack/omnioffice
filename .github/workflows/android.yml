@@ -124,42 +124,28 @@ jobs:
         # `tauri build` runs cargo through the CLI; this check makes a stale
         # Cargo.lock fail here instead of resolving new versions mid-release.
         run: cargo metadata --locked --format-version 1 > /dev/null
-      - name: Build arm64 APK
+      # `--apk` and `--aab` are independent flags, so one Gradle run per ABI
+      # produces both artifacts: four sequential builds became two.
+      - name: Build arm64 APK and AAB
         run: |
           set -e
-          npm run tauri android build -- --apk --ci --target aarch64
+          npm run tauri android build -- --apk --aab --ci --target aarch64
           mkdir -p release-artifacts
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
-          cp "$apk" \
-             "release-artifacts/OmniOffice-Android-$version-arm64-v8a.apk"
+          aab=$(find src-tauri/gen/android/app/build/outputs/bundle -name '*.aab' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
+          cp "$apk" "release-artifacts/OmniOffice-Android-$version-arm64-v8a.apk"
+          cp "$aab" "release-artifacts/OmniOffice-Android-$version-arm64-v8a.aab"
 
-      - name: Build armv7 APK
+      - name: Build armv7 APK and AAB
         run: |
           set -e
-          npm run tauri android build -- --apk --ci --target armv7
+          npm run tauri android build -- --apk --aab --ci --target armv7
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
-          cp "$apk" \
-             "release-artifacts/OmniOffice-Android-$version-armeabi-v7a.apk"
-
-      - name: Build arm64 AAB
-        run: |
-          set -e
-          npm run tauri android build -- --aab --ci --target aarch64
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           aab=$(find src-tauri/gen/android/app/build/outputs/bundle -name '*.aab' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
-          cp "$aab" \
-             "release-artifacts/OmniOffice-Android-$version-arm64-v8a.aab"
-
-      - name: Build armv7 AAB
-        run: |
-          set -e
-          npm run tauri android build -- --aab --ci --target armv7
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          aab=$(find src-tauri/gen/android/app/build/outputs/bundle -name '*.aab' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
-          cp "$aab" \
-             "release-artifacts/OmniOffice-Android-$version-armeabi-v7a.aab"
+          cp "$apk" "release-artifacts/OmniOffice-Android-$version-armeabi-v7a.apk"
+          cp "$aab" "release-artifacts/OmniOffice-Android-$version-armeabi-v7a.aab"
           (cd release-artifacts && sha256sum *.apk *.aab > SHA256SUMS-android.txt)
           ls -lh release-artifacts
 

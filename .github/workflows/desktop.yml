@@ -365,6 +365,39 @@ jobs:
         shell: bash
         run: cargo build --release --locked $(node scripts/workspace-crates.mjs release)
 
+  # Rust coverage is measured, not gated (E4.1): the job prints the summary and
+  # publishes the lcov report so a floor can be set from data instead of a guess.
+  # It covers the library crates' unit tests (`--lib`), which is the set that
+  # runs everywhere: the engine-dependent integration tests only execute on
+  # Windows, and the Tauri app crate needs GTK/WebKit, so measuring it here would
+  # report a number for the wrong target.
+  rust-coverage:
+    name: Rust coverage (llvm-cov)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Measure the library crates
+        run: |
+          cargo llvm-cov --lcov --output-path lcov.info --lib $(node scripts/workspace-crates.mjs release)
+          cargo llvm-cov report --summary-only | tee coverage-summary.txt
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-rust
+          path: |
+            lcov.info
+            coverage-summary.txt
+          if-no-files-found: ignore
+
   # The workspace declares a rust-version; this job proves the declaration is
   # true instead of trusting it. Cargo.lock already contains crates that need
   # edition 2024 - the declaration used to say 1.82, which no longer built.
