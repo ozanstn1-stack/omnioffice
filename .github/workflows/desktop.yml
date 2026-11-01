@@ -173,14 +173,18 @@ jobs:
         run: |
           mkdir -p src-tauri/resources/engines
           echo "Engine binaries are fetched by scripts/fetch-engines.ps1." > src-tauri/resources/engines/README.txt
-      - name: cargo check (aarch64-linux-android)
+      # Clippy, not just `cargo check`: the release job runs
+      # `cargo clippy -- -D warnings` for the Android target, so a dead-code
+      # warning that only exists on Android must fail here, in review, instead
+      # of failing the release build for the tag (v7.2.0 shipped exactly that).
+      - name: cargo clippy (aarch64-linux-android)
         shell: bash
         run: |
           BIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
           export CC_aarch64_linux_android="$BIN/aarch64-linux-android24-clang"
           export AR_aarch64_linux_android="$BIN/llvm-ar"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$BIN/aarch64-linux-android24-clang"
-          cargo check -p pdf-swiss-army-knife --target aarch64-linux-android
+          cargo clippy -p pdf-swiss-army-knife --lib --target aarch64-linux-android -- -D warnings
 
   # Kotlin sources under src-tauri/gen/android (the open-with pipeline, plugins,
   # manifest filters) only compile in the Android toolchain; android.yml would

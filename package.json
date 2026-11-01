@@ -1,7 +1,7 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "7.2.0",
+  "version": "7.2.1",
   "type": "module",
   "description": "OmniOffice - local-first desktop office and PDF suite (Writer, Calc, Impress, PDF tools)",
   "scripts": {

@@ -1,0 +1,3 @@
+7.2.1: Android derleme düzeltmesi. 7.2.0'ın Android paketlerinde derlemeyi
+durduran, yalnız Android hedefinde görünen kullanılmayan bir sabit düzeltildi;
+Android hedef denetimi artık sürüm derlemesiyle aynı clippy komutunu çalıştırıyor.

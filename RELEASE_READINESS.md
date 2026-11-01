@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.2.0
+# Release Readiness — OmniOffice 7.2.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,21 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.2.1) - Android derleme düzeltmesi
+
+- **The Android target runs the release's clippy gate in review (v7.2.1):** the
+  `Android target compile` PR job now runs
+  `cargo clippy -p pdf-swiss-army-knife --lib --target aarch64-linux-android --
+  -D warnings`, the same command the tagged Android build runs. v7.2.0 shipped a
+  keyring constant that is only unused on Android, so the PR (`cargo check`)
+  passed and the release build failed; the gate now catches that class in review.
+  `test:src/lib/ci-workflow.test.ts#runs the Android clippy gate in review, not only at tag time (v7.2.1)`
+- **The unused constant is Android-gated (v7.2.1):** `secret/vault.rs` keeps
+  `SERVICE` only where the keyring backend exists, so the Android target has no
+  dead code to deny.
+  (no test: a platform cfg attribute; the Android clippy job above is the gate
+  that proves it.)
 
 ## Implemented (this cycle, 7.2.0) - Güvenlik sertleştirmesi (E1, ilk dilim)
 

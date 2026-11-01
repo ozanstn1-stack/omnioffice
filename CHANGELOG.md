@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.2.1] - Android derleme düzeltmesi
+
+### Fixed
+
+- **Android release build (E1/4 follow-up, #550):** `secret/vault.rs` kept the
+  keyring service constant outside the keyring backend, so the Android target's
+  `-D warnings` clippy run failed (`constant SERVICE is never used`) and the
+  v7.2.0 Android build produced no APK/AAB assets. The constant now carries the
+  same Android gate as its only user.
+- **The Android gate runs in review:** the `Android target compile` PR job now
+  runs the same `cargo clippy -- -D warnings` command as the release job instead
+  of `cargo check`, so a warning that only exists on the Android target fails on
+  the PR rather than at tag time. `ci-workflow.test.ts` pins this.
+
 ## [7.2.0] - Güvenli sınırlar (Phase E / E1)
 
 ### Added
