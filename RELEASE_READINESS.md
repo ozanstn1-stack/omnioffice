@@ -129,6 +129,17 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **The audit also measures JSX attributes, and Redact speaks both languages
+  (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
+  strings that hold prose, with its own section in `scripts/i18n-baseline.json`
+  (version 2), so an attribute cannot smuggle English into the Turkish UI any
+  more than a text node could. The `Redact` certificate card and the KVKK and
+  petition wizard titles and placeholders moved into the tables, taking the
+  baseline to **77 text nodes and 9 attribute strings**. The nine that remain are
+  literal by design - model ids (`nomic-embed-text`, `deepseek-v4-flash`), prompt
+  examples (`tr, en, de`, `tax_id, iban, payment_due`), format lists
+  (`pdf, docx, md`), units (`ms`) and the `Bates` stamp name.
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
 - **The i18n audit grew teeth (E4.5):** the audit now fails on a `{placeholder}`
   set that differs between English and Turkish (a Turkish value missing
   `{count}` rendered the literal `{count}`) and on more user-visible JSX text

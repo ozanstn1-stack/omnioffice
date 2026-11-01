@@ -3149,5 +3149,22 @@
   "invoices.kdv.unclassified.one": "{count} invoice did not match your tax ID and stayed out of the purchase/sale split.",
   "invoices.kdv.unclassified.other": "{count} invoices did not match your tax ID and stayed out of the purchase/sale split.",
   "invoices.duplicatesFound.one": "{count} duplicate invoice found!",
-  "invoices.duplicatesFound.other": "{count} duplicate invoices found!"
+  "invoices.duplicatesFound.other": "{count} duplicate invoices found!",
+  "kvkk.templateTypeTitle": "Template type",
+  "kvkk.previewTitle": "Generated KVKK text preview",
+  "kvkk.responsibleTitle": "Organisation & data controller",
+  "kvkk.companyPlaceholder": "e.g. Example Technologies Inc.",
+  "kvkk.emailPlaceholder": "kvkk@yourcompany.com",
+  "kvkk.addressPlaceholder": "District / City",
+  "petition.title": "Petition wizard",
+  "petition.recipientPlaceholder": "e.g. TO THE MAYOR OF ANKARA METROPOLITAN MUNICIPALITY",
+  "petition.subjectPlaceholder": "e.g. Request to correct the residence address",
+  "petition.bodyPlaceholder": "Write the main text of your petition here…",
+  "petition.demandsPlaceholder": "e.g. I submit this request respectfully.",
+  "petition.idPlaceholder": "11-digit identity number",
+  "petition.attachmentsPlaceholder": "e.g. 1. ID photocopy, 2. Invoice",
+  "redact.certificateTitle": "Redaction certificate (v5.4)",
+  "redact.certificateBody": "Create an official certificate proving which fields were redacted under which legislation (KVKK), with the SHA-256 digest of the file.",
+  "redact.copyCertificate": "Copy certificate",
+  "redact.saveCertificate": "Save certificate (.md)"
 }

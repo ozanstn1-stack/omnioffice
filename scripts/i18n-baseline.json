@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "files": {
     "App.tsx": 2,
     "components/ai-settings.tsx": 1,
@@ -25,9 +25,17 @@
     "screens/Organize.tsx": 3,
     "screens/PageTools.tsx": 6,
     "screens/PdfStudio.tsx": 4,
-    "screens/Redact.tsx": 4,
+    "screens/Redact.tsx": 1,
     "screens/Security.tsx": 1,
     "screens/Settings.tsx": 2,
     "screens/Vault.tsx": 3
+  },
+  "attributes": {
+    "components/ai-settings.tsx": 2,
+    "office/ImpressEditor.tsx": 1,
+    "screens/Ai.tsx": 3,
+    "screens/PageTools.tsx": 1,
+    "screens/PdfStudio.tsx": 1,
+    "screens/Vault.tsx": 1
   }
 }

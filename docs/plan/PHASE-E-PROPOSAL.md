@@ -222,9 +222,13 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    (3) moved into the tables, and the five named `aria-label`/`alt` strings were
    translated (baseline 131 -> 80; `docs/i18n.md`). What remains is mostly
    literal by design (`TRY`, accounting-software names, paper sizes, units).
-   The 22 `(s)` strings now use `t.plural` over `Intl.PluralRules` and the
-   audit fails on a new one. *Open:* the `Redact` prose and attribute strings
-   beyond the five fixed (the scanner counts JSX text nodes only).
+   The 22 `(s)` strings now use `t.plural` over `Intl.PluralRules`, the audit
+   fails on a new one, and it counts JSX **attribute** strings too (`alt`,
+   `aria-label`, `title`, `placeholder`) against their own baseline section.
+   `Redact`, the KVKK and petition wizard titles/placeholders moved over:
+   baseline 77 text nodes + 9 attribute strings, the rest literal by design.
+   *Open:* component props such as `Field label=` are still outside the
+   scanner.
 
 ## E5. CI/CD efficiency and supply chain (v7.3.0)
 

@@ -3149,5 +3149,22 @@
   "invoices.kdv.unclassified.one": "{count} fatura kendi VKN'nizle eşleşmedi; alış/satış ayrımına girmedi.",
   "invoices.kdv.unclassified.other": "{count} fatura kendi VKN'nizle eşleşmedi; alış/satış ayrımına girmedi.",
   "invoices.duplicatesFound.one": "{count} adet mükerrer fatura tespit edildi!",
-  "invoices.duplicatesFound.other": "{count} adet mükerrer fatura tespit edildi!"
+  "invoices.duplicatesFound.other": "{count} adet mükerrer fatura tespit edildi!",
+  "kvkk.templateTypeTitle": "Şablon Türü Seçimi",
+  "kvkk.previewTitle": "Üretilen KVKK Metni Önizlemesi",
+  "kvkk.responsibleTitle": "Kurum & Veri Sorumlusu Bilgileri",
+  "kvkk.companyPlaceholder": "Örn: Örnek Bilişim Tic. A.Ş.",
+  "kvkk.emailPlaceholder": "kvkk@sirketiniz.com",
+  "kvkk.addressPlaceholder": "İlçe / İl",
+  "petition.title": "Dilekçe Sihirbazı",
+  "petition.recipientPlaceholder": "Örn: ANKARA BÜYÜKŞEHİR BELEDİYE BAŞKANLIĞINA",
+  "petition.subjectPlaceholder": "Örn: İkametgah Adres Düzeltme Talebi",
+  "petition.bodyPlaceholder": "Dilekçenizin ana metnini buraya yazın...",
+  "petition.demandsPlaceholder": "Örn: Gereğini saygılarımla arz ederim.",
+  "petition.idPlaceholder": "11 haneli kimlik numarası",
+  "petition.attachmentsPlaceholder": "Örn: 1. Kimlik Fotokopisi, 2. Fatura",
+  "redact.certificateTitle": "Karartma Sertifikası (v5.4)",
+  "redact.certificateBody": "Hangi alanların, hangi mevzuata (KVKK) göre karartıldığını ve SHA-256 dosya özetlerini kanıtlayan resmî sertifika oluşturun.",
+  "redact.copyCertificate": "Sertifika Kopyala",
+  "redact.saveCertificate": "Sertifika Kaydet (.md)"
 }

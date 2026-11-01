@@ -440,11 +440,8 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
               onRun={() => void run()}
               disabled={!session.primary || !boxes.length}
             />
-            <OptionCard title="Karartma Sertifikası (v5.4)">
-              <p className="text-xs muted">
-                Hangi alanların, hangi mevzuata (KVKK) göre karartıldığını ve SHA-256 dosya özetlerini kanıtlayan resmî
-                sertifika oluşturun.
-              </p>
+            <OptionCard title={t("redact.certificateTitle")}>
+              <p className="text-xs muted">{t("redact.certificateBody")}</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   className="btn btn-sm self-start"
@@ -452,7 +449,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                   onClick={() => void generateCertificate(false)}
                   disabled={certBusy || !session.primary || !session.result?.path || !boxes.length}
                 >
-                  <FileText size={13} /> Sertifika Kopyala
+                  <FileText size={13} /> {t("redact.copyCertificate")}
                 </button>
                 {!isAndroid() ? (
                   <button
@@ -461,7 +458,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
                     onClick={() => void generateCertificate(true)}
                     disabled={certBusy || !session.primary || !session.result?.path || !boxes.length}
                   >
-                    <Download size={13} /> Sertifika Kaydet (.md)
+                    <Download size={13} /> {t("redact.saveCertificate")}
                   </button>
                 ) : null}
               </div>

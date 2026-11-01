@@ -17,7 +17,7 @@ describe("KvkkWizard Screen (v5.4.0 - Issue #254)", () => {
     expect(screen.getByDisplayValue(/MÜŞTERİ VE ÇEVRİMİÇİ ZİYARETÇİ AYDINLATMA METNİ/)).toBeInTheDocument();
 
     // Fill in company name
-    const companyInput = screen.getByPlaceholderText("Örn: Örnek Bilişim Tic. A.Ş.");
+    const companyInput = screen.getByPlaceholderText(en["kvkk.companyPlaceholder"]);
     fireEvent.change(companyInput, { target: { value: "Test Bilişim Ltd." } });
 
     expect(screen.getAllByDisplayValue(/Test Bilişim Ltd\./).length).toBeGreaterThan(0);
