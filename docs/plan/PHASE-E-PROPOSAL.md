@@ -9,7 +9,7 @@
 | v7.1.1 | E0 quick wins | Delivered (#551) |
 | v7.2.x | E1 security | **Shipped.** E1 delivered in full: CSP/prototype freeze, unsafe-free crates, raw-path policy, LAN pairing PAKE, keyring secret tier, command ACL and plugin-install confirmation. E2.2–E2.4 moved to v7.3.0. The two E1 leftovers (configured-output token migration, clippy hygiene) were taken up in the v7.4.0 work |
 | v7.3.0 | E2 (isolation) | **Shipped.** Worker containment (E2.2), async engine probe + command audit (E2.3) and typed command errors (E2.4). E4/E5/fuzz move to v7.4.0 |
-| v7.4.0 | E1 leftovers + E4/E5 | **In progress.** Configured output destinations are persisted grants behind the strict policy (closed), the clippy unwrap/expect ratchet now denies panicking shortcuts in all seven crates (closed); E4/E5 and the fuzz extension follow |
+| v7.4.0 | E1 leftovers + E4/E5 | **Shipped.** Persisted output grants behind the strict policy, the unwrap/expect ratchet in all seven crates, vitest coverage floors at the measured suite with a published report, the i18n audit (placeholder parity, hardcoded-text ratchet, `Intl.PluralRules` counts), pinned toolchain/runners, cached engine downloads, `SECURITY.md` and CodeQL. E4.2/E4.3/E4.5 leftovers, `cargo llvm-cov`, the Android ABI matrix and the fuzz extension move to v7.5.0 |
 | v7.5.0 | E3 | — |
 | v8.0.0 | E2.1, E6 | — |
 
