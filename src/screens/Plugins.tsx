@@ -128,9 +128,9 @@ function PluginCard({
         <span className="muted small">{manifest.id}</span>
         <Badge tone={STATUS_TONE[status]}>{t(`plugins.status.${status}`)}</Badge>
         {integrity === "verified" ? null : (
-          <Badge tone={integrity === "modified" ? "warning" : "muted"} title={sha256}>
-            {t(`plugins.integrity.${integrity}`)}
-          </Badge>
+          <span title={sha256}>
+            <Badge tone={integrity === "modified" ? "warn" : "default"}>{t(`plugins.integrity.${integrity}`)}</Badge>
+          </span>
         )}
         <span className="spacer" />
         <span className="muted small">{t("plugins.version", { version: manifest.version })}</span>

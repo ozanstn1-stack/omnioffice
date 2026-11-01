@@ -237,6 +237,8 @@ describe("page tools and plugins screens", () => {
             commands: [{ id: "count", title: "Count words" }],
           },
           status: "idle",
+          integrity: "verified",
+          sha256: "ab".repeat(32),
           error: null,
           lastError: null,
           logs: [],

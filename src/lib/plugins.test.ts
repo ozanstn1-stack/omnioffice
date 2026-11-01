@@ -669,10 +669,7 @@ describe("document integration", () => {
 describe("plugin store", () => {
   it("loads backend manifests, skipping the invalid ones", async () => {
     const transport = fakeTransport();
-    transport.list = vi.fn(async () => [
-      installed(),
-      installed({ manifest: { id: "broken" }, sourceBytes: 1 }),
-    ]);
+    transport.list = vi.fn(async () => [installed(), installed({ manifest: { id: "broken" }, sourceBytes: 1 })]);
     setPluginTransport(transport);
     await usePluginStore.getState().load();
     const state = usePluginStore.getState();

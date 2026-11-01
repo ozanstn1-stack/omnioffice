@@ -7,7 +7,7 @@
 | Release | Items | Status |
 |---|---|---|
 | v7.1.1 | E0 quick wins | Delivered (#551) |
-| v7.2.0 | E1 security, E2.2–E2.4 | In progress: CSP/prototype freeze, unsafe-free crates, the raw-path policy, the code-authenticated LAN pairing, the keyring secret tier and the command ACL landed; configured-output token migration and plugin-install confirmation are next |
+| v7.2.0 | E1 security, E2.2–E2.4 | E1 delivered: CSP/prototype freeze, unsafe-free crates, raw-path policy, LAN pairing PAKE, keyring secret tier, command ACL and plugin-install confirmation. Remaining for the release: E2.2–E2.4, the configured-output token migration and the clippy hygiene item |
 | v7.3.0 | E4, E5, E2.5 | — |
 | v7.4.0 | E3 | — |
 | v8.0.0 | E2.1, E6 | — |
@@ -100,9 +100,12 @@ change, README counts refreshed.
    `object-src 'none'; base-uri 'none'; form-action 'none';
    frame-ancestors 'none'`. Add those and `freezePrototype: true`, and prove the
    plugin worker cannot invoke IPC without the key.
-6. **Plugin install.** `plugin_install` trusts the webview's manifest and
-   source. Require an explicit Rust-side confirmation (`dialog::ask`) and record
-   the installed SHA-256; a signed manifest is a later step.
+6. **Plugin install. Delivered (E1/5).** `plugin_install` used to trust the
+   webview's manifest and source. The Rust side now validates the pair, shows
+   the plan in a native dialog (permissions, capabilities, size, bundle SHA-256)
+   and writes nothing without consent; `install.json` records the hash and
+   `plugin_list` reports a plugin changed after install as `modified` (see
+   `docs/plugins.md`). A signed manifest stays a later step.
 7. **Rust hygiene.** Add `#![forbid(unsafe_code)]` to the six library crates,
    warn on `clippy::unwrap_used`/`expect_used` (biggest offenders:
    `officecore/src/docx/writer.rs`, `xml.rs`), and schedule the

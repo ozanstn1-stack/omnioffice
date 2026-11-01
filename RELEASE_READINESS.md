@@ -154,6 +154,23 @@ release-train schedule is decided.
   `test:src-tauri/src/command_acl.rs#every_registered_command_is_granted_to_the_main_window`
   `test:src-tauri/src/command_acl.rs#the_capability_grants_exactly_the_generated_permissions`
 
+- **Plugin installs need a human and are recorded (E1/5, #550):** `plugin_install`
+  validates the manifest/source pair, then the Rust side opens a native dialog
+  with the plan - name, id, version, requested permissions, capabilities, size
+  and bundle SHA-256 - and writes nothing unless the user accepts; a declined
+  install returns `forbidden` and leaves the disk untouched. The bundled sample
+  and the user's folder pick are the only paths without the dialog, because the
+  bytes are either compiled in or chosen by the human. `install.json` records the
+  id, hash, time and confirmation, and `plugin_list` compares the files on disk
+  with it, so a plugin changed after install reads as `modified` and the plugin
+  card shows it.
+  `test:src-tauri/src/plugin/install_tests.rs#a_plan_summarises_what_the_user_confirms`
+  `test:src-tauri/src/plugin/install_tests.rs#a_declined_install_writes_nothing`
+  `test:src-tauri/src/plugin/install_tests.rs#a_confirmed_install_records_the_hash_and_verifies_it`
+  `test:src-tauri/src/plugin/install_tests.rs#a_plugin_changed_on_disk_is_reported_as_modified`
+  `test:src-tauri/src/plugin/install_tests.rs#a_plugin_without_a_record_is_unrecorded`
+  `test:src-tauri/src/plugin/install_tests.rs#the_hash_covers_the_manifest_and_the_source`
+
 ### Not done / Known limitations (7.2.0)
 
 - **Configured output destinations keep a legacy raw path.** Settings' default
@@ -198,10 +215,20 @@ release-train schedule is decided.
   path policy and the secret store cover.
   (no test: a design property of the manifest; the enforcement itself is the
   Rust and WebDriver checks in the claim above.)
-- **Plugin-install confirmation is the last E1 slice.** `plugin_install` still
-  trusts the webview's manifest and source; a Rust-side confirmation and a
-  recorded SHA-256 are the remaining work, with its own regression test.
-  (no test: planned slice, tracked in #550.)
+- **The plugin hash is a record, not a signature.** It proves the installed
+  bytes are the ones the user approved; it does not prove who wrote them. A
+  signed manifest (and a publisher key the app pins) is the later step, and until
+  then "modified" can only report a change, not the author.
+  (no test: a documented limit of the record; the change detection itself is the
+  `modified` test above.)
+- **The install dialog is a native window.** It is drawn by the platform and
+  cannot be restyled or tested in the WebDriver suite; the plan text it shows is
+  pinned by a unit test instead, and the dialog itself stays the manual check.
+  (no test: platform UI; the plan summary is tested.)
+- **E1's clippy hygiene item stays open.** `clippy::unwrap_used`/`expect_used`
+  are not yet denied in the largest office writers; the `forbid(unsafe_code)`
+  half of that item shipped in E1/1.
+  (no test: planned work, tracked in #550.)
 
 ## Implemented (this cycle, 7.1.1) - E0 hızlı kazanımlar
 
