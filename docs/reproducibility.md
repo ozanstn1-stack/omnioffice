@@ -28,7 +28,7 @@ packaging script stops sorting, or this page loses one of its sections.
 
 | Item | Why it differs | Impact |
 |---|---|---|
-| Rust toolchain channel | CI uses the `stable` branch of `dtolnay/rust-toolchain`; there is no `rust-toolchain.toml` pinning an exact compiler release | two builds months apart can use different rustc versions |
+| Rust toolchain channel | `rust-toolchain.toml` pins the channel name (`stable`) and its components, not an exact compiler release | two builds months apart can still use different rustc versions (the MSRV and fuzz jobs override the file, so their gates are unaffected) |
 | ZIP archives | `Compress-Archive` stores file timestamps and its ordering is not documented as stable | the Windows portable ZIP bytes differ between builds |
 | NSIS installer | the NSIS stub and resource timestamps are embedded | the Setup `.exe` bytes differ |
 | `.deb` / `.AppImage` | Debian changelog timestamps and AppImage squashfs ordering | bytes differ |
@@ -55,8 +55,10 @@ point, not a reproducibility proof.
 
 ## Path to bit-reproducible Linux builds (next step)
 
-1. Add `rust-toolchain.toml` with an exact channel and let CI install it; run
-   the whole test suite with it before pinning.
+1. Replace `rust-toolchain.toml`'s floating `stable` channel with an exact
+   release and let CI install it; run the whole test suite with it before
+   pinning. (The file itself now exists, so the components and channel are at
+   least declared in one place.)
 2. Build archives with `SOURCE_DATE_EPOCH` (ZIP mtime via a fixed date) and a
    deterministic file order; replace `Compress-Archive` for the portable ZIP.
 3. Pin the AppImage tool and the NSIS version; verify two consecutive builds

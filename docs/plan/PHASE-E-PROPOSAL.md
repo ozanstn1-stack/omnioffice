@@ -219,18 +219,22 @@ secret migration, ACL capability list, CSP header, install confirmation), and
 
 ## E5. CI/CD efficiency and supply chain (v7.3.0)
 
-- **Caching:** cache engine downloads (`engines:fetch` runs in 5 workflows) by
-  `engines.lock.json` hash; replace `cargo install tauri-driver` with
-  `cargo-binstall`/cache; use `Swatinem/rust-cache` for Android instead of
-  `actions/cache`.
+- **Caching:** *partly delivered* - the `desktop.yml` workspace-test and Windows
+  E2E jobs cache `src-tauri/resources/engines` under the `engines.lock.json`
+  hash, pinned by a test. *Open:* the release/beta/nightly workflows, replacing
+  `cargo install tauri-driver` with `cargo-binstall`/cache, and
+  `Swatinem/rust-cache` for Android.
 - **Android build:** split the six sequential `tauri android build` calls into a
   parallel ABI matrix.
-- **Pinning:** *runners delivered* - every workflow asks for `ubuntu-24.04`
-  instead of `ubuntu-latest`, pinned by a test. *Open:* `rust-toolchain.toml`
-  (reproducibility report lists its absence) and `.nvmrc` + `engines.node`
-  (CI 22, README says 20+).
-- **Security:** CodeQL (JS/TS + Actions), OpenSSF Scorecard, `SECURITY.md`
-  reporting channel.
+- **Pinning:** *delivered* - every workflow asks for `ubuntu-24.04` instead of
+  `ubuntu-latest`, `rust-toolchain.toml` pins the stable channel with
+  clippy/rustfmt (the MSRV and fuzz jobs override it explicitly so the file
+  cannot mask them), and `.nvmrc` + `engines.node` state the Node version the
+  suite is built and tested with. All four facts are pinned by tests.
+- **Security:** *partly delivered* - `SECURITY.md` documents the private
+  advisory channel, supported versions and the deliberate limits, and the
+  `CodeQL` workflow analyses `javascript-typescript` plus the workflow files on
+  push, PR and a weekly schedule. *Open:* OpenSSF Scorecard.
 - **Dependency bot:** choose Renovate **or** Dependabot (currently only
   Dependabot); migrate the blocking notes if Renovate is chosen.
 - **Deferred majors, one PR each:** vite 6→7/8 and `@vitejs/plugin-react` 5;

@@ -18,7 +18,9 @@ function jobBlocks(): { name: string; body: string }[] {
   const jobs: { name: string; body: string }[] = [];
   const start = desktop.indexOf("\njobs:\n");
   const text = desktop.slice(start + 1);
-  const matches = [...text.matchAll(/^ {2}([a-z-]+):\n/gm)];
+  // Job keys may contain digits (`e2e`, `e2e-windows`); the old character class
+  // silently skipped them, so the timeout rule never reached the E2E jobs.
+  const matches = [...text.matchAll(/^ {2}([a-z0-9-]+):\n/gm)];
   matches.forEach((match, index) => {
     const bodyStart = match.index ?? 0;
     const bodyEnd = index + 1 < matches.length ? matches[index + 1].index : text.length;
@@ -120,5 +122,53 @@ describe("Linux runners are pinned (E5)", () => {
       const text = readFileSync(path.join(dir, file), "utf8");
       expect(text, file).not.toContain("runs-on: ubuntu-latest");
     }
+  });
+});
+
+describe("supply chain and toolchain pinning (E5)", () => {
+  it("pins the toolchain without letting the file mask the MSRV job", () => {
+    const toolchain = readFileSync(path.join(root, "rust-toolchain.toml"), "utf8");
+    expect(toolchain).toContain('channel = "stable"');
+    // A toolchain file takes precedence over the installed default: without the
+    // override the MSRV job would test stable and the gate would be a lie.
+    const msrv = jobBlocks().find((entry) => entry.name === "msrv");
+    expect(msrv, "msrv job").toBeDefined();
+    expect(msrv?.body).toContain('RUSTUP_TOOLCHAIN: "1.89.0"');
+  });
+
+  it("keeps the fuzz jobs on nightly despite the toolchain file", () => {
+    const fuzz = jobBlocks().find((entry) => entry.name === "fuzz");
+    expect(fuzz, "fuzz job").toBeDefined();
+    expect(fuzz?.body).toContain("RUSTUP_TOOLCHAIN: nightly");
+    expect(read("fuzz-pr.yml")).toContain("RUSTUP_TOOLCHAIN: nightly");
+  });
+
+  it("caches the engine downloads by lock hash", () => {
+    const key = "hashFiles('scripts/engines.lock.json')";
+    const rust = jobBlocks().find((entry) => entry.name === "rust");
+    expect(rust, "rust job").toBeDefined();
+    expect(rust?.body).toContain(key);
+    expect(rust?.body).toContain("path: src-tauri/resources/engines");
+    const windowsE2e = jobBlocks().find((entry) => entry.name === "e2e-windows");
+    expect(windowsE2e, "e2e-windows job").toBeDefined();
+    expect(windowsE2e?.body).toContain(key);
+  });
+
+  it("analyzes the frontend and the workflows themselves", () => {
+    const codeql = read("codeql.yml");
+    expect(codeql).toContain("javascript-typescript");
+    expect(codeql).toContain("actions");
+    expect(codeql).toMatch(/github\/codeql-action\/init@[0-9a-f]{40}/);
+    expect(codeql).toMatch(/github\/codeql-action\/analyze@[0-9a-f]{40}/);
+    expect(codeql).toContain("security-events: write");
+  });
+
+  it("declares the node version the suite is built and tested with", () => {
+    const nvmrc = readFileSync(path.join(root, ".nvmrc"), "utf8").trim();
+    const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+      engines?: { node?: string };
+    };
+    expect(nvmrc).toBe("22");
+    expect(pkg.engines?.node).toBe(">=20");
   });
 });

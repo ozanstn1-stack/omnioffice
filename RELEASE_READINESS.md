@@ -85,6 +85,33 @@ release-train schedule is decided.
   `fuzz-pr.yml`), so an image rollover cannot change a build between runs; a test
   fails if a workflow brings the floating label back.
   `test:src/lib/ci-workflow.test.ts#no workflow falls back to ubuntu-latest`
+- **Toolchain and runtime pinned (E5):** `rust-toolchain.toml` declares the
+  `stable` channel with clippy and rustfmt, so a contributor and CI install the
+  same tools. A toolchain file takes precedence over the installed default, so
+  the MSRV job sets `RUSTUP_TOOLCHAIN: "1.89.0"` explicitly - otherwise it would
+  silently test stable and the minimum would never be proven - and the fuzz jobs
+  set `RUSTUP_TOOLCHAIN: nightly`. Tests pin all three facts.
+  `test:src/lib/ci-workflow.test.ts#pins the toolchain without letting the file mask the MSRV job`
+  `test:src/lib/ci-workflow.test.ts#keeps the fuzz jobs on nightly despite the toolchain file`
+- **Node version declared (E5):** `.nvmrc` says 22 (what CI runs) and
+  `package.json` declares `engines.node >= 20` (what the toolchain actually
+  needs), so the README's "20+" and the CI version stop disagreeing.
+  `test:src/lib/ci-workflow.test.ts#declares the node version the suite is built and tested with`
+- **Engine downloads cached (E5):** the workspace-test and Windows E2E jobs cache
+  `src-tauri/resources/engines` under the `scripts/engines.lock.json` hash, so a
+  lock change invalidates the cache and a lock-identical build stops re-fetching
+  the pinned engines. The release, beta and nightly workflows still download
+  fresh and are the next step.
+  `test:src/lib/ci-workflow.test.ts#caches the engine downloads by lock hash`
+- **Static analysis and a reporting channel (E5):** `SECURITY.md` documents the
+  private advisory channel, the supported versions and the deliberate limits
+  (unsigned Windows installers, ACL scope, third-party engines). The `CodeQL`
+  workflow analyses `javascript-typescript` and the workflow files themselves on
+  push, pull request and a weekly schedule, with both CodeQL uses pinned to a
+  commit.
+  `test:src/lib/ci-workflow.test.ts#analyzes the frontend and the workflows themselves`
+  (no test: `SECURITY.md` is a policy document; the workflow half is pinned by
+  the CodeQL test above.)
 
 ## Implemented (this cycle, 7.3.0) - İzolasyon ve dayanıklılık (E2, ilk dilim)
 
