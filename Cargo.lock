@@ -3888,6 +3888,7 @@ dependencies = [
  "base64 0.23.1",
  "image",
  "keyring",
+ "libc",
  "lopdf",
  "officecore",
  "pdfcore",

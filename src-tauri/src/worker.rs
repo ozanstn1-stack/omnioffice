@@ -8,7 +8,16 @@
 //! * the parent enforces a wall-clock limit and kills a hung worker,
 //! * the result is capped (a runaway parser cannot fill memory through the
 //!   pipe),
-//! * on Windows the child runs in a job object with a process-memory limit,
+//! * the child is **contained before it executes**: on Windows it is created
+//!   suspended, assigned to a job object with a process-memory limit and only
+//!   then resumed; on Linux/macOS `RLIMIT_AS` and `RLIMIT_CPU` are set in the
+//!   child between `fork` and `exec`, so a parser that tries to allocate past
+//!   the ceiling dies instead of taking the machine with it (E2.2),
+//! * the child's environment is an explicit allow-list, not the parent's
+//!   (E2.2): a document parser never sees the user's API keys, provider tokens
+//!   or the dev launch context,
+//! * `--worker` counts only as the **first** argument (E2.2), so a document
+//!   path or a pasted argument can never turn the GUI into a worker,
 //! * a crash (access violation, stack overflow, `abort`) is reported as a
 //!   parse error - the document cannot kill the application.
 //!
@@ -27,12 +36,16 @@
 #[cfg(not(target_os = "android"))]
 use std::io::Read;
 use std::path::PathBuf;
-#[cfg(windows)]
-use std::process::Child;
 #[cfg(not(target_os = "android"))]
 use std::process::{Command, Stdio};
 #[cfg(not(target_os = "android"))]
 use std::time::{Duration, Instant};
+
+#[cfg(not(target_os = "android"))]
+mod containment;
+
+#[cfg(not(target_os = "android"))]
+use containment::{env_allowed, limit_resources, platform};
 
 /// Wall-clock limit for one worker job.
 #[cfg(not(target_os = "android"))]
@@ -40,9 +53,16 @@ const TIMEOUT: Duration = Duration::from_secs(180);
 /// Largest result the parent accepts from a worker.
 #[cfg(not(target_os = "android"))]
 const MAX_OUTPUT_BYTES: u64 = 512 * 1024 * 1024;
-/// Windows job-object process memory limit.
-#[cfg(windows)]
-const MAX_MEMORY_BYTES: usize = 1536 * 1024 * 1024;
+/// The worker arguments when the invocation is a worker run.
+///
+/// `--worker` only counts as the **first** argument (E2.2). It used to be
+/// looked up anywhere on the command line, so a document path or a forwarded
+/// argument containing the word could turn the GUI into a worker process; the
+/// worker's own command line is exactly `exe --worker <operation> <paths...>`.
+pub fn worker_invocation(args: &[String]) -> Option<&[String]> {
+    // `std::env::args()` puts the executable first.
+    (args.get(1)? == "--worker").then(|| &args[2..])
+}
 
 /// One worker job.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,15 +168,16 @@ fn run(job: &Job) -> Result<String, RunError> {
     let exe = std::env::current_exe().map_err(|error| RunError::Spawn(format!("worker: {error}")))?;
     let mut command = Command::new(&exe);
     command.arg("--worker").args(job.args()).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NO_WINDOW: the child is a console-less parse process.
-        command.creation_flags(0x0800_0000);
+    // Only the allow-list crosses into the child (E2.2).
+    command.env_clear();
+    for (name, value) in std::env::vars_os() {
+        if env_allowed(&name.to_string_lossy()) {
+            command.env(name, value);
+        }
     }
-    let mut child = command.spawn().map_err(|error| RunError::Spawn(format!("worker: {error}")))?;
-    #[cfg(windows)]
-    limit_memory(&child);
+    #[cfg(unix)]
+    limit_resources(&mut command);
+    let mut child = platform::spawn(&mut command).map_err(|error| RunError::Spawn(format!("worker: {error}")))?;
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
     let out_reader = std::thread::spawn(move || read_capped(stdout, MAX_OUTPUT_BYTES));
@@ -257,100 +278,6 @@ fn read_capped(mut stream: impl Read, limit: u64) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Puts the child in a job object with a process-memory cap. Best effort: a
-/// failure here only means the OS-level cap is missing, the timeout and the
-/// output cap still apply.
-#[cfg(windows)]
-fn limit_memory(child: &Child) {
-    use std::os::windows::io::AsRawHandle;
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_PROCESS_MEMORY,
-    };
-    unsafe {
-        let Ok(job) = CreateJobObjectW(None, None) else {
-            return;
-        };
-        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
-        info.ProcessMemoryLimit = MAX_MEMORY_BYTES;
-        let set = SetInformationJobObject(
-            job,
-            JobObjectExtendedLimitInformation,
-            &info as *const _ as *const core::ffi::c_void,
-            std::mem::size_of_val(&info) as u32,
-        );
-        if set.is_ok() {
-            let _ = AssignProcessToJobObject(job, HANDLE(child.as_raw_handle()));
-        }
-        // Closing our handle keeps the job alive while the child runs and
-        // destroys it when the child exits.
-        let _ = CloseHandle(job);
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parses_worker_arguments() {
-        assert_eq!(
-            Job::parse(&["office-open".into(), "a.docx".into()]).unwrap(),
-            Job::OfficeOpen { path: PathBuf::from("a.docx") }
-        );
-        assert_eq!(
-            Job::parse(&["repair".into(), "in.pdf".into(), "out.pdf".into()]).unwrap(),
-            Job::Repair { input: PathBuf::from("in.pdf"), output: PathBuf::from("out.pdf") }
-        );
-        assert!(Job::parse(&["nope".into()]).is_err());
-        assert!(Job::parse(&[]).is_err());
-    }
-
-    #[test]
-    fn a_corrupt_workbook_is_an_error_not_a_crash() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("broken.xlsx");
-        // A ZIP magic followed by garbage: calamine walks it and fails.
-        std::fs::write(&path, b"PK\x03\x04this is not a workbook at all").unwrap();
-        let result = execute(&Job::OfficeOpen { path: path.clone() });
-        assert!(result.is_err(), "a corrupt workbook must return an error");
-        // The in-process fallback path (what the app uses when the worker
-        // cannot be spawned) must also survive it.
-        let fallback = run_json_or_local(&Job::OfficeOpen { path });
-        assert!(fallback.is_err());
-    }
-
-    #[test]
-    fn a_valid_document_round_trips_through_the_job() {
-        let path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("tests").join("corpus").join("writer-basic.docx");
-        let json = execute(&Job::OfficeOpen { path }).expect("the corpus sample parses");
-        assert!(json.contains("\"kind\":\"writer\""), "{json:.120}");
-    }
-
-    /// Android has no worker process (see the module docs), so this is the path
-    /// every document takes there: it must return an error for a bad document
-    /// instead of unwinding.
-    #[test]
-    fn the_in_process_path_is_used_on_android_and_returns_errors() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("broken.xlsx");
-        std::fs::write(&path, b"PK\x03\x04this is not a workbook at all").unwrap();
-        let result = run_in_process(&Job::OfficeOpen { path }, None);
-        assert!(result.is_err(), "a corrupt workbook is an error, not a panic");
-        // A missing file goes through the same path.
-        let missing = dir.path().join("missing.docx");
-        assert!(run_in_process(&Job::OfficeOpen { path: missing }, None).is_err());
-    }
-
-    #[test]
-    fn a_panicking_parse_is_caught_by_the_fallback() {
-        // The fallback wraps `execute` in catch_unwind; prove the wrapper
-        // itself survives a panic (the worker process is the primary guard,
-        // this is the belt for the dev/test path).
-        let caught = std::panic::catch_unwind(|| panic!("boom"));
-        assert!(caught.is_err());
-    }
-}
+#[path = "worker_tests.rs"]
+mod tests;

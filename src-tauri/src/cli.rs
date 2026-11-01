@@ -148,11 +148,11 @@ fn write_line(message: &str, error: bool) {
     }
 }
 
-/// Runs the CLI when `--cli` is present, returning the process exit code.
-/// `None` means "not a CLI invocation; start the GUI".
+/// Runs the CLI when `--worker` or a command is present, returning the process
+/// exit code. `None` means "not a CLI invocation; start the GUI".
 pub fn run_if_present(args: Vec<String>) -> Option<i32> {
-    if let Some(index) = args.iter().position(|arg| arg == "--worker") {
-        return Some(run_worker(&args[index + 1..]));
+    if let Some(rest) = crate::worker::worker_invocation(&args) {
+        return Some(run_worker(rest));
     }
     match parse(&args) {
         Ok(None) => None,

@@ -121,10 +121,13 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    worker; lopdf and pdfium run in-process (`pdfcore/src/render.rs`,
    `textbox.rs`). Step 1: a persistent worker pool for preview/text-extraction/
    info commands (`worker.rs` `RunKind`). Step 2: the remaining PDF operations.
-2. **Worker limits.** Windows: create the child suspended and add it to the job
-   object before it runs (currently spawn-then-add, `worker.rs:159`); Linux/macOS:
-   `setrlimit(RLIMIT_AS, RLIMIT_CPU)`; clear the environment (allow-list);
-   recognise `--worker` only as the first argument (`cli.rs:154`).
+2. **Worker limits. Delivered (E2.2).** The child is contained before it runs:
+   on Windows it is created suspended, assigned to a job object with a
+   process-memory limit and only then resumed (it used to be spawn-then-assign);
+   Linux/macOS install `RLIMIT_AS` and `RLIMIT_CPU` between `fork` and `exec`; the
+   environment is an explicit allow-list (engine paths, temp dir and the platform
+   basics only); and `--worker` counts only as the first argument. The code lives
+   in `worker/containment.rs` with its own tests (`worker_tests.rs`).
 3. **UI stalls.** `ocr_languages` runs tesseract synchronously in the command
    thread (`commands.rs:124`); make it async + `spawn_blocking`, then audit the
    ~103 sync commands for file/process work.

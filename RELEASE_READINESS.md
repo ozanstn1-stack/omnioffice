@@ -65,6 +65,32 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (this cycle, 7.3.0) - İzolasyon ve dayanıklılık (E2, ilk dilim)
+
+- **Worker containment (E2.2, #550):** the untrusted-document parser child is
+  contained before it executes. On Windows it is created with
+  `CREATE_SUSPENDED`, assigned to a job object with a process-memory limit and
+  only then resumed (the previous code assigned the job after `spawn`), and the
+  suspended thread is resumed by thread id. On Linux/macOS `RLIMIT_AS` (1.5 GiB)
+  and `RLIMIT_CPU` (120 s) are installed between `fork` and `exec`. The child
+  inherits an explicit environment allow-list (engine paths, temp dir, locale and
+  the platform basics) instead of the parent's environment, so a parser never
+  sees API keys, provider tokens or the dev launch context. `--worker` counts
+  only as the first argument, so a document path cannot select the worker.
+  `test:src-tauri/src/worker_tests.rs#the_child_environment_is_an_allow_list`
+  `test:src-tauri/src/worker_tests.rs#the_child_inherits_the_resource_ceilings`
+  `test:src-tauri/src/worker_tests.rs#a_document_path_cannot_turn_the_gui_into_a_worker`
+
+### Not done / Known limitations (7.3.0)
+
+- **The containment is resource and environment, not an OS sandbox.** The child
+  is the same binary with the same user's rights: it can still read any file that
+  user can read, and it is not in an AppContainer/seccomp profile. The limits
+  stop a runaway parser from exhausting the machine and keep the parent's secrets
+  out of its environment; a full sandbox is a separate, platform-specific step.
+  (no test: a scope statement; the resource limits themselves are the tests
+  above.)
+
 ## Implemented (this cycle, 7.2.1) - Android derleme düzeltmesi
 
 - **The Android target runs the release's clippy gate in review (v7.2.1):** the
@@ -1612,7 +1638,7 @@ screen lock was not touched.
   (named by the v6.2.8 toast). `run_json_or_local` now takes the in-process path
   on Android, contained by `catch_unwind`; desktop keeps the worker process with
   its timeout and memory caps.
-  `test:src-tauri/src/worker.rs#the_in_process_path_is_used_on_android_and_returns_errors`
+  `test:src-tauri/src/worker_tests.rs#the_in_process_path_is_used_on_android_and_returns_errors`
 - **Scope:** on-device confirmation is the next step: install v6.2.9 and open the
   same `.xls`/PDF/DOCX from WhatsApp and from the app's picker.
   (no test: on-device verification pending.)
@@ -1951,7 +1977,7 @@ The v6.0.0 audit's A-phase, all verified in this tree:
   strip-and-rehash verification. `test:crates/pdfcore/src/certificate.rs#a_modified_file_fails_verification`
   and `test:crates/pdfcore/src/certificate.rs#the_certificate_never_carries_a_redacted_value`
 - **Crash-proof parsers** (#300): worker process with time, output and memory
-  limits. `test:src-tauri/src/worker.rs#a_corrupt_workbook_is_an_error_not_a_crash`
+  limits. `test:src-tauri/src/worker_tests.rs#a_corrupt_workbook_is_an_error_not_a_crash`
 - **Own tax id and VAT split** (#302): sales vs purchases, strict period.
   `test:src/lib/kdv-declaration.test.ts#splits sales and purchases by the configured own tax id`
 - **Spell checker completeness** (#304): capitalized words, `-ken`, curly
