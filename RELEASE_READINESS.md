@@ -85,6 +85,20 @@ release-train schedule is decided.
   than a marker. On Windows the job object path is exercised by the desktop E2E,
   which opens documents through the real worker.
 
+- **Async engine probe and typed command errors (E2.3, E2.4, #550):** the
+  engine probe (`engine_status`) spawns `tesseract --version`, so it now runs on
+  the blocking pool with `EngineStatus::missing()` as the answer when the probe
+  cannot run; `ocr_languages` (the command the proposal named) only lists a
+  directory and stays sync, which `docs/command-async-audit.md` records along
+  with the classification of the 50 sync commands that touch the filesystem and
+  the rule for new ones. The commands that still answered with a bare string —
+  external links, the file/folder token picks, job status/retry, the updater and
+  the two Android bridges — now return `PdfError`, so the UI receives
+  `{code, message}` and localizes the failure instead of printing English.
+  `test:crates/pdfcore/tests/engine_status_test.rs#a_failed_probe_reports_every_engine_missing`
+  `test:src-tauri/src/links.rs#a_rejected_link_is_a_typed_error_on_the_wire`
+  `test:src-tauri/src/jobs.rs#an_unknown_job_status_is_a_typed_error`
+
 ### Not done / Known limitations (7.3.0)
 
 - **The containment is resource and environment, not an OS sandbox.** The child

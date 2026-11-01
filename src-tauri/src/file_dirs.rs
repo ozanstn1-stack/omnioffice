@@ -21,7 +21,7 @@ pub fn issue_dir(path: &Path) -> FileRef {
 /// the SAF picker instead, so the native folder dialog is desktop-only.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn file_token_pick_directory(app: tauri::AppHandle) -> Result<Option<FileRef>, String> {
+pub async fn file_token_pick_directory(app: tauri::AppHandle) -> Result<Option<FileRef>, pdfcore::error::PdfError> {
     #[cfg(desktop)]
     {
         use tauri_plugin_dialog::DialogExt;
@@ -31,12 +31,12 @@ pub async fn file_token_pick_directory(app: tauri::AppHandle) -> Result<Option<F
         });
         let picked = tauri::async_runtime::spawn_blocking(move || receiver.recv().ok().flatten())
             .await
-            .map_err(|_| "the folder dialog failed".to_string())?;
+            .map_err(|_| pdfcore::error::PdfError::Internal("the folder dialog failed".to_string()))?;
         Ok(picked.and_then(|path| path.into_path().ok()).map(|path| issue_dir(&path)))
     }
     #[cfg(not(desktop))]
     {
         let _ = app;
-        Err("the folder picker is only available on desktop".to_string())
+        Err(pdfcore::error::PdfError::Unsupported("the folder picker is only available on desktop".to_string()))
     }
 }

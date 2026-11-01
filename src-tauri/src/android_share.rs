@@ -86,6 +86,16 @@ pub async fn share_document_file(
     path: String,
     mime_type: Option<String>,
     title: Option<String>,
+) -> Result<(), pdfcore::error::PdfError> {
+    share_file(app, path, mime_type, title).await.map_err(pdfcore::error::PdfError::Internal)
+}
+
+#[cfg(target_os = "android")]
+async fn share_file(
+    app: tauri::AppHandle,
+    path: String,
+    mime_type: Option<String>,
+    title: Option<String>,
 ) -> Result<(), String> {
     use tauri::Manager;
     let mut roots = Vec::new();
@@ -106,9 +116,13 @@ pub async fn share_document_file(
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn share_document_file(path: String, mime_type: Option<String>, title: Option<String>) -> Result<(), String> {
+pub fn share_document_file(
+    path: String,
+    mime_type: Option<String>,
+    title: Option<String>,
+) -> Result<(), pdfcore::error::PdfError> {
     let _ = (path, mime_type, title);
-    Err("Sharing is only available on Android.".to_string())
+    Err(pdfcore::error::PdfError::Unsupported("Sharing is only available on Android.".to_string()))
 }
 
 #[cfg(target_os = "android")]

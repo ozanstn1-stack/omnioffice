@@ -113,10 +113,14 @@ pub fn app_info() -> AppInfo {
     }
 }
 
+/// Probes the local engines. The probe runs `tesseract --version` (a process
+/// spawn, tens to hundreds of milliseconds on a cold disk), so it happens on the
+/// blocking pool instead of a command thread (E2.3); a failed probe reports
+/// "everything missing" rather than a blank panel.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn engine_status() -> EngineStatus {
-    engines::engine_status()
+pub async fn engine_status() -> EngineStatus {
+    tauri::async_runtime::spawn_blocking(engines::engine_status).await.unwrap_or_else(|_| EngineStatus::missing())
 }
 
 #[tauri::command]

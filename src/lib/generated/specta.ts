@@ -324,21 +324,27 @@ export const commands = {
 	/**  Reports what `kind`'s model would lose if it were saved as `target`. */
 	officeCompatibility: (kind: string, model: Value, target: string) => typedError<CompatibilityReport, OfficeErrorPayload>(__TAURI_INVOKE("office_compatibility", { kind, model, target })),
 	appInfo: () => __TAURI_INVOKE<AppInfo>("app_info"),
-	updateCheck: () => typedError<UpdateInfo_Serialize, string>(__TAURI_INVOKE("update_check")),
+	updateCheck: () => typedError<UpdateInfo_Serialize, PdfError>(__TAURI_INVOKE("update_check")),
 	/**
 	 *  Opens a release page or download in the system browser. Only links to
 	 *  this project's GitHub releases are accepted (parsed and normalised; see
 	 *  [`is_allowed_release_url`]).
 	 */
-	updateOpen: (url: string) => typedError<null, string>(__TAURI_INVOKE("update_open", { url })),
-	openExternalLink: (url: string) => typedError<null, string>(__TAURI_INVOKE("open_external_link", { url })),
+	updateOpen: (url: string) => typedError<null, PdfError>(__TAURI_INVOKE("update_open", { url })),
+	openExternalLink: (url: string) => typedError<null, PdfError>(__TAURI_INVOKE("open_external_link", { url })),
 	diagnosticsReport: () => __TAURI_INVOKE<string>("diagnostics_report"),
+	/**
+	 *  Probes the local engines. The probe runs `tesseract --version` (a process
+	 *  spawn, tens to hundreds of milliseconds on a cold disk), so it happens on the
+	 *  blocking pool instead of a command thread (E2.3); a failed probe reports
+	 *  "everything missing" rather than a blank panel.
+	 */
 	engineStatus: () => __TAURI_INVOKE<EngineStatus_Serialize>("engine_status"),
 	ocrLanguages: () => __TAURI_INVOKE<OcrLanguage[]>("ocr_languages"),
 	/**  Opens the native file dialog on the Rust side and returns read tokens. */
-	fileTokenPick: (extensions: string[] | null, multiple: boolean | null) => typedError<FileRef_Serialize[], string>(__TAURI_INVOKE("file_token_pick", { extensions, multiple })),
+	fileTokenPick: (extensions: string[] | null, multiple: boolean | null) => typedError<FileRef_Serialize[], PdfError>(__TAURI_INVOKE("file_token_pick", { extensions, multiple })),
 	/**  Opens the native save dialog and returns a read-write token for the target. */
-	fileTokenSave: (name: string | null, extensions: string[] | null) => typedError<FileRef_Serialize[], string>(__TAURI_INVOKE("file_token_save", { name, extensions })),
+	fileTokenSave: (name: string | null, extensions: string[] | null) => typedError<FileRef_Serialize[], PdfError>(__TAURI_INVOKE("file_token_save", { name, extensions })),
 	/**  Forgets a token (best effort; an unknown token is not an error). */
 	fileTokenRelease: (token: string) => __TAURI_INVOKE<boolean>("file_token_release", { token }),
 	/**
@@ -350,14 +356,14 @@ export const commands = {
 	 *  Opens the native folder dialog and returns a directory token. Android uses
 	 *  the SAF picker instead, so the native folder dialog is desktop-only.
 	 */
-	fileTokenPickDirectory: () => typedError<FileRef_Serialize | null, string>(__TAURI_INVOKE("file_token_pick_directory")),
+	fileTokenPickDirectory: () => typedError<FileRef_Serialize | null, PdfError>(__TAURI_INVOKE("file_token_pick_directory")),
 	cancelJob: (jobId: string) => __TAURI_INVOKE<void>("cancel_job", { jobId }),
 	/**  Full persisted history, newest first. */
 	jobsList: () => __TAURI_INVOKE<JobRecord_Serialize[]>("jobs_list"),
 	/**  Drops done/failed/cancelled/interrupted records and returns what remains. */
 	jobsClearFinished: () => __TAURI_INVOKE<JobRecord_Serialize[]>("jobs_clear_finished"),
 	/**  Registers (or restarts) a job from the frontend with kind/title/payload. */
-	jobsRegister: (id: string, kind: string, title: string, payload: Value | null) => typedError<JobRecord_Serialize, string>(__TAURI_INVOKE("jobs_register", { id, kind, title, payload })),
+	jobsRegister: (id: string, kind: string, title: string, payload: Value | null) => typedError<JobRecord_Serialize, PdfError>(__TAURI_INVOKE("jobs_register", { id, kind, title, payload })),
 	/**
 	 *  Progress mirror for events the Rust side does not emit itself (AI jobs emit
 	 *  `ai:progress` directly); idempotent with `job:progress`.
@@ -367,13 +373,13 @@ export const commands = {
 	 *  Terminal status reported by the producer ("succeeded" | "failed" |
 	 *  "cancelled" | "interrupted").
 	 */
-	jobsFinish: (id: string, status: string, error: string | null) => typedError<null, string>(__TAURI_INVOKE("jobs_finish", { id, status, error })),
+	jobsFinish: (id: string, status: string, error: string | null) => typedError<null, PdfError>(__TAURI_INVOKE("jobs_finish", { id, status, error })),
 	/**
 	 *  Returns the persisted record (including its payload) so the frontend can
 	 *  route it back to the originating screen. The status is intentionally left
 	 *  untouched: the screen starts a new run through the normal `start` path.
 	 */
-	jobsRetry: (id: string) => typedError<JobRecord_Serialize, string>(__TAURI_INVOKE("jobs_retry", { id })),
+	jobsRetry: (id: string) => typedError<JobRecord_Serialize, PdfError>(__TAURI_INVOKE("jobs_retry", { id })),
 	loadSettings: () => typedError<Value, PdfError>(__TAURI_INVOKE("load_settings")),
 	saveSettings: (settings: Value) => typedError<null, PdfError>(__TAURI_INVOKE("save_settings", { settings })),
 	loadRecent: () => typedError<RecentRef[], PdfError>(__TAURI_INVOKE("load_recent")),
@@ -426,7 +432,7 @@ export const commands = {
 	 *  desktop UI reveals the file in its folder instead. The typed bindings
 	 *  (exported on desktop) take their signature from it.
 	 */
-	shareDocumentFile: (path: string, mimeType: string | null, title: string | null) => typedError<null, string>(__TAURI_INVOKE("share_document_file", { path, mimeType, title })),
+	shareDocumentFile: (path: string, mimeType: string | null, title: string | null) => typedError<null, PdfError>(__TAURI_INVOKE("share_document_file", { path, mimeType, title })),
 	logOperation: (entry: OperationLogRequest_Deserialize) => typedError<null, PdfError>(__TAURI_INVOKE("log_operation", { entry })),
 	loadOperations: () => __TAURI_INVOKE<OperationEntry_Serialize[]>("load_operations"),
 	clearOperations: () => typedError<null, PdfError>(__TAURI_INVOKE("clear_operations")),
