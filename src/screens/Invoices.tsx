@@ -366,7 +366,12 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                 </Button>
               </>
             ) : null}
-            <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowKdvModal(true)}>
+            <Button
+              variant="ghost"
+              disabled={busy || !invoices.length}
+              data-testid="kdv-declaration-open"
+              onClick={() => setShowKdvModal(true)}
+            >
               <Calculator size={16} /> {t("invoices.kdv.open")}
             </Button>
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowAudit(true)}>
@@ -640,7 +645,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
               ).sort((left, right) => right.localeCompare(left));
               const report = generateKdvDeclarationReport(invoices, kdvPeriod, ownTaxId);
               return (
-                <div className="flex flex-col gap-3 text-sm">
+                <div className="flex flex-col gap-3 text-sm" data-testid="kdv-declaration">
                   <div className="flex items-center gap-2 flex-wrap">
                     <label className="text-xs muted" htmlFor="kdv-period">
                       {t("invoices.kdv.period")}

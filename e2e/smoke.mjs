@@ -503,12 +503,12 @@ async function accountantPersona(session) {
   );
   const opened = await execute(
     session,
-    "const button=[...document.querySelectorAll('button')].find((el)=>(el.textContent||'').includes('KDV Beyan')); if(!button) return false; button.click(); return true;",
+    "const button=document.querySelector('[data-testid=\"kdv-declaration-open\"]'); if(!button) return false; button.click(); return true;",
   );
   if (!opened) throw new Error("the KDV summary button was not found");
   const summary = await waitForScript(
     session,
-    "return /KDV1 Beyannamesi/.test(document.body.innerText) ? document.body.innerText.slice(0, 6000) : ''",
+    "const panel=document.querySelector('[data-testid=\"kdv-declaration\"]'); return panel ? panel.innerText.slice(0, 6000) : '';",
     15000,
     "KDV summary",
   );
