@@ -24,7 +24,8 @@ use pdfcore::error::PdfError;
 /// Prefix of a payload whose value lives in the OS vault.
 pub(crate) const KEYRING_PREFIX: &str = "keyring:";
 
-/// The vault service name; the same one the OAuth tokens use.
+/// The vault service name (the OAuth tokens use it too); Android has no keyring backend.
+#[cfg(not(target_os = "android"))]
 const SERVICE: &str = "OmniOffice";
 /// Slot names are vault-visible, so they say what they are and nothing more.
 const SLOT_PREFIX: &str = "secret-";
@@ -45,8 +46,7 @@ pub(crate) trait Vault {
     fn remove(&self, slot: &str);
 }
 
-/// The OS vault, when this target has one. `keyring` is not an Android
-/// dependency: the app file with the Keystore cipher is that platform's store.
+/// The OS vault, when this target has one (see [`SERVICE`] for Android).
 #[cfg(not(target_os = "android"))]
 pub(crate) fn system() -> Option<&'static dyn Vault> {
     Some(&Keyring)

@@ -67,6 +67,19 @@ describe("release builds are lock-pinned (E0)", () => {
     }
   });
 
+  it("runs the Android clippy gate in review, not only at tag time (v7.2.1)", () => {
+    // The release job runs `cargo clippy -- -D warnings` for the Android
+    // target; when the PR job only ran `cargo check`, a dead-code warning that
+    // exists on Android alone (v7.2.0's unused keyring constant) shipped in the
+    // review and failed the tagged build.
+    const job = jobBlocks().find((entry) => entry.name === "android-target");
+    expect(job, "android-target job").toBeDefined();
+    expect(job?.body).toContain(
+      "cargo clippy -p pdf-swiss-army-knife --lib --target aarch64-linux-android -- -D warnings",
+    );
+    expect(job?.body).not.toMatch(/cargo check -p pdf-swiss-army-knife --target aarch64-linux-android/);
+  });
+
   it("keeps a single advisory policy (no cargo audit --ignore duplicate)", () => {
     expect(desktop).not.toContain("cargo audit \\");
     expect(desktop).toContain("cargo deny check");
