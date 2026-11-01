@@ -200,9 +200,14 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    uploaded as the `coverage-frontend` artifact, and a test that refuses to let a
    floor drop. *Open:* the `cargo llvm-cov` job (Rust coverage is not measured
    today).
-2. **Thinly tested large screens.** `PdfStudio` (1,901), `Reader` (1,415), `Ai`
-   (1,915, 6 tests), `Vault` (4), `Annotate`, `PageTools`; screens with no tests:
-   `PetitionWizard`, `lan-sync-plan`, `scanner-corners`, `scanner-page-list`.
+2. **Thinly tested large screens.** *Partly delivered:* the three components
+   with no tests at all now have them - `LanSyncPlan` (6 cases),
+   `ScannerPageList` (8) and `CornerPicker` (6). The large screens named here
+   already had aggregate coverage (`pdf-screens.test.tsx` renders `Reader` and
+   imports `PdfStudio`'s helpers, plus `Ai.test.tsx` and `Vault.test.tsx`), so
+   the remaining work is deepening those suites rather than creating files.
+   *Open:* `PdfStudio`'s own interaction paths, `Annotate`, `PageTools` and
+   `PetitionWizard` depth.
 3. **E2E.** Split `e2e/smoke.mjs` (696 lines) into scenario modules; add Calc,
    Impress, Scanner, Vault, signature/verification and AI-pack flows against
    `scripts/mock-deepseek.mjs`; make the Android emulator run label-triggerable

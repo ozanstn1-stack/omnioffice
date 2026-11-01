@@ -114,6 +114,21 @@ release-train schedule is decided.
   keys.
   `test:src/lib/i18n.test.ts#picks the singular and plural English forms`
   `test:src/lib/i18n.test.ts#keeps the Turkish sentence the same for every count`
+- **The three untested components now have tests (E4.2):** `LanSyncPlan`
+  (6 cases: one row per document, the three explicit conflict choices, and the
+  delete/restore pair for each side a file was removed from - nothing is ever
+  chosen by default), `ScannerPageList` (8 cases: page ids rather than photo
+  paths as row identity, the two halves of a book spread, auto vs hand-cropped
+  badges, filter/move/adjust/remove/clear callbacks, and the locked state while
+  the detector runs) and `CornerPicker` (6 cases: the preview comes from the
+  backend, the detector's "nothing found" path, arrow keys moving a handle by
+  1 % / 5 % with Shift, saving pixel corners, and `undefined` when the whole
+  photo is kept). `PdfStudio`, `Reader`, `Ai` and `Vault` already had coverage
+  through `pdf-screens.test.tsx`, `Ai.test.tsx` and `Vault.test.tsx`, so the
+  slice added the genuinely missing files instead of duplicating them.
+  `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
+  `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
+  `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
 - **The i18n audit grew teeth (E4.5):** the audit now fails on a `{placeholder}`
   set that differs between English and Turkish (a Turkish value missing
   `{count}` rendered the literal `{count}`) and on more user-visible JSX text
