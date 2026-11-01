@@ -128,12 +128,19 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    environment is an explicit allow-list (engine paths, temp dir and the platform
    basics only); and `--worker` counts only as the first argument. The code lives
    in `worker/containment.rs` with its own tests (`worker_tests.rs`).
-3. **UI stalls.** `ocr_languages` runs tesseract synchronously in the command
-   thread (`commands.rs:124`); make it async + `spawn_blocking`, then audit the
-   ~103 sync commands for file/process work.
-4. **Typed errors.** The 13 commands returning `Result<_, String>` (jobs, files,
-   file_dirs, links, update, android_update, android_share) move to
-   `PdfError`/`ErrorCode`.
+3. **UI stalls. Delivered (E2.3).** The proposal named `ocr_languages`, which
+   only lists the tessdata directory; the command that spawns a process is
+   `engine_status` (`tesseract --version`), and it now runs on the blocking pool
+   with a "missing" fallback. The audit of the sync surface is in
+   `docs/command-async-audit.md`: 50 sync commands touch the filesystem, all
+   bounded small reads/writes of app state, plus the rule for new commands.
+4. **Typed errors. Delivered (E2.4).** The commands that answered with a bare
+   string - external links, the file/folder token picks, job status and retry,
+   the updater, and the two Android bridges (behind thin validating wrappers so
+   the platform code stays as it was) - now return `PdfError`, so the UI gets
+   `{code, message}` and its existing `toAppError` maps the code to a localized
+   message. A rejected link and an unknown job status are pinned as
+   `invalid_input` on the wire.
 5. **Fuzzing.** `pdf_parse` wraps the parser in `catch_unwind`, hiding panics;
    remove it. Add targets for forms, signature/CMS verification, redact, rebuild;
    add inputs with no target today (EML, ODS/ODP, WebDAV PROPFIND XML, LAN frame

@@ -115,8 +115,10 @@ pub async fn file_token_pick(
     app: tauri::AppHandle,
     extensions: Option<Vec<String>>,
     multiple: Option<bool>,
-) -> Result<Vec<FileRef>, String> {
-    pick(&app, extensions, PickMode::Open { multiple: multiple.unwrap_or(false) }).await
+) -> Result<Vec<FileRef>, pdfcore::error::PdfError> {
+    pick(&app, extensions, PickMode::Open { multiple: multiple.unwrap_or(false) })
+        .await
+        .map_err(pdfcore::error::PdfError::Internal)
 }
 
 /// Opens the native save dialog and returns a read-write token for the target.
@@ -126,8 +128,8 @@ pub async fn file_token_save(
     app: tauri::AppHandle,
     name: Option<String>,
     extensions: Option<Vec<String>>,
-) -> Result<Vec<FileRef>, String> {
-    pick(&app, extensions, PickMode::Save { name }).await
+) -> Result<Vec<FileRef>, pdfcore::error::PdfError> {
+    pick(&app, extensions, PickMode::Save { name }).await.map_err(pdfcore::error::PdfError::Internal)
 }
 
 /// Forgets a token (best effort; an unknown token is not an error).

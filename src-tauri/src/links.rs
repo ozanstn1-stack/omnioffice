@@ -4,6 +4,7 @@
 //! mail links only, never a local path, a network share or a script.
 
 use officecore::model::safe_link_target;
+use pdfcore::error::PdfError;
 
 /// The target to open, or why it must not be opened.
 fn external_link_target(url: &str) -> Result<String, String> {
@@ -16,14 +17,24 @@ fn external_link_target(url: &str) -> Result<String, String> {
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn open_external_link(url: String) -> Result<(), String> {
-    let target = external_link_target(&url)?;
-    tauri_plugin_opener::open_url(target, None::<&str>).map_err(|error| error.to_string())
+pub fn open_external_link(url: String) -> Result<(), PdfError> {
+    let target = external_link_target(&url).map_err(PdfError::InvalidInput)?;
+    tauri_plugin_opener::open_url(target, None::<&str>).map_err(|error| PdfError::Internal(error.to_string()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::external_link_target;
+    use super::{external_link_target, open_external_link};
+
+    #[test]
+    fn a_rejected_link_is_a_typed_error_on_the_wire() {
+        // The UI maps `code` to a localized message, so the shape matters: a
+        // rejected link is `invalid_input`, not a bare string.
+        let error = open_external_link("javascript:alert(1)".into()).expect_err("javascript must be refused");
+        let wire = serde_json::to_value(&error).expect("serializes");
+        assert_eq!(wire["code"], "invalid_input", "{wire}");
+        assert!(wire["message"].as_str().unwrap_or_default().contains("web and e-mail"), "{wire}");
+    }
 
     #[test]
     fn web_and_mail_links_are_allowed() {

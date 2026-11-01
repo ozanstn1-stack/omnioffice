@@ -705,9 +705,9 @@ pub fn jobs_register(
     kind: String,
     title: String,
     payload: Option<serde_json::Value>,
-) -> Result<JobRecord, String> {
+) -> Result<JobRecord, pdfcore::error::PdfError> {
     store.upsert(&id, &kind, &title, payload);
-    store.record(&id).ok_or_else(|| format!("job {id} missing after register"))
+    store.record(&id).ok_or_else(|| pdfcore::error::PdfError::NotFound(format!("job {id} missing after register")))
 }
 
 /// Progress mirror for events the Rust side does not emit itself (AI jobs emit
@@ -734,16 +734,22 @@ pub fn jobs_finish(
     id: String,
     status: String,
     error: Option<String>,
-) -> Result<(), String> {
-    let status = match status.as_str() {
-        "succeeded" | "done" => JobStatus::Done,
-        "failed" => JobStatus::Failed,
-        "cancelled" => JobStatus::Cancelled,
-        "interrupted" => JobStatus::Interrupted,
-        other => return Err(format!("unsupported job status {other}")),
-    };
+) -> Result<(), pdfcore::error::PdfError> {
+    let status = job_status(&status)?;
     store.set_status(&id, status, error);
     Ok(())
+}
+
+/// One terminal status the producer may report. An unknown one is a typed
+/// `invalid_input`, so the UI can localize it (E2.4).
+fn job_status(value: &str) -> Result<JobStatus, pdfcore::error::PdfError> {
+    match value {
+        "succeeded" | "done" => Ok(JobStatus::Done),
+        "failed" => Ok(JobStatus::Failed),
+        "cancelled" => Ok(JobStatus::Cancelled),
+        "interrupted" => Ok(JobStatus::Interrupted),
+        other => Err(pdfcore::error::PdfError::InvalidInput(format!("unsupported job status {other}"))),
+    }
 }
 
 /// Returns the persisted record (including its payload) so the frontend can
@@ -751,8 +757,8 @@ pub fn jobs_finish(
 /// untouched: the screen starts a new run through the normal `start` path.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn jobs_retry(store: State<'_, Arc<JobStore>>, id: String) -> Result<JobRecord, String> {
-    store.record(&id).ok_or_else(|| format!("job {id} not found"))
+pub fn jobs_retry(store: State<'_, Arc<JobStore>>, id: String) -> Result<JobRecord, pdfcore::error::PdfError> {
+    store.record(&id).ok_or_else(|| pdfcore::error::PdfError::NotFound(format!("job {id} not found")))
 }
 
 #[cfg(test)]
@@ -812,6 +818,16 @@ mod tests {
         let persisted = read_records(&path);
         assert!(persisted.iter().all(|record| record.status != JobStatus::Running));
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn an_unknown_job_status_is_a_typed_error() {
+        // `jobs_finish` used to answer with a bare string; the UI now gets a
+        // code it can localize (E2.4).
+        let error = job_status("not-a-status").expect_err("refused");
+        let wire = serde_json::to_value(&error).expect("serializes");
+        assert_eq!(wire["code"], "invalid_input", "{wire}");
+        assert!(job_status("done").is_ok());
     }
 
     #[test]

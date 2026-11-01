@@ -130,11 +130,18 @@ pub async fn update_download_apk(
     app: tauri::AppHandle,
     url: String,
     expected_sha256: Option<String>,
-) -> Result<String, String> {
-    use tauri::{Emitter, Manager};
+) -> Result<String, pdfcore::error::PdfError> {
     if !is_allowed_url(&url) {
-        return Err("Only OmniOffice release downloads can be fetched.".to_string());
+        return Err(pdfcore::error::PdfError::InvalidInput(
+            "Only OmniOffice release downloads can be fetched.".to_string(),
+        ));
     }
+    download_apk(app, url, expected_sha256).await.map_err(pdfcore::error::PdfError::Internal)
+}
+
+#[cfg(target_os = "android")]
+async fn download_apk(app: tauri::AppHandle, url: String, expected_sha256: Option<String>) -> Result<String, String> {
+    use tauri::{Emitter, Manager};
     let file_name = apk_file_name(&url).ok_or_else(|| "The update link does not name an APK.".to_string())?;
     let cache_dir = app.path().app_cache_dir().map_err(|_| "The app cache directory is not available.".to_string())?;
     let updates_dir = cache_dir.join(UPDATES_DIR);
@@ -198,7 +205,12 @@ pub async fn update_download_apk(
 /// runs in `ApkInstallerPlugin.kt` through the mobile plugin bridge.
 #[cfg(target_os = "android")]
 #[tauri::command]
-pub fn update_install_apk(app: tauri::AppHandle, path: String) -> Result<(), String> {
+pub fn update_install_apk(app: tauri::AppHandle, path: String) -> Result<(), pdfcore::error::PdfError> {
+    install_apk(app, path).map_err(pdfcore::error::PdfError::Internal)
+}
+
+#[cfg(target_os = "android")]
+fn install_apk(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri::Manager;
     let cache_dir = app.path().app_cache_dir().map_err(|_| "The app cache directory is not available.".to_string())?;
     let candidate = std::path::PathBuf::from(path);

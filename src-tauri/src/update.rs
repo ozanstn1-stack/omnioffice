@@ -239,32 +239,35 @@ pub fn evaluate_release(
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub async fn update_check() -> Result<UpdateInfo, String> {
+pub async fn update_check() -> Result<UpdateInfo, pdfcore::error::PdfError> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .connect_timeout(Duration::from_secs(10))
         .user_agent(concat!("OmniOffice/", env!("CARGO_PKG_VERSION")))
         .build()
-        .map_err(|_| "Could not create the HTTP client.".to_string())?;
-    let mut response = client
-        .get(LATEST_RELEASE_API)
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|_| "Could not reach GitHub. Check the internet connection.".to_string())?;
+        .map_err(|_| pdfcore::error::PdfError::Internal("Could not create the HTTP client.".to_string()))?;
+    let mut response =
+        client.get(LATEST_RELEASE_API).header("Accept", "application/vnd.github+json").send().await.map_err(|_| {
+            pdfcore::error::PdfError::Internal("Could not reach GitHub. Check the internet connection.".to_string())
+        })?;
     if !response.status().is_success() {
-        return Err(format!("GitHub answered {}.", response.status().as_u16()));
+        return Err(pdfcore::error::PdfError::Internal(format!("GitHub answered {}.", response.status().as_u16())));
     }
     let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| "The update answer could not be read.".to_string())? {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| pdfcore::error::PdfError::Internal("The update answer could not be read.".to_string()))?
+    {
         if body.len() + chunk.len() > MAX_RESPONSE_BYTES {
-            return Err("The update answer is too large.".to_string());
+            return Err(pdfcore::error::PdfError::Internal("The update answer is too large.".to_string()));
         }
         body.extend_from_slice(&chunk);
     }
-    let release: serde_json::Value =
-        serde_json::from_slice(&body).map_err(|_| "The update answer is not valid JSON.".to_string())?;
+    let release: serde_json::Value = serde_json::from_slice(&body)
+        .map_err(|_| pdfcore::error::PdfError::Internal("The update answer is not valid JSON.".to_string()))?;
     evaluate_release(&release, env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH)
+        .map_err(pdfcore::error::PdfError::Internal)
 }
 
 /// Opens a release page or download in the system browser. Only links to
@@ -272,11 +275,12 @@ pub async fn update_check() -> Result<UpdateInfo, String> {
 /// [`is_allowed_release_url`]).
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn update_open(url: String) -> Result<(), String> {
+pub fn update_open(url: String) -> Result<(), pdfcore::error::PdfError> {
     if !is_allowed_release_url(&url) {
-        return Err("Only OmniOffice release links can be opened.".to_string());
+        return Err(pdfcore::error::PdfError::InvalidInput("Only OmniOffice release links can be opened.".to_string()));
     }
-    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|error| error.to_string())
+    tauri_plugin_opener::open_url(url, None::<&str>)
+        .map_err(|error| pdfcore::error::PdfError::Internal(error.to_string()))
 }
 
 #[cfg(test)]

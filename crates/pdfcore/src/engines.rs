@@ -242,6 +242,24 @@ pub struct EngineStatus {
     pub tessdata_dir: Option<String>,
 }
 
+impl EngineStatus {
+    /// Every engine reported missing. The UI then shows the install hint
+    /// instead of a blank panel, which is what a failed probe (a panicking
+    /// worker thread, not a missing binary) should look like.
+    pub fn missing() -> Self {
+        Self {
+            pdfium: false,
+            qpdf: false,
+            tesseract: false,
+            tesseract_version: None,
+            ocr_languages: Vec::new(),
+            pdfium_path: None,
+            tesseract_path: None,
+            tessdata_dir: None,
+        }
+    }
+}
+
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize)]
 pub struct OcrLanguage {
