@@ -1,0 +1,12 @@
+# The toolchain this workspace is developed with (the reproducibility report
+# listed its absence). `stable` with the lint/format components is what every CI
+# Rust job installs, so a contributor gets the same tools with `rustup` alone.
+#
+# Two CI jobs must NOT inherit this file, because a toolchain file takes
+# precedence over the installed default and would silently change what they
+# test: the MSRV job (pinned to the version in Cargo.toml) and the fuzz jobs
+# (nightly). Both set RUSTUP_TOOLCHAIN explicitly, and
+# `src/lib/ci-workflow.test.ts` keeps it that way.
+[toolchain]
+channel = "stable"
+components = ["clippy", "rustfmt"]
