@@ -404,6 +404,7 @@ const ReaderPage = memo(function ReaderPage({
   runs?: readonly TextRunInfo[];
   showTextLayer?: boolean;
 }) {
+  const t = useT();
   // Render at the display's pixel density: requesting CSS pixels made zoomed
   // pages visibly blurry on Android (the bitmap was upscaled by the browser).
   const requestedWidth = previewRasterWidth(width);
@@ -484,7 +485,7 @@ const ReaderPage = memo(function ReaderPage({
       {src ? (
         <img
           src={src}
-          alt={`Page ${page}`}
+          alt={t("common.pageAlt", { page })}
           width={width}
           style={{ display: "block", width: "100%", height: "auto" }}
           draggable={false}

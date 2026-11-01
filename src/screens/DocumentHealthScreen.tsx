@@ -196,13 +196,13 @@ export function DocumentHealthScreen({
   const getSeverityBadge = (severity: HealthIssue["severity"]) => {
     switch (severity) {
       case "critical":
-        return <Badge tone="danger">Kritik Risk</Badge>;
+        return <Badge tone="danger">{t("health.severityCritical")}</Badge>;
       case "warning":
-        return <Badge tone="warn">Uyarı</Badge>;
+        return <Badge tone="warn">{t("health.severityWarning")}</Badge>;
       case "info":
-        return <Badge tone="default">Bilgi</Badge>;
+        return <Badge tone="default">{t("health.severityInfo")}</Badge>;
       default:
-        return <Badge tone="ok">Uyumlu</Badge>;
+        return <Badge tone="ok">{t("health.severityOk")}</Badge>;
     }
   };
 
@@ -210,11 +210,11 @@ export function DocumentHealthScreen({
     <Screen
       title={
         <span className="flex items-center gap-2">
-          Belge Sağlığı ve KVKK Denetimi
+          {t("health.title")}
           <Badge tone="warn">{t("common.experimental")}</Badge>
         </span>
       }
-      subtitle="Kişisel veri riskleri, gizli meta veriler, erişilebilirlik ve imza durumunu tek tıkla analiz edin ve onarın."
+      subtitle={t("health.subtitle")}
       actions={
         <Button
           variant="primary"
@@ -222,7 +222,7 @@ export function DocumentHealthScreen({
           disabled={busy}
           onClick={() => void handlePickFile()}
         >
-          {filePath ? `Belge: ${fileBaseName(filePath)}` : "Belge Seç (PDF / DOCX / UDF)"}
+          {filePath ? t("health.document", { name: fileBaseName(filePath) }) : t("health.pickFile")}
         </Button>
       }
     >
@@ -243,33 +243,33 @@ export function DocumentHealthScreen({
                   {report.score}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">Belge Sağlık Skoru</h2>
+                  <h2 className="text-lg font-bold">{t("health.score")}</h2>
                   <p className="text-sm muted">
                     {report.score >= 80
-                      ? "Belgeniz genel olarak temiz ve mevzuata uygundur."
+                      ? t("health.verdictGood")
                       : report.score >= 50
-                        ? "Dikkat: Belgede düzeltilmesi gereken KVKK veya meta veri riskleri var."
-                        : "Yüksek Risk: Kişisel veriler veya kritik sızıntılar tespit edildi!"}
+                        ? t("health.verdictWarn")
+                        : t("health.verdictBad")}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <div className="text-xs muted uppercase font-bold tracking-wider">Tespitler</div>
+                  <div className="text-xs muted uppercase font-bold tracking-wider">{t("health.findings")}</div>
                   <div className="text-sm font-semibold">
-                    <span className="text-red-500">{report.criticalCount} kritik</span> ·{" "}
-                    <span className="text-amber-500">{report.warningCount} uyarı</span>
+                    <span className="text-red-500">{t("health.criticalCount", { count: report.criticalCount })}</span> ·{" "}
+                    <span className="text-amber-500">{t("health.warningCount", { count: report.warningCount })}</span>
                   </div>
                 </div>
               </div>
             </Card>
 
-            <OptionCard title="Tespit Edilen Sorunlar ve Düzeltmeler">
+            <OptionCard title={t("health.issuesTitle")}>
               {report.issues.length === 0 ? (
                 <div className="p-6 text-center text-emerald-500 flex flex-col items-center gap-2">
                   <CheckCircle2 className="w-8 h-8" />
-                  <span className="font-semibold">Harika! Belgenizde herhangi bir risk bulunamadı.</span>
+                  <span className="font-semibold">{t("health.clean")}</span>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
@@ -304,7 +304,7 @@ export function DocumentHealthScreen({
                           icon={<Sparkles className="w-3.5 h-3.5" />}
                           onClick={() => void handleFixIssue(issue)}
                         >
-                          Tek Tıkla Düzelt
+                          {t("health.fixAll")}
                         </Button>
                       ) : null}
                     </div>
@@ -313,22 +313,22 @@ export function DocumentHealthScreen({
               )}
             </OptionCard>
 
-            <OptionCard title="İncelenen Metin İçeriği">
+            <OptionCard title={t("health.contentTitle")}>
               <TextArea
                 rows={6}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Denetlenecek metin içeriğini girin veya belge yükleyin..."
+                placeholder={t("health.contentPlaceholder")}
               />
             </OptionCard>
           </div>
         }
         side={
           <div className="flex flex-col gap-4">
-            <OptionCard title="Aktif Meta Veriler">
+            <OptionCard title={t("health.metadataTitle")}>
               <div className="flex flex-col gap-2 text-xs">
                 {Object.entries(metadata).length === 0 ? (
-                  <span className="muted">Meta veri bulunmuyor (Temiz).</span>
+                  <span className="muted">{t("health.metadataClean")}</span>
                 ) : (
                   Object.entries(metadata).map(([k, v]) => (
                     <div key={k} className="flex justify-between border-b border-border/30 pb-1">
@@ -348,21 +348,18 @@ export function DocumentHealthScreen({
                     setMetadata({});
                     push({
                       kind: "success",
-                      title: "Tüm meta veriler temizlendi",
-                      detail: "Tüm gizli meta veri etiketleri sıfırlandı.",
+                      title: t("health.metadataClearedTitle"),
+                      detail: t("health.metadataClearedDetail"),
                     });
                   }}
                 >
-                  Tüm Meta Verileri Sil
+                  {t("health.removeMetadata")}
                 </Button>
               ) : null}
             </OptionCard>
 
-            <OptionCard title="KVKK / Mevzuat Bilgisi">
-              <p className="text-xs muted leading-relaxed">
-                6698 sayılı KVKK gereğince; TCKN, ad-soyad, telefon, e-posta, IBAN ve araç plakası gibi veriler açık
-                rıza olmaksızın veya anonimleştirilmeden üçüncü taraflarla paylaşılamaz.
-              </p>
+            <OptionCard title={t("health.kvkkTitle")}>
+              <p className="text-xs muted leading-relaxed">{t("health.kvkkNotice")}</p>
             </OptionCard>
           </div>
         }

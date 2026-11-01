@@ -578,7 +578,7 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
                     style={{ width: 110 }}
                     value={thumbWidth}
                     onChange={(event) => setThumbWidth(Number(event.target.value))}
-                    aria-label="Thumbnail size"
+                    aria-label={t("organize.thumbnailSize")}
                   >
                     <option value={130}>Small</option>
                     <option value={180}>Medium</option>

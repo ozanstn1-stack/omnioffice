@@ -103,6 +103,26 @@ release-train schedule is decided.
   the pinned engines. The release, beta and nightly workflows still download
   fresh and are the next step.
   `test:src/lib/ci-workflow.test.ts#caches the engine downloads by lock hash`
+- **The i18n audit grew teeth (E4.5):** the audit now fails on a `{placeholder}`
+  set that differs between English and Turkish (a Turkish value missing
+  `{count}` rendered the literal `{count}`) and on more user-visible JSX text
+  than `scripts/i18n-baseline.json` records. The baseline is a ratchet -
+  `--update` may only lower it unless `--allow-raise` is passed on purpose - and
+  it is measured with the TypeScript parser, so generics and comparisons are not
+  mistaken for prose. Identical-in-both values and keys no literal call reaches
+  are printed as advisory, because both have legitimate cases.
+  `test:src/lib/ci-workflow.test.ts#runs the audit with --check in the lint job`
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+- **Health and petition screens speak both languages (E4.5):** 18 JSX text nodes
+  in `DocumentHealthScreen` and `PetitionWizard` moved into the tables (adding a
+  `health.*` and `petition.*` namespace in both languages), and the five
+  attribute strings the proposal named - the dialog's `aria-label`, the
+  thumbnail-size label and three `alt="Page N"` texts - come from the table too.
+  The baseline fell 131 -> 113; `Invoices` (42), `KvkkWizard` (9) and the rest
+  stay recorded as the honest backlog, several of them units and format names
+  that should stay literal. `docs/i18n.md` documents the workflow.
+  `test:src/screens/DocumentHealthScreen.test.tsx#renders health screen with high score on clean text`
+  `test:src/screens/DocumentHealthScreen.tokens.test.tsx#picks through the Rust dialog and inspects a PDF token as a PDF`
 - **Static analysis and a reporting channel (E5):** `SECURITY.md` documents the
   private advisory channel, the supported versions and the deliberate limits
   (unsigned Windows installers, ACL scope, third-party engines). The `CodeQL`

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "files": {
+    "App.tsx": 2,
+    "components/ai-settings.tsx": 1,
+    "components/files.tsx": 2,
+    "components/pages.tsx": 1,
+    "office/calc/ui/PrintLayoutDialog.tsx": 2,
+    "office/calc/ui/TablesUi.tsx": 1,
+    "office/CalcEditor.tsx": 1,
+    "office/office-ui.tsx": 1,
+    "office/tools/cleaner.tsx": 3,
+    "office/tools/data.tsx": 2,
+    "office/tools/draw.tsx": 3,
+    "office/tools/pdf-forms.tsx": 4,
+    "office/tools/templates.tsx": 1,
+    "office/version-history-dialog.tsx": 1,
+    "office/writer/views.tsx": 2,
+    "screens/Ai.tsx": 2,
+    "screens/Batch.tsx": 3,
+    "screens/Inspect.tsx": 2,
+    "screens/Invoices.tsx": 42,
+    "screens/KvkkWizard.tsx": 9,
+    "screens/Ocr.tsx": 2,
+    "screens/Organize.tsx": 6,
+    "screens/PageTools.tsx": 6,
+    "screens/PdfStudio.tsx": 4,
+    "screens/Redact.tsx": 4,
+    "screens/Security.tsx": 1,
+    "screens/Settings.tsx": 2,
+    "screens/Vault.tsx": 3
+  }
+}

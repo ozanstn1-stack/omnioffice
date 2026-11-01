@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DocumentHealthScreen } from "./DocumentHealthScreen";
+import en from "../lib/i18n/en.json";
 
 describe("DocumentHealthScreen (v5.4.0)", () => {
   it("renders health screen with high score on clean text", () => {
     render(<DocumentHealthScreen initialText="Temiz metin içeriği" />);
-    expect(screen.getByText("Belge Sağlığı ve KVKK Denetimi")).toBeInTheDocument();
-    expect(screen.getByText("Belge Sağlık Skoru")).toBeInTheDocument();
-    expect(screen.getByText("Harika! Belgenizde herhangi bir risk bulunamadı.")).toBeInTheDocument();
+    expect(screen.getByText(en["health.title"])).toBeInTheDocument();
+    expect(screen.getByText(en["health.score"])).toBeInTheDocument();
+    expect(screen.getByText(en["health.clean"])).toBeInTheDocument();
   });
 
   it("detects personal data and allows 1-click fix interaction", () => {
@@ -20,7 +21,7 @@ describe("DocumentHealthScreen (v5.4.0)", () => {
     expect(screen.getByText("IBAN Numarası Tespit Edildi")).toBeInTheDocument();
     expect(screen.getByText("Gizli Belge Meta Verileri")).toBeInTheDocument();
 
-    const fixButtons = screen.getAllByText("Tek Tıkla Düzelt");
+    const fixButtons = screen.getAllByText(en["health.fixAll"]);
     expect(fixButtons.length).toBeGreaterThan(0);
 
     // Click the metadata fix button

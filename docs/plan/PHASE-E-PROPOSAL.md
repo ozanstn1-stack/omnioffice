@@ -209,13 +209,16 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    (`android-e2e`) on PRs.
 4. **Benchmarks.** Make the criterion gate blocking with a two-consecutive-runs
    rule (or median of two), instead of advisory.
-5. **i18n.** Remove hardcoded Turkish JSX literals (`PetitionWizard` 16,
-   `KvkkWizard` 10, `Invoices` 8, `DocumentHealthScreen` 7) and English
-   `aria-label`/`alt` strings (`office-ui.tsx:285`, `Organize.tsx:581`,
-   `pages.tsx:77,378`, `Reader.tsx:487`); extend `i18n-audit.mjs` to check
-   hardcoded JSX text, placeholder parity, unused-key candidates and en=tr equal
-   values; replace the 68 `{count}`/“(s)” fake plurals with `Intl.PluralRules` /
-   `Intl.NumberFormat`.
+5. **i18n.** *Partly delivered.* `i18n-audit.mjs` now fails on placeholder
+   parity and on more hardcoded JSX text than `scripts/i18n-baseline.json`
+   records (measured with the TypeScript parser, ratcheted); unused keys and
+   en=tr identical values are advisory. `DocumentHealthScreen` (14) and
+   `PetitionWizard` (4) moved into the tables, and the five named
+   `aria-label`/`alt` strings were translated (baseline 131 -> 113;
+   `docs/i18n.md`). *Open:* `Invoices` (42), `KvkkWizard` (9) and the rest of the
+   baseline, attribute strings beyond the five fixed (the scanner counts JSX
+   text nodes only), and the 68 `{count}`/“(s)” fake plurals that still need
+   `Intl.PluralRules` / `Intl.NumberFormat`.
 
 ## E5. CI/CD efficiency and supply chain (v7.3.0)
 

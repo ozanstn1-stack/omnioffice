@@ -38,12 +38,12 @@ describe("DocumentHealthScreen with file tokens", () => {
   it("picks through the Rust dialog and inspects a PDF token as a PDF", async () => {
     const user = userEvent.setup();
     render(<DocumentHealthScreen />);
-    await user.click(screen.getByRole("button", { name: /Belge Seç/ }));
+    await user.click(screen.getByRole("button", { name: /Pick a document/ }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("inspect_document", expect.anything()));
     expect(invoke).toHaveBeenCalledWith("file_token_pick", expect.anything());
     expect(dialogOpen).not.toHaveBeenCalled();
     // A PDF is not opened through the office reader.
     expect(invoke.mock.calls.some(([command]) => command === "office_open_document")).toBe(false);
-    expect(await screen.findByRole("button", { name: /Belge: dilekce\.pdf/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Document: dilekce\.pdf/ })).toBeInTheDocument();
   });
 });
