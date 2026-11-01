@@ -111,6 +111,9 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 import { Invoices } from "./Invoices";
+import en from "../lib/i18n/en.json";
+
+const duplicatesFound = (count: number) => en["invoices.duplicatesFound"].replaceAll("{count}", String(count));
 
 describe("invoice screen", () => {
   beforeEach(() => {
@@ -185,10 +188,10 @@ describe("invoice screen", () => {
     const user = userEvent.setup();
     render(<Invoices initialFiles={["C:/invoices/fatura.xml"]} />);
     await screen.findByText("GIB2026000000001");
-    const kdvBtn = screen.getByRole("button", { name: /KDV Beyanı/i });
+    const kdvBtn = screen.getByRole("button", { name: new RegExp(en["invoices.kdv.open"], "i") });
     expect(kdvBtn).toBeInTheDocument();
     await user.click(kdvBtn);
-    expect(await screen.findByText("KDV1 Beyannamesi Yardımcı Özeti")).toBeInTheDocument();
+    expect(await screen.findByText(en["invoices.kdv.title"])).toBeInTheDocument();
   });
 
   it("detects duplicate invoices and removes duplicates when clicking deduplicate", async () => {
@@ -197,10 +200,10 @@ describe("invoice screen", () => {
     render(<Invoices initialFiles={["C:/invoices/fatura1.xml", "C:/invoices/fatura2.xml"]} />);
     const headers = await screen.findAllByText("GIB2026000000001");
     expect(headers.length).toBeGreaterThan(0);
-    expect(await screen.findByText(/1 adet mükerrer fatura tespit edildi/i)).toBeInTheDocument();
-    const cleanBtn = screen.getByRole("button", { name: /Mükerrerleri Ayıkla/i });
+    expect(await screen.findByText(duplicatesFound(1))).toBeInTheDocument();
+    const cleanBtn = screen.getByRole("button", { name: new RegExp(en["invoices.deduplicate"], "i") });
     expect(cleanBtn).toBeInTheDocument();
     await user.click(cleanBtn);
-    expect(screen.queryByText(/mükerrer fatura tespit edildi/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(duplicatesFound(1))).not.toBeInTheDocument();
   });
 });

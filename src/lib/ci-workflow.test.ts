@@ -189,6 +189,6 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
     };
     expect(baseline.version).toBe(1);
     const total = Object.values(baseline.files).reduce((sum, count) => sum + count, 0);
-    expect(total).toBeLessThanOrEqual(113);
+    expect(total).toBeLessThanOrEqual(80);
   });
 });

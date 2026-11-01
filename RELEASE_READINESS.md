@@ -113,14 +113,16 @@ release-train schedule is decided.
   are printed as advisory, because both have legitimate cases.
   `test:src/lib/ci-workflow.test.ts#runs the audit with --check in the lint job`
   `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
-- **Health and petition screens speak both languages (E4.5):** 18 JSX text nodes
-  in `DocumentHealthScreen` and `PetitionWizard` moved into the tables (adding a
-  `health.*` and `petition.*` namespace in both languages), and the five
-  attribute strings the proposal named - the dialog's `aria-label`, the
-  thumbnail-size label and three `alt="Page N"` texts - come from the table too.
-  The baseline fell 131 -> 113; `Invoices` (42), `KvkkWizard` (9) and the rest
-  stay recorded as the honest backlog, several of them units and format names
-  that should stay literal. `docs/i18n.md` documents the workflow.
+- **Five screens speak both languages (E4.5):** `DocumentHealthScreen` (14 JSX
+  text nodes), `PetitionWizard` (4), `Invoices` (23 of 42), `KvkkWizard` (9) and
+  the thumbnail-size options in `Organize` (3) moved into the tables, with new
+  `health.*`, `invoices.kdv.*`, `kvkk.*` and `organize.thumb*` namespaces in both
+  languages; the five attribute strings the proposal named - the dialog's
+  `aria-label`, the thumbnail-size label and three `alt="Page N"` texts - come
+  from the table too. The baseline fell 131 -> 80. What is left is deliberately
+  literal: `TRY`, the accounting-software names (Luca/Logo/Zirve), paper sizes,
+  the `1, 2, 3` numbering samples and units, plus a handful of real prose in
+  `Redact` that is the next step. `docs/i18n.md` documents the workflow.
   `test:src/screens/DocumentHealthScreen.test.tsx#renders health screen with high score on clean text`
   `test:src/screens/DocumentHealthScreen.tokens.test.tsx#picks through the Rust dialog and inspects a PDF token as a PDF`
 - **Static analysis and a reporting channel (E5):** `SECURITY.md` documents the
