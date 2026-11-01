@@ -45,7 +45,11 @@ use std::time::{Duration, Instant};
 mod containment;
 
 #[cfg(not(target_os = "android"))]
-use containment::{env_allowed, limit_resources, platform};
+use containment::{env_allowed, platform};
+// `RLIMIT_AS`/`RLIMIT_CPU` have no Windows counterpart: the job object in
+// `platform::spawn` is that platform's containment.
+#[cfg(unix)]
+use containment::limit_resources;
 
 /// Wall-clock limit for one worker job.
 #[cfg(not(target_os = "android"))]

@@ -16,6 +16,9 @@
 //!   object and only then resumed. The previous code assigned the job *after*
 //!   `spawn`, so a parser could allocate before the limit applied.
 
+// `Command` is only used by `limit_resources` (the Windows path takes the
+// command by reference from `platform::spawn`).
+#[cfg(unix)]
 use std::process::Command;
 
 /// Ceiling for the worker's memory: the Windows job object's process limit and,
