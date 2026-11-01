@@ -129,9 +129,9 @@ export function countLosses(report: CompatibilityReport | null | undefined): Los
 export function compatibilitySummary(report: CompatibilityReport | null | undefined, t: Translate): string {
   const { lost, transformed } = countLosses(report);
   if (lost === 0 && transformed === 0) return t("loss.summaryClean");
-  if (lost === 0) return t("loss.summaryTransformed", { transformed });
-  if (transformed === 0) return t("loss.summaryLost", { lost });
-  return t("loss.summaryBoth", { lost, transformed });
+  if (lost === 0) return t.plural("loss.summaryTransformed", transformed, { transformed });
+  if (transformed === 0) return t.plural("loss.summaryLost", lost, { lost });
+  return t.plural("loss.summaryBoth", lost, { lost, transformed });
 }
 
 export function YesNo({ value }: { value: boolean }) {

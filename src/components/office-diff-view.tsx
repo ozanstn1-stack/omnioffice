@@ -82,13 +82,17 @@ function CalcView({ diff }: { diff: CalcDiff }) {
     <div className="stack">
       {diff.sheetsAdded.length ? (
         <p className="small">
-          <Badge tone="ok">{t("diff.sheetsAdded", { count: diff.sheetsAdded.length })}</Badge>{" "}
+          <Badge tone="ok">
+            {t.plural("diff.sheetsAdded", diff.sheetsAdded.length, { count: diff.sheetsAdded.length })}
+          </Badge>{" "}
           {diff.sheetsAdded.join(", ")}
         </p>
       ) : null}
       {diff.sheetsRemoved.length ? (
         <p className="small">
-          <Badge tone="danger">{t("diff.sheetsRemoved", { count: diff.sheetsRemoved.length })}</Badge>{" "}
+          <Badge tone="danger">
+            {t.plural("diff.sheetsRemoved", diff.sheetsRemoved.length, { count: diff.sheetsRemoved.length })}
+          </Badge>{" "}
           {diff.sheetsRemoved.join(", ")}
         </p>
       ) : null}

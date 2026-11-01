@@ -140,7 +140,7 @@ export function PersonCardsDialog({ onClose }: { onClose: () => void }) {
     setImporting(true);
     try {
       for (const card of parsed) await savePersonCard(card);
-      push({ kind: "success", title: t("personCards.imported", { count: parsed.length }) });
+      push({ kind: "success", title: t.plural("personCards.imported", parsed.length, { count: parsed.length }) });
       setImportText("");
       await load();
     } catch (error) {
@@ -231,7 +231,7 @@ export function PersonCardsDialog({ onClose }: { onClose: () => void }) {
           {!encrypted ? <Badge tone="warn">{t("personCards.plainWarning")}</Badge> : null}
           {warnings.length ? (
             <p className="muted small">
-              {t("personCards.warnings", { count: warnings.length })}: {warnings.join(" · ")}
+              {t.plural("personCards.warnings", warnings.length, { count: warnings.length })}: {warnings.join(" · ")}
             </p>
           ) : null}
           {loading ? (

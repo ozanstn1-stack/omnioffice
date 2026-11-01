@@ -107,6 +107,29 @@ for (const key of enKeys) {
 }
 
 // ---------------------------------------------------------------------------
+// Count-aware strings: `t.plural("key", n)` needs `key.one` and `key.other`, and
+// no value may spell a plural as "(s)" - that is what the helper replaced.
+// ---------------------------------------------------------------------------
+const PLURAL_USAGE = /\bt\.plural\(\s*"([a-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)+)"/g;
+const pluralKeys = new Set();
+for (const file of walk(srcRoot)) {
+  const body = readFileSync(file, "utf8");
+  for (const match of body.matchAll(PLURAL_USAGE)) pluralKeys.add(match[1]);
+}
+const pluralProblems = [];
+for (const key of [...pluralKeys].sort()) {
+  for (const [language, table] of [
+    ["en", en],
+    ["tr", tr],
+  ]) {
+    if (table[`${key}.one`] === undefined || table[`${key}.other`] === undefined) {
+      pluralProblems.push(`${key} is used with t.plural but ${language}.json lacks .one/.other`);
+    }
+  }
+}
+const fakePlurals = enKeys.filter((key) => /\(s\)/.test(String(en[key])) || /\(s\)/.test(String(tr[key] ?? "")));
+
+// ---------------------------------------------------------------------------
 // Hardcoded JSX text, measured with a real parser so generics and comparisons
 // (`a > b`, `Map<K, V>`) cannot be mistaken for prose. The baseline is a
 // ratchet: it may only shrink, which is how the strings move into the table.
@@ -178,6 +201,8 @@ console.log(
     usedMissingSorted.length +
     " placeholder-mismatch=" +
     placeholderMismatches.length +
+    " plural-usage=" +
+    pluralKeys.size +
     " hardcoded-jsx=" +
     jsxTotal,
 );
@@ -211,7 +236,13 @@ for (const file of Object.keys(jsxCounts)
 console.log(`  advisory: identical-in-en-and-tr=${untranslated.length}, not-reached-by-a-literal-key=${unused.length}`);
 
 const problems =
-  missing.length + extra.length + usedMissingSorted.length + placeholderMismatches.length + jsxProblems.length;
+  missing.length +
+  extra.length +
+  usedMissingSorted.length +
+  placeholderMismatches.length +
+  pluralProblems.length +
+  fakePlurals.length +
+  jsxProblems.length;
 if (check && problems) {
   for (const problem of jsxProblems.slice(0, 20)) console.error("  " + problem);
   console.error("i18n-audit: the translation tables are out of sync");

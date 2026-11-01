@@ -56,7 +56,7 @@ export function MailMerge() {
       setReport(result);
       useToasts.getState().push({
         kind: result.errors.length ? "info" : "success",
-        title: t("mailMerge.done", { count: result.produced.length }),
+        title: t.plural("mailMerge.done", result.produced.length, { count: result.produced.length }),
       });
     } catch (error) {
       reportError(error, t);
@@ -142,7 +142,9 @@ export function MailMerge() {
         {report ? (
           <Card className="p-5 flex flex-col gap-2">
             <strong>{t("mailMerge.result")}</strong>
-            <p className="text-sm">{t("mailMerge.produced", { count: report.produced.length })}</p>
+            <p className="text-sm">
+              {t.plural("mailMerge.produced", report.produced.length, { count: report.produced.length })}
+            </p>
             {report.errors.length ? (
               <ul className="text-sm" style={{ color: "var(--danger, #dc2626)" }}>
                 {report.errors.map((error) => (

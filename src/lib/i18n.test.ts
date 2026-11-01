@@ -57,3 +57,22 @@ describe("i18n dictionaries", () => {
     }
   });
 });
+
+describe("count-aware strings", () => {
+  it("picks the singular and plural English forms", () => {
+    expect(en.plural("mailMerge.done", 1, { count: 1 })).toBe("1 document produced");
+    expect(en.plural("mailMerge.done", 3, { count: 3 })).toBe("3 documents produced");
+    expect(en.plural("invoices.duplicatesFound", 1, { count: 1 })).toBe("1 duplicate invoice found!");
+    expect(en.plural("invoices.duplicatesFound", 2, { count: 2 })).toBe("2 duplicate invoices found!");
+  });
+
+  it("keeps the Turkish sentence the same for every count", () => {
+    // Turkish does not pluralise the noun after a numeral.
+    expect(tr.plural("mailMerge.done", 1, { count: 1 })).toBe("1 belge üretildi");
+    expect(tr.plural("mailMerge.done", 4, { count: 4 })).toBe("4 belge üretildi");
+  });
+
+  it("falls back to the base key when a string has no variants", () => {
+    expect(en.plural("common.cancel", 2)).toBe("Cancel");
+  });
+});

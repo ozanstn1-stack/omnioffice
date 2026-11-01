@@ -3,10 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { newWorkbook } from "../../../lib/office-types";
 import { functionCatalogue } from "../formula";
 import { useFormulaDraft, type FormulaDraftOptions } from "./useFormulaDraft";
+import type { Translate } from "../../../lib/i18n";
 
 const workbook = newWorkbook("Book");
 const catalogue = new Map(functionCatalogue().map((entry) => [entry.name, entry] as const));
-const t = (key: string) => key;
+const t = Object.assign((key: string) => key, {
+  plural: (key: string, count: number) => `${key}#${count}`,
+}) as Translate;
 
 function setup() {
   const input = document.createElement("input");

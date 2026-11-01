@@ -113,7 +113,11 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 import { Invoices } from "./Invoices";
 import en from "../lib/i18n/en.json";
 
-const duplicatesFound = (count: number) => en["invoices.duplicatesFound"].replaceAll("{count}", String(count));
+const duplicatesFound = (count: number) =>
+  en[count === 1 ? "invoices.duplicatesFound.one" : "invoices.duplicatesFound.other"].replaceAll(
+    "{count}",
+    String(count),
+  );
 
 describe("invoice screen", () => {
   beforeEach(() => {

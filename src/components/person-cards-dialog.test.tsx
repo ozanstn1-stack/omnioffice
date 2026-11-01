@@ -35,6 +35,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), sav
 
 import { useToasts } from "../lib/store";
 import { PersonCardsDialog } from "./person-cards-dialog";
+import en from "../lib/i18n/en.json";
 
 function installClipboard() {
   const calls: string[] = [];
@@ -104,7 +105,9 @@ describe("PersonCardsDialog (C6/2)", () => {
       expect(invoke.mock.calls.filter(([command]) => command === "person_card_save")).toHaveLength(2),
     );
     await waitFor(() =>
-      expect(useToasts.getState().toasts.map((toast) => toast.title)).toContain("2 card(s) imported"),
+      expect(useToasts.getState().toasts.map((toast) => toast.title)).toContain(
+        en["personCards.imported.other"].replaceAll("{count}", "2"),
+      ),
     );
   });
 

@@ -217,9 +217,9 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    (3) moved into the tables, and the five named `aria-label`/`alt` strings were
    translated (baseline 131 -> 80; `docs/i18n.md`). What remains is mostly
    literal by design (`TRY`, accounting-software names, paper sizes, units).
-   *Open:* the `Redact` prose, attribute strings beyond the five fixed (the
-   scanner counts JSX text nodes only), and the 68 `{count}`/“(s)” fake plurals
-   that still need `Intl.PluralRules` / `Intl.NumberFormat`.
+   The 22 `(s)` strings now use `t.plural` over `Intl.PluralRules` and the
+   audit fails on a new one. *Open:* the `Redact` prose and attribute strings
+   beyond the five fixed (the scanner counts JSX text nodes only).
 
 ## E5. CI/CD efficiency and supply chain (v7.3.0)
 
