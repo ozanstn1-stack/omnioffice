@@ -716,6 +716,12 @@ trusting a visual check.
   revealing a file goes through Rust commands that only accept existing
   documents with extensions the app itself produces, so a compromised
   renderer cannot ask the shell to launch an executable.
+- **Untrusted documents are parsed in a contained child process**: the worker
+  gets an explicit allow-list environment (no API keys, no provider tokens, no
+  dev launch context), and its memory and CPU ceilings are installed *before*
+  it runs - `RLIMIT_AS`/`RLIMIT_CPU` between `fork` and `exec` on Linux/macOS,
+  and on Windows the child is created suspended, placed in a job object with a
+  process-memory limit, and only then resumed.
 - **Command ACL**: the webview may only invoke the commands its capability
   allows. The permission set is generated from the IPC domain lists
   (`docs/command-acl.md`), so a command that is not registered cannot be
@@ -917,7 +923,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1435 |
+| Rust tests | 1438 |
 | TypeScript test files | 219 |
 | TypeScript test cases (approx.) | 2476 |
 <!-- stats:end -->
