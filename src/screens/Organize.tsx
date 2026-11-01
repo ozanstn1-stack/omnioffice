@@ -580,9 +580,9 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
                     onChange={(event) => setThumbWidth(Number(event.target.value))}
                     aria-label={t("organize.thumbnailSize")}
                   >
-                    <option value={130}>Small</option>
-                    <option value={180}>Medium</option>
-                    <option value={240}>Large</option>
+                    <option value={130}>{t("organize.thumbSmall")}</option>
+                    <option value={180}>{t("organize.thumbMedium")}</option>
+                    <option value={240}>{t("organize.thumbLarge")}</option>
                   </select>
                 </div>
               </Card>

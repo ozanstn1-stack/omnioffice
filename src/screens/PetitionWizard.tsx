@@ -210,7 +210,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-hairline">
             <Button variant="default" icon={<Edit3 className="w-4 h-4" />} disabled={busy} onClick={handleOpenInWriter}>
-              {t("petition.openInWriter")}
+              {t("common.openInWriter")}
             </Button>
             <Button
               variant="default"

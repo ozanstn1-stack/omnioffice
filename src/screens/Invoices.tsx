@@ -367,7 +367,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
               </>
             ) : null}
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowKdvModal(true)}>
-              <Calculator size={16} /> KDV Beyanı
+              <Calculator size={16} /> {t("invoices.kdv.open")}
             </Button>
             <Button variant="ghost" disabled={busy || !invoices.length} onClick={() => setShowAudit(true)}>
               <ClipboardCheck size={16} /> {t("periodAudit.open")}
@@ -383,15 +383,13 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
               <AlertTriangle className="text-amber-500 shrink-0" size={20} />
               <div>
                 <strong className="text-amber-500">
-                  {duplicateResult.totalDuplicates} adet mükerrer fatura tespit edildi!
+                  {t("invoices.duplicatesFound", { count: duplicateResult.totalDuplicates })}
                 </strong>
-                <p className="text-xs muted">
-                  Aynı ETTN veya aynı satıcı ve fatura numarasına sahip yinelenen kayıtlar var.
-                </p>
+                <p className="text-xs muted">{t("invoices.duplicatesDetail")}</p>
               </div>
             </div>
             <Button size="sm" variant="default" onClick={deduplicateInvoices}>
-              <Copy size={14} /> Mükerrerleri Ayıkla
+              <Copy size={14} /> {t("invoices.deduplicate")}
             </Button>
           </Card>
         ) : null}
@@ -622,11 +620,11 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
 
         {showKdvModal ? (
           <Modal
-            title="KDV1 Beyannamesi Yardımcı Özeti"
+            title={t("invoices.kdv.title")}
             onClose={() => setShowKdvModal(false)}
             footer={
               <Button variant="primary" onClick={() => setShowKdvModal(false)}>
-                Kapat
+                {t("common.close")}
               </Button>
             }
           >
@@ -645,7 +643,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                 <div className="flex flex-col gap-3 text-sm">
                   <div className="flex items-center gap-2 flex-wrap">
                     <label className="text-xs muted" htmlFor="kdv-period">
-                      Dönem
+                      {t("invoices.kdv.period")}
                     </label>
                     <select
                       id="kdv-period"
@@ -653,27 +651,22 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                       value={kdvPeriod}
                       onChange={(event) => setKdvPeriod(event.target.value)}
                     >
-                      <option value="">Tüm dönemler</option>
+                      <option value="">{t("invoices.kdv.allPeriods")}</option>
                       {periods.map((period) => (
                         <option key={period} value={period}>
                           {period}
                         </option>
                       ))}
                     </select>
-                    {!ownTaxId.trim() ? (
-                      <span className="text-xs muted">Alış/satış ayrımı için Ayarlar'da kendi VKN'nizi girin.</span>
-                    ) : null}
+                    {!ownTaxId.trim() ? <span className="text-xs muted">{t("invoices.kdv.ownTaxIdHint")}</span> : null}
                   </div>
-                  <p className="muted text-xs">
-                    Yüklenen {report.invoiceCount} adet faturanın KDV1 beyannamesi satırlarına esas teşkil eden matrah
-                    ve vergi dökümü.
-                  </p>
+                  <p className="muted text-xs">{t("invoices.kdv.intro", { count: report.invoiceCount })}</p>
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b">
-                        <th className="py-1">Oran</th>
-                        <th className="py-1">Matrah</th>
-                        <th className="py-1">Hesaplanan KDV</th>
+                        <th className="py-1">{t("invoices.kdv.rate")}</th>
+                        <th className="py-1">{t("invoices.kdv.base")}</th>
+                        <th className="py-1">{t("invoices.kdv.calculated")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -706,7 +699,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                       </tr>
                       {report.exemptionAmount > 0 ? (
                         <tr>
-                          <td className="py-1">%0 (İstisna)</td>
+                          <td className="py-1">{t("invoices.kdv.exempt")}</td>
                           <td className="py-1">
                             {report.exemptionAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
                           </td>
@@ -714,7 +707,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                         </tr>
                       ) : null}
                       <tr className="border-t font-bold">
-                        <td className="py-1">TOPLAM</td>
+                        <td className="py-1">{t("invoices.kdv.total")}</td>
                         <td className="py-1">
                           {report.totalTaxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
                         </td>
@@ -726,7 +719,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                   </table>
                   {report.totalWithholdingVat > 0 ? (
                     <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs">
-                      <strong>Tevkifat Tutarı:</strong>{" "}
+                      <strong>{t("invoices.kdv.withholding")}</strong>{" "}
                       {report.totalWithholdingVat.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
                     </div>
                   ) : null}
@@ -734,15 +727,15 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="border-b">
-                          <th className="py-1">Özet</th>
-                          <th className="py-1">Fatura</th>
-                          <th className="py-1">Matrah</th>
-                          <th className="py-1">KDV</th>
+                          <th className="py-1">{t("invoices.kdv.summary")}</th>
+                          <th className="py-1">{t("invoices.kdv.invoice")}</th>
+                          <th className="py-1">{t("invoices.kdv.base")}</th>
+                          <th className="py-1">{t("invoices.kdv.vat")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td className="py-1">Satışlar (hesaplanan KDV)</td>
+                          <td className="py-1">{t("invoices.kdv.sales")}</td>
                           <td className="py-1">{report.sales.invoiceCount}</td>
                           <td className="py-1">
                             {report.sales.taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
@@ -752,7 +745,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                           </td>
                         </tr>
                         <tr>
-                          <td className="py-1">Alışlar (indirilecek KDV)</td>
+                          <td className="py-1">{t("invoices.kdv.purchases")}</td>
                           <td className="py-1">{report.purchases.invoiceCount}</td>
                           <td className="py-1">
                             {report.purchases.taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
@@ -763,7 +756,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                         </tr>
                         <tr className="border-t font-bold">
                           <td className="py-1" colSpan={3}>
-                            {report.netVat >= 0 ? "Ödenecek KDV" : "Devreden KDV"}
+                            {report.netVat >= 0 ? t("invoices.kdv.payable") : t("invoices.kdv.carry")}
                           </td>
                           <td className="py-1">
                             {Math.abs(report.netVat).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
@@ -772,7 +765,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                         {report.unclassified > 0 ? (
                           <tr>
                             <td className="py-1 muted" colSpan={4}>
-                              {report.unclassified} fatura kendi VKN'nizle eşleşmedi; alış/satış ayrımına girmedi.
+                              {t("invoices.kdv.unclassified", { count: report.unclassified })}
                             </td>
                           </tr>
                         ) : null}

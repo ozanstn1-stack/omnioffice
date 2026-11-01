@@ -160,7 +160,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
     <Screen
       title={
         <span className="flex items-center gap-2">
-          KVKK Aydınlatma ve Açık Rıza Sihirbazı
+          {t("kvkk.wizardTitle")}
           <Badge tone="warn">{t("common.experimental")}</Badge>
         </span>
       }
@@ -186,7 +186,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
               <TextArea rows={14} value={generatedText} readOnly spellCheck={false} className="font-mono text-xs" />
               <div className="flex flex-wrap justify-end gap-2 mt-2">
                 <Button variant="default" icon={<Copy className="w-4 h-4" />} onClick={handleCopy}>
-                  Metni Kopyala
+                  {t("common.copy")}
                 </Button>
                 <Button
                   variant="default"
@@ -194,7 +194,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                   disabled={busy}
                   onClick={handleOpenInWriter}
                 >
-                  Writer&apos;da Aç
+                  {t("common.openInWriter")}
                 </Button>
                 <Button
                   variant="default"
@@ -202,7 +202,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                   disabled={busy}
                   onClick={() => void handleExport("docx")}
                 >
-                  DOCX İndir
+                  {t("kvkk.downloadDocx")}
                 </Button>
                 <Button
                   variant="primary"
@@ -210,7 +210,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                   disabled={busy}
                   onClick={() => void handleExport("pdf")}
                 >
-                  PDF İndir
+                  {t("kvkk.downloadPdf")}
                 </Button>
               </div>
             </OptionCard>
@@ -243,24 +243,17 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
             <Card className="p-4 flex flex-col gap-2">
               <div className="flex items-center gap-2 font-semibold text-sm">
                 <Shield className="w-4 h-4 text-emerald-500" />
-                <span>6698 Sayılı Kanun Çerçevesi</span>
+                <span>{t("kvkk.lawTitle")}</span>
               </div>
-              <p className="text-xs muted leading-relaxed">
-                Bu şablonlar 6698 sayılı Kişisel Verilerin Korunması Kanunu ve Aydınlatma Yükümlülüğünün Yerine
-                Getirilmesinde Uyulacak Usul ve Esaslar Hakkında Tebliğ esas alınarak hazırlanmıştır.
-              </p>
+              <p className="text-xs muted leading-relaxed">t("kvkk.lawBody")</p>
             </Card>
 
             <Card className="p-4 flex flex-col gap-2 border-amber-500/40 bg-amber-500/5">
               <div className="flex items-center gap-2 font-semibold text-sm text-amber-500">
                 <AlertTriangle className="w-4 h-4" />
-                <span>Hukuki Uyarı</span>
+                <span>{t("kvkk.legalWarningTitle")}</span>
               </div>
-              <p className="text-xs muted leading-relaxed">
-                Bu şablonlar genel bilgilendirme amacıyla hazırlanmış örnek taslaklardır; hukuki danışmanlık veya
-                bağlayıcı görüş niteliği taşımaz. Kurumunuzun veri işleme envanterine göre hukuk müşaviriniz tarafından
-                incelenmelidir.
-              </p>
+              <p className="text-xs muted leading-relaxed">t("kvkk.legalWarningBody")</p>
             </Card>
           </div>
         }

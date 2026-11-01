@@ -212,13 +212,14 @@ secret migration, ACL capability list, CSP header, install confirmation), and
 5. **i18n.** *Partly delivered.* `i18n-audit.mjs` now fails on placeholder
    parity and on more hardcoded JSX text than `scripts/i18n-baseline.json`
    records (measured with the TypeScript parser, ratcheted); unused keys and
-   en=tr identical values are advisory. `DocumentHealthScreen` (14) and
-   `PetitionWizard` (4) moved into the tables, and the five named
-   `aria-label`/`alt` strings were translated (baseline 131 -> 113;
-   `docs/i18n.md`). *Open:* `Invoices` (42), `KvkkWizard` (9) and the rest of the
-   baseline, attribute strings beyond the five fixed (the scanner counts JSX
-   text nodes only), and the 68 `{count}`/“(s)” fake plurals that still need
-   `Intl.PluralRules` / `Intl.NumberFormat`.
+   en=tr identical values are advisory. `DocumentHealthScreen` (14),
+   `PetitionWizard` (4), `Invoices` (23 of 42), `KvkkWizard` (9) and `Organize`
+   (3) moved into the tables, and the five named `aria-label`/`alt` strings were
+   translated (baseline 131 -> 80; `docs/i18n.md`). What remains is mostly
+   literal by design (`TRY`, accounting-software names, paper sizes, units).
+   *Open:* the `Redact` prose, attribute strings beyond the five fixed (the
+   scanner counts JSX text nodes only), and the 68 `{count}`/“(s)” fake plurals
+   that still need `Intl.PluralRules` / `Intl.NumberFormat`.
 
 ## E5. CI/CD efficiency and supply chain (v7.3.0)
 
