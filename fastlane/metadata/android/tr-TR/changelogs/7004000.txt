@@ -1,0 +1,7 @@
+7.4.0 "Kalite hattı": üretim kodunda unwrap/expect artık yedi crate'in
+tamamında yasak (55 nokta tipli hataya, açık yedeğe veya if-let'e çevrildi).
+Kapsam tabanları ölçülen pakete çekildi (77/79/64/77) ve rapor yayınlanıyor;
+i18n denetimi bozuk {placeholder}, tabanın üstünde sert kodlu metin ve "(s)"
+çoğulu yakalıyor — sayılar Intl.PluralRules ile. Araç zinciri ve Linux koşucuları
+sabitlendi, motor indirmeleri önbelleğe alındı, SECURITY.md ve CodeQL eklendi.
+Beş ekran (Belge Sağlığı, Dilekçe, Faturalar, KVKK, Düzenle) iki dilli oldu.

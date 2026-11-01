@@ -4,6 +4,73 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.4.0] - Kalite hattı (Phase E / E1 kalanları, E4, E5)
+
+### Added
+
+- **The panic-free ratchet covers every crate (E1.7, #550):** production code in
+  `turkish`, `pdfcore`, `aicore`, `officecore`, `synccore` and the `compat` CLI
+  now denies `clippy::unwrap_used` and `clippy::expect_used`. The 55 sites the
+  attribute flagged became typed errors (the XML/DAV parser stacks, the WebDAV
+  verb helpers, DOCX tracked changes, the layout page accessor, CLI flag
+  parsing), explicit fallbacks, or `if let` guards; two calls are infallible by
+  construction and stay as documented `#[expect]` (the embedded PDF face, the
+  HMAC key). Test modules keep their freedom.
+- **Coverage gate at the measured suite (E4.1):** the vitest floors move from
+  62/69/46/62 to 77/79/64/77 against a measured 78.4/80.2/65.9/78.4, the report
+  is published as the `coverage-frontend` artifact, and a workflow test refuses
+  to let a floor drop below the measurement.
+- **The i18n audit has teeth (E4.5):** `npm run i18n:audit -- --check` now fails
+  on a `{placeholder}` set that differs between English and Turkish, on more
+  user-visible JSX text than `scripts/i18n-baseline.json` records (measured with
+  the TypeScript parser, a ratchet that may only shrink), on a value that spells
+  a plural as `(s)`, and on a `t.plural` key missing a variant. Values identical
+  in both languages and keys no literal call reaches are advisory.
+- **Counts go through `Intl.PluralRules`:** `t.plural(key, count, params)` picks
+  `key.one`/`key.other` with the language's own rules; the 22 `(s)` strings and
+  their 15 call sites moved over. Turkish keeps one sentence for every count
+  because the noun is not pluralised after a numeral.
+- **Five screens speak both languages:** `DocumentHealthScreen`,
+  `PetitionWizard`, `Invoices` (the KDV declaration modal and the duplicate
+  banner), `KvkkWizard` and `Organize` moved their strings into the tables, plus
+  the dialog `aria-label`, the thumbnail-size label and three `alt="Page N"`
+  texts. The hardcoded-text baseline fell 131 -> 80.
+- **Pinned toolchain and runtime (E5):** `rust-toolchain.toml` declares the
+  stable channel with clippy/rustfmt (the MSRV job overrides it to 1.89.0 and the
+  fuzz jobs to nightly, so the file cannot mask those gates), `.nvmrc` says 22
+  and `package.json` declares `engines.node >= 20`. Every Linux runner is
+  `ubuntu-24.04` instead of `ubuntu-latest`, pinned by a test.
+- **Supply chain:** `SECURITY.md` documents the private advisory channel,
+  supported versions and the deliberate limits (unsigned Windows installers, ACL
+  scope, third-party engines); a `CodeQL` workflow analyses
+  `javascript-typescript` and the workflow files on push, pull request and a
+  weekly schedule, with both uses pinned to a commit.
+- **Engine downloads are cached (E5):** the workspace-test and Windows E2E jobs
+  cache `src-tauri/resources/engines` under the `engines.lock.json` hash.
+- **Tests for the three untested components (E4.2):** `LanSyncPlan` (6 cases),
+  `ScannerPageList` (8) and `CornerPicker` (6) now pin the conflict choices, the
+  spread row identity, the crop badges, the keyboard handle movement and the
+  "whole photo" contract.
+
+### Fixed
+
+- **The accountant E2E no longer breaks when a label is translated:** it finds
+  the KDV button and its panel through `data-testid` instead of searching the
+  Turkish button text, which is exactly what the i18n work changed.
+- **The CI job parser saw no digit-bearing job names:** `[a-z-]+` skipped `e2e`
+  and `e2e-windows`, so the "every job has a timeout" rule never reached them.
+- **`cargo clippy -p <crate> --lib` counts were misleading:** it re-lints the
+  workspace dependencies, so `compat`'s "36" was `officecore`'s 34 printed twice.
+  The real remaining total was 55.
+
+### Notes
+
+- The Windows installers remain **unsigned by decision** (`docs/signing.md`,
+  D10): SmartScreen shows "unknown publisher". Verify a download against
+  `SHA256SUMS-windows.txt`.
+- `cargo llvm-cov`, the Android ABI matrix, `OpenSSF Scorecard`, the rest of
+  E4.2/E4.3/E4.5 and the fuzz extension stay scheduled for v7.5.0.
+
 ## [7.3.0] - İzolasyon ve dayanıklılık (Phase E / E2)
 
 ### Added
