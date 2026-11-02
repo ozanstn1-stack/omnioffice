@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   clearElement,
   clickElement,
+  execute,
   findElement,
   root,
   screenshot,
@@ -94,7 +95,13 @@ export async function packFlow(session) {
     45000,
     "the launched document",
   );
-  if (!/sample-1/.test(document)) throw new Error(`the screen did not receive the document: "${document}"`);
+  if (!/sample-1/.test(document)) {
+    const detail = await execute(
+      session,
+      "const el=document.querySelector('[data-testid=\"ai-pack-doc\"]'); const dev=window.__PDFSAK_DEV__; return JSON.stringify({text:el?el.textContent.trim():null, files:el?el.dataset.files:null, handed:el?el.dataset.handedOver:null});",
+    ).catch(() => "{}");
+    throw new Error(`the screen did not receive the document: "${document}" (${detail})`);
+  }
 
   const consent = await findElement(session, '[data-testid="ai-pack-consent"]');
   await clickElement(session, elementKey(consent));
