@@ -105,10 +105,23 @@ export async function packFlow(session) {
     throw new Error(`the screen did not receive the document: "${document}" (${detail})`);
   }
 
-  const consent = await findElement(session, '[data-testid="ai-pack-consent"]');
-  await clickElement(session, elementKey(consent));
+  // The checkbox sits inside a <label>: clicking the input itself lets the
+  // label's activation toggle it a second time, so the label is clicked and the
+  // result is checked before Run is pressed.
+  const consented = await execute(
+    session,
+    "const box=document.querySelector('[data-testid=\"ai-pack-consent\"]'); if(!box) return 'missing'; box.closest('label').click(); return box.checked ? 'checked' : 'unchecked';",
+  );
+  if (consented !== "checked") throw new Error(`the consent box did not stay checked: ${consented}`);
+
   const runButton = await findElement(session, '[data-testid="ai-pack-run"]');
   await clickElement(session, elementKey(runButton));
+  await waitForScript(
+    session,
+    "const run=document.querySelector('[data-testid=\"ai-pack-run\"]'); return run && run.disabled ? 1 : 0;",
+    15000,
+    "the run to start",
+  );
 
   let state;
   try {
