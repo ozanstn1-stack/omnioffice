@@ -934,8 +934,8 @@ Next (architecture prepared, not implemented):
 | Screens | 55 |
 | Tauri commands | 253 |
 | Rust tests | 1443 |
-| TypeScript test files | 223 |
-| TypeScript test cases (approx.) | 2520 |
+| TypeScript test files | 224 |
+| TypeScript test cases (approx.) | 2525 |
 <!-- stats:end -->
 
 ## License

@@ -199,9 +199,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    77/79/64/77 against a measured 78.4/80.2/65.9/78.4 (2026-11-01), the report
    uploaded as the `coverage-frontend` artifact, and a test that refuses to let a
    floor drop. *Rust:* a `rust-coverage` job runs `cargo llvm-cov --lib` over the
-   library crates and publishes `coverage-rust`; it measures rather than gates,
-   because a floor without data would be a guess. *Open:* turning that report
-   into a ratchet once a few runs show the variance.
+   library crates and publishes `coverage-rust`. *Delivered:* the report is now
+   a ratchet - `scripts/check-rust-coverage.mjs` enforces floors from
+   `scripts/coverage-baseline.json` (54/55/55 against a first measurement of
+   55.23/56.37/56.30) and `--update` may only raise them.
 2. **Thinly tested large screens.** *Partly delivered:* the three components
    with no tests at all now have them - `LanSyncPlan` (6 cases),
    `ScannerPageList` (8) and `CornerPicker` (6). The large screens named here
