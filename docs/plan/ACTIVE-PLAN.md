@@ -100,17 +100,16 @@ tarama yalnız `attr="…"` görüyor) aynı PR'da kapatılıyor.
 ---
 
 ## NEREDE KALDIM / SIRADAKI ADIM
-- **Tamamlandı (2026-11-02):** PR A — i18n prop taraması. PR #585, squash `f7e90d1`.
-  `scripts/lib/i18n-jsx.mjs` (+`.d.mts`), audit v3 (`--props-report`, ayrı bölüm
-  raporları), `i18n-jsx-audit.test.ts` (12 vaka), `ci-workflow.test.ts` v3 pini,
-  `PetitionWizard` on etiketi sözlüğe taşındı, docs + RELEASE_READINESS.
-  Taban v3: **77 metin / 9 öznitelik / 15 prop** (props 25 → 15).
-- **Repo:** master `f7e90d1`, çalışma ağacı temiz, `target/` yok.
-- **Sıradaki dilim (B):** `--props-report` kuyruğu — kalan 15 prop:
-  `components/files.tsx` (Dismiss), `components/pages.tsx` (Previous/Next),
-  `screens/Annotate.tsx` (Opacity ×2), `screens/Watermark.tsx` (Tile across page),
-  `screens/KvkkWizard.tsx` (3 Türkçe etiket). `office/calc/ui/CalcRibbon.tsx`'teki
-  SUM/AVERAGE/IF/COUNT/ROUND/VLOOKUP **formül adları**, çevrilmemeli — literal kalacak.
-  Sonra `hint`/`description` prop'ları taramaya katılır.
-- **Not:** `KvkkWizard` ve `PetitionWizard` etiketleri çevrilirken `hint` metinleri
-  Türkçe kalıyor; `hint` taramaya katılınca o ekranlar bütün olarak çevrilecek.
+- **Tamamlandı (2026-11-02):** E4.5 prop taraması, iki dilim.
+  PR #585 (`f7e90d1`): tarayıcı modülü + taban v3 + `PetitionWizard` etiketleri.
+  PR #586 (`67948c1`): kalan dokuz etiket. **Prop tabanı 25 → 15 → 6**; kalan
+  altısı Calc formül adları (bilinçli literal).
+- **Repo:** master `67948c1`, çalışma ağacı temiz, `target/` yok, disk %59 (40 GB boş).
+- **Sıradaki iş kalemi:** `hint`/`description` prop'larını taramaya katmak
+  (`PROPS` listesine eklemek + taban v4 + testler) ve ardından KVKK/dilekçe
+  `hint` metinlerini çevirmek. Bu, yeni bir plan çağrısı hak ediyor (Opus).
+- **Ders (bu turdan):** dosya boyutu bütçeleri **her zaman** son format
+  geçişinden sonra kaydedilmeli; yoksa CI ratchet'i haklı olarak kırmızı olur.
+- **Aday kuyruğu (değer/risk):** Scanner E2E (yalnız Windows CI), Android ABI
+  matrisi (dispatch), motor önbelleği (release/beta/nightly), Scorecard/Renovate
+  kararı, Rust kapsam tabanını yükseltme.
