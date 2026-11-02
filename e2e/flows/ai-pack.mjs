@@ -110,12 +110,23 @@ export async function packFlow(session) {
   const runButton = await findElement(session, '[data-testid="ai-pack-run"]');
   await clickElement(session, elementKey(runButton));
 
-  const state = await waitForScript(
-    session,
-    "const el=document.querySelector('[data-testid=\"ai-pack-result\"]'); return el ? el.dataset.parsed + '|' + el.dataset.ok : '';",
-    90000,
-    "the task-pack verdict",
-  );
+  let state;
+  try {
+    state = await waitForScript(
+      session,
+      "const el=document.querySelector('[data-testid=\"ai-pack-result\"]'); return el ? el.dataset.parsed + '|' + el.dataset.ok : '';",
+      90000,
+      "the task-pack verdict",
+    );
+  } catch (error) {
+    // The screen owns the reason (a refused provider, a parse error, ...): quote
+    // it and the run button's state instead of a bare timeout.
+    const detail = await execute(
+      session,
+      "const err=document.querySelector('[data-testid=\"ai-pack-error\"]'); const run=document.querySelector('[data-testid=\"ai-pack-run\"]'); return JSON.stringify({error:err?err.textContent.trim():null, runDisabled:run?run.disabled:null, runLabel:run?run.textContent.trim():null});",
+    ).catch(() => "{}");
+    throw new Error(`no verdict: ${error.message} (${detail})`);
+  }
   const [parsed, ok] = state.split("|");
   if (parsed !== "true" || ok !== "true") {
     const shown = await waitForScript(
