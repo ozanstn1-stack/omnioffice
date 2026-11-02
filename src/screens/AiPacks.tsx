@@ -9,7 +9,7 @@ import { FileSearch, Play, ShieldAlert, ShieldCheck, Wifi, WifiOff } from "lucid
 import { Badge, Button, Card, Checkbox, Field } from "../components/ui";
 import { Screen } from "../components/layout";
 import { AiPackGrid } from "../components/ai-pack-grid";
-import { pickDocumentToken, type FileToken } from "../lib/file-tokens";
+import { useTool } from "../lib/useTool";
 import { uid } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { aiChat, aiGetSettings, aiSaveSettings, toAppError } from "../lib/api";
@@ -36,12 +36,24 @@ function issueText(t: Translate, issue: VerificationIssue): string {
   return issue.field ? `${issue.field}: ${text}` : text;
 }
 
-export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
+export function AiPacks({
+  initialPack,
+  initialFiles = [],
+}: {
+  initialPack?: TaskPackId;
+  /** Documents handed over by another screen (or the dev launch context). */
+  initialFiles?: string[];
+} = {}) {
   const t = useT();
   const push = useToasts((state) => state.push);
   const [settings, setSettings] = useState<AiSettingsView | null>(null);
   const [packId, setPackId] = useState<TaskPackId>(initialPack ?? TASK_PACKS[0].id);
-  const [file, setFile] = useState<FileToken | null>(null);
+  // The document goes through `useTool` like every other tool screen, so a pack
+  // can be opened with a file (open-with, drag and drop, dev launch) and the
+  // development auto-run hook works here too.
+  const session = useTool({ suffix: "_pack", accept: "pdf", loadInfo: false, initialPaths: initialFiles });
+  const primary = session.primary;
+  const file = primary?.token ? { token: primary.token, name: primary.name } : null;
   const [consent, setConsent] = useState(false);
   const [running, setRunning] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -96,16 +108,15 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
   };
 
   const pickFile = async () => {
-    const picked = await pickDocumentToken(["pdf"]).catch(() => null);
-    if (!picked) return;
-    setFile(picked);
     setResult(null);
     setRaw("");
     setError(null);
+    await session.pickFiles();
   };
 
-  const run = async () => {
+  const run = async (consented = false) => {
     if (!file) return;
+    if (!consent && !consented) return;
     setRunning(true);
     setError(null);
     setResult(null);
@@ -142,6 +153,16 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
       setRunning(false);
     }
   };
+
+  // Development automation (PDFSAK_DEV_RUN=1) only: the end-to-end flow cannot
+  // tick a checkbox through the native driver reliably, and the run is driven
+  // by the same handler a click uses.
+  useEffect(() => {
+    session.registerAutoRun(() => {
+      setConsent(true);
+      void run(true);
+    });
+  }, [session, run]);
 
   return (
     <Screen
@@ -195,6 +216,7 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
               variant="primary"
               icon={<Play size={13} />}
               disabled={running || !file || !consent}
+              data-testid="ai-pack-run"
               onClick={() => void run()}
             >
               {running ? t("aiPacks.running") : t("aiPacks.run")}
@@ -209,7 +231,7 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
       </Card>
 
       {result ? (
-        <Card>
+        <Card data-testid="ai-pack-result" data-ok={String(result.ok)} data-parsed={String(result.parsed)}>
           <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
             <div className="row">
               {result.ok ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}

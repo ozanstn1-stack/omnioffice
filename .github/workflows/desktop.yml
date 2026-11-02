@@ -521,6 +521,12 @@ jobs:
       - name: Impress (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:impress
+      # The AI task pack runs against scripts/mock-deepseek.mjs on loopback, so
+      # the pipeline (document -> prompt -> answer -> strict JSON verification)
+      # is exercised without a key or a network call.
+      - name: AI task pack (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:ai-pack
       # The secret store, end to end: save a key, inspect what reached the disk,
       # restart the app, read it back, clear it. The Linux runner has no Secret
       # Service, so the flow takes the documented `plain` fallback path and

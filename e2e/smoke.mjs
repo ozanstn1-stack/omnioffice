@@ -20,6 +20,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { aclGate } from "./flows/acl.mjs";
+import { aiPackFlow } from "./flows/ai-pack.mjs";
 import { calcFlow } from "./flows/calc.mjs";
 import { homeAndSettings } from "./flows/home.mjs";
 import { impressFlow } from "./flows/impress.mjs";
@@ -41,6 +42,12 @@ async function main() {
   if (argv.includes("--sanitize") || argv.includes("--all")) scenarios.push("sanitize");
   if (argv.includes("--acl")) scenarios.push("acl");
 
+  // The task-pack pipeline runs against the local mock provider, so it starts
+  // and stops its own server and configures the provider through Settings.
+  if (argv.includes("--ai-pack")) {
+    await aiPackFlow();
+    return;
+  }
   // Impress: the dev launch opens the deck in the office editor, where the
   // flow navigates, adds a slide and saves through the shared Ctrl+S handler.
   if (argv.includes("--impress")) {
