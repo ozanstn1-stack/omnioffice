@@ -9,6 +9,7 @@ import { FileSearch, Play, ShieldAlert, ShieldCheck, Wifi, WifiOff } from "lucid
 import { Badge, Button, Card, Checkbox, Field } from "../components/ui";
 import { Screen } from "../components/layout";
 import { AiPackGrid } from "../components/ai-pack-grid";
+import { useDev } from "../lib/store";
 import { useTool } from "../lib/useTool";
 import { uid } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -26,6 +27,8 @@ import { useScreenReady } from "../lib/screen-ready";
 import { reportError, useToasts } from "../lib/store";
 import type { AiSettingsView } from "../lib/types";
 import type { Translate } from "../lib/i18n";
+
+const NO_FILES: string[] = [];
 
 function issueText(t: Translate, issue: VerificationIssue): string {
   const text = t.plural(
@@ -51,7 +54,14 @@ export function AiPacks({
   // The document goes through `useTool` like every other tool screen, so a pack
   // can be opened with a file (open-with, drag and drop, dev launch) and the
   // development auto-run hook works here too.
-  const session = useTool({ suffix: "_pack", accept: "pdf", loadInfo: false, initialPaths: initialFiles });
+  // The launch context reaches the screen as a prop, but the store copy is the
+  // reliable one when the screen's lazy chunk mounts late: whichever arrives
+  // first is used, and the other is empty in that case.
+  // A selector that builds a fresh array (`?? []`) would re-render forever, so
+  // the empty case reuses one stable reference.
+  const launchFiles = useDev((state) => state.files);
+  const handedOver = initialFiles.length ? initialFiles : (launchFiles ?? NO_FILES);
+  const session = useTool({ suffix: "_pack", accept: "pdf", loadInfo: false, initialPaths: handedOver });
   const primary = session.primary;
   // A dialog pick arrives as a capability token; a file handed over by the dev
   // launch context (or another screen) is a path, which `ai_chat` resolves
@@ -189,6 +199,8 @@ export function AiPacks({
               <span
                 className="small"
                 data-testid="ai-pack-doc"
+                data-files={String(session.files.length)}
+                data-handed-over={String(handedOver.length)}
                 style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
                 {file ? file.name : t("aiPacks.noDocument")}

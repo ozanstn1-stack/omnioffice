@@ -48,6 +48,43 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn(async () => null), sav
 
 import { AiPacks } from "./AiPacks";
 
+describe("AiPacks initial files", () => {
+  it("shows a document handed over by the launch context", async () => {
+    // The shared mock's return type is the union the screen expects; this test
+    // answers two file-helper commands as well, so the cast keeps it assignable.
+    invoke.mockImplementation((async (command: string): Promise<unknown> => {
+      if (command === "file_sizes") return [1024];
+      if (command === "file_display_names") return ["launched.pdf"];
+      if (command === "ai_get_settings") {
+        return {
+          configured: true,
+          provider: "ollama",
+          providerLabel: "Ollama (local)",
+          baseUrl: "http://localhost:11434",
+          model: "llama3.2",
+          maskedKey: "",
+          keyStorage: "dpapi",
+          temperature: 0.2,
+          maxTokens: 2048,
+          thinking: false,
+          reasoningEffort: "auto",
+          contextTokens: 16000,
+          maxOutputTokens: 8192,
+          capabilities: { chat: true, embeddings: false, vision: false, structured_output: true, streaming: true },
+          embeddingModel: null,
+          providerKeys: {},
+        };
+      }
+      return null;
+    }) as never);
+    const view = render(<AiPacks />);
+    // Simulate the launch context arriving after the screen mounted (the order
+    // App uses: navigate with files once the dev context resolves).
+    view.rerender(<AiPacks initialFiles={["/tmp/launched.pdf"]} />);
+    expect(await screen.findByText("launched.pdf")).toBeInTheDocument();
+  });
+});
+
 describe("AiPacks (C7)", () => {
   const fetchSpy = vi.fn();
 
