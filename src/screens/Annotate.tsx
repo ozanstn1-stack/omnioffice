@@ -1036,7 +1036,7 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
                 </div>
               </div>
               {kind === "highlight" ? (
-                <Field label="Opacity">
+                <Field label={t("annotate.opacity")}>
                   <Slider
                     value={opacity * 100}
                     min={10}
@@ -1102,7 +1102,7 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
                       onChange={(value) => queueUpdate({ color: value })}
                     />
                   </Field>
-                  <Field label="Opacity">
+                  <Field label={t("annotate.opacity")}>
                     <Slider
                       value={Math.round(selectedAnnotation.opacity * 100)}
                       min={5}

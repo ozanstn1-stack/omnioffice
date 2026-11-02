@@ -269,7 +269,11 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
               <Field label={t("convert.margin")}>
                 <Slider value={options.margin_pt} min={0} max={120} onChange={(value) => patch({ margin_pt: value })} />
               </Field>
-              <Toggle checked={options.tile} onChange={(value) => patch({ tile: value })} label="Tile across page" />
+              <Toggle
+                checked={options.tile}
+                onChange={(value) => patch({ tile: value })}
+                label={t("watermark.tileAcross")}
+              />
               <Field label={t("pageTools.selection")} hint={t("pageTools.selectionHint")}>
                 <input
                   className="input"

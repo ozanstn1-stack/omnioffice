@@ -219,7 +219,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
         side={
           <div className="flex flex-col gap-4">
             <OptionCard title={t("kvkk.responsibleTitle")}>
-              <Field label="Şirket / Kurum Unvanı">
+              <Field label={t("kvkk.field.companyName")}>
                 <TextInput
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
@@ -227,7 +227,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                 />
               </Field>
 
-              <Field label="KVKK İrtibat E-Postası">
+              <Field label={t("kvkk.field.contactEmail")}>
                 <TextInput
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
@@ -235,7 +235,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                 />
               </Field>
 
-              <Field label="Şirket Adresi">
+              <Field label={t("kvkk.field.companyAddress")}>
                 <TextInput
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}

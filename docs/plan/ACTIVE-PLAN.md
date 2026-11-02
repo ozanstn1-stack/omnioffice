@@ -100,11 +100,17 @@ tarama yalnız `attr="…"` görüyor) aynı PR'da kapatılıyor.
 ---
 
 ## NEREDE KALDIM / SIRADAKI ADIM
-- **Durum:** Plan Opus'tan alındı ve buraya yazıldı; **kod yazılmadı**, uygulama
-  kullanıcı onayı bekliyor.
-- **Repo:** uzak master `b935b54`; yerelde `6735615 docs(plan)` bekliyor (dal
-  korumalı, doğrudan push yok — sıradaki PR'a girecek).
-- **Sıradaki adım:** kullanıcı "devam" derse Adım 0 (ön kontrol) → Adım 1
-  (`scripts/lib/i18n-jsx.mjs`) → testler → `--update --allow-raise` → ilk dilim.
-- **Ertelenenler:** Scanner E2E (Windows CI bütçesi), Android ABI matrisi, motor
-  önbelleği (`workflow_dispatch`), Scorecard/Renovate, Rust kapsam tabanı.
+- **Tamamlandı (2026-11-02):** PR A — i18n prop taraması. PR #585, squash `f7e90d1`.
+  `scripts/lib/i18n-jsx.mjs` (+`.d.mts`), audit v3 (`--props-report`, ayrı bölüm
+  raporları), `i18n-jsx-audit.test.ts` (12 vaka), `ci-workflow.test.ts` v3 pini,
+  `PetitionWizard` on etiketi sözlüğe taşındı, docs + RELEASE_READINESS.
+  Taban v3: **77 metin / 9 öznitelik / 15 prop** (props 25 → 15).
+- **Repo:** master `f7e90d1`, çalışma ağacı temiz, `target/` yok.
+- **Sıradaki dilim (B):** `--props-report` kuyruğu — kalan 15 prop:
+  `components/files.tsx` (Dismiss), `components/pages.tsx` (Previous/Next),
+  `screens/Annotate.tsx` (Opacity ×2), `screens/Watermark.tsx` (Tile across page),
+  `screens/KvkkWizard.tsx` (3 Türkçe etiket). `office/calc/ui/CalcRibbon.tsx`'teki
+  SUM/AVERAGE/IF/COUNT/ROUND/VLOOKUP **formül adları**, çevrilmemeli — literal kalacak.
+  Sonra `hint`/`description` prop'ları taramaya katılır.
+- **Not:** `KvkkWizard` ve `PetitionWizard` etiketleri çevrilirken `hint` metinleri
+  Türkçe kalıyor; `hint` taramaya katılınca o ekranlar bütün olarak çevrilecek.

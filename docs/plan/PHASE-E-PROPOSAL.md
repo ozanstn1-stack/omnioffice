@@ -233,8 +233,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    translated (baseline 131 -> 80; `docs/i18n.md`). What remains is mostly
    literal by design (`TRY`, accounting-software names, paper sizes, units).
    The scanner also counts component `label` props (baseline v3: 77 text nodes,
-   9 attribute strings, 25 prop strings; `PetitionWizard`'s ten labels moved to
-   the tables, so 15 remain) and `--props-report` prints the queue. The 22 `(s)`
+   9 attribute strings, **6 prop strings** after two slices moved the ten
+   petition fields and the nine remaining labels into the tables; the six that
+   remain are the Calc ribbon's formula names, literal like `TRY`) and
+   `--props-report` prints the queue. The 22 `(s)`
    strings now use `t.plural` over `Intl.PluralRules`, the audit
    fails on a new one, and it counts JSX **attribute** strings too (`alt`,
    `aria-label`, `title`, `placeholder`) against their own baseline section.
