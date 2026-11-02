@@ -43,6 +43,21 @@ ignore = [
   "RUSTSEC-2026-0367",
   "RUSTSEC-2026-0368",
   "RUSTSEC-2026-0369",
+  # RUSTSEC-2026-0429 - zip < 9: `ZipArchive::extract` sizes the symlink-target
+  # buffer from the declared uncompressed size, so a symlink entry claiming a
+  # huge length aborts the process through `handle_alloc_error()` (not catchable
+  # by `catch_unwind`).
+  # reachability: the same as the three above - only `ZipArchive::extract` is
+  #   affected, and this workspace never extracts an untrusted archive. The
+  #   vendored calamine already uses zip 9.0.5 (patched); the only copy below 9
+  #   is the updater's zip 4.6.1, which extracts the package it downloaded from
+  #   our own release after Tauri verifies its Ed25519 signature.
+  # fix status: tauri-plugin-updater 2.x still pins zip 4; no released upgrade
+  #   path exists, so the exception stays scoped to the updater.
+  # owner: @ozanstn1-stack
+  # reviewed 2026-11-02; review by 2027-02-02 (or when tauri-plugin-updater
+  #   moves to zip 9).
+  "RUSTSEC-2026-0429",
   # RUSTSEC-2026-0387 - crypto-bigint 0.5.5 constant-time operations leak
   # timing variability (via p256/ecdsa/elliptic-curve).
   # reachability: the app signs and verifies PDFs locally with a user-supplied
