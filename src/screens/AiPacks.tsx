@@ -241,35 +241,44 @@ export function AiPacks({
       </Card>
 
       {result ? (
-        <Card data-testid="ai-pack-result" data-ok={String(result.ok)} data-parsed={String(result.parsed)}>
-          <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <div className="row">
-              {result.ok ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
-              <strong>{result.ok ? t("aiPacks.verified") : t("aiPacks.verificationFailed")}</strong>
-              <Badge tone={result.parsed ? "ok" : "danger"}>{t("aiPacks.jsonLabel")}</Badge>
-              <Badge tone={result.ok ? "ok" : "warn"}>
-                {result.ok
-                  ? t("aiPacks.checksPassed")
-                  : t.plural("aiPacks.problemCount", result.issues.length, { count: result.issues.length })}
-              </Badge>
-            </div>
-            <Button size="sm" variant="ghost" onClick={() => setShowRaw(!showRaw)}>
-              {showRaw ? t("aiPacks.hideRaw") : t("aiPacks.showRaw")}
-            </Button>
-          </div>
-          {result.issues.length ? (
-            <ul className="small mt-2" style={{ paddingLeft: 18 }}>
-              {result.issues.map((issue, index) => (
-                <li key={index}>{issueText(t, issue)}</li>
-              ))}
-            </ul>
-          ) : null}
-          <pre
-            className="small mt-2"
-            style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--surface-2)", padding: 10 }}
+        <Card>
+          {/* `Card` renders only its own props, so the flow's hook lives on a
+              wrapper that really reaches the DOM. */}
+          <div
+            className="flex flex-col"
+            data-testid="ai-pack-result"
+            data-ok={String(result.ok)}
+            data-parsed={String(result.parsed !== null)}
           >
-            {showRaw ? raw : result.parsed ? JSON.stringify(result.parsed, null, 2) : raw}
-          </pre>
+            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <div className="row">
+                {result.ok ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
+                <strong>{result.ok ? t("aiPacks.verified") : t("aiPacks.verificationFailed")}</strong>
+                <Badge tone={result.parsed ? "ok" : "danger"}>{t("aiPacks.jsonLabel")}</Badge>
+                <Badge tone={result.ok ? "ok" : "warn"}>
+                  {result.ok
+                    ? t("aiPacks.checksPassed")
+                    : t.plural("aiPacks.problemCount", result.issues.length, { count: result.issues.length })}
+                </Badge>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setShowRaw(!showRaw)}>
+                {showRaw ? t("aiPacks.hideRaw") : t("aiPacks.showRaw")}
+              </Button>
+            </div>
+            {result.issues.length ? (
+              <ul className="small mt-2" style={{ paddingLeft: 18 }}>
+                {result.issues.map((issue, index) => (
+                  <li key={index}>{issueText(t, issue)}</li>
+                ))}
+              </ul>
+            ) : null}
+            <pre
+              className="small mt-2"
+              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--surface-2)", padding: 10 }}
+            >
+              {showRaw ? raw : result.parsed ? JSON.stringify(result.parsed, null, 2) : raw}
+            </pre>
+          </div>
         </Card>
       ) : null}
     </Screen>

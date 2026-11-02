@@ -127,6 +127,13 @@ describe("AiPacks (C7)", () => {
     expect(request.consent).toBe(true);
     // The screen itself never talks to the network; the provider call is the command.
     expect(fetchSpy).not.toHaveBeenCalled();
+    // The verdict card is what the end-to-end flow reads; Card drops unknown
+    // props, so the attributes must live on an element that reaches the DOM.
+    const card = document.querySelector('[data-testid="ai-pack-result"]');
+
+    expect(card, "verdict card").not.toBeNull();
+    expect(card?.getAttribute("data-ok")).toBe("true");
+    expect(card?.getAttribute("data-parsed")).toBe("true");
   });
 
   it("reports a non-JSON answer instead of trusting it", async () => {
