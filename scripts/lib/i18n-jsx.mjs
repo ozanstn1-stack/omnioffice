@@ -77,3 +77,129 @@ export function countByFile(entries) {
   }
   return counts;
 }
+
+// ---------------------------------------------------------------------------
+// Object literals and `.ts` modules (E4.6).
+//
+// The JSX scan above reads `.tsx` files only, so interface text that reaches
+// the screen through an object literal (`{ value: "employee", label: "Çalışan" }`)
+// or is built inside a `.ts` module never showed up. This second reading counts
+// those strings in their own `objects` section. It measures; it does not fix.
+//
+// Two deliberate narrowings keep the baseline honest:
+//   * only a value that carries a Turkish-specific letter is counted, so product
+//     names and identifiers that share these keys (`DeepSeek`, `Letter`) stay
+//     out. ASCII-only Turkish ("Belge") slips through - a stated, documented
+//     gap rather than a silent one.
+//   * a file that writes the document itself (`document content`) is left alone
+//     as a whole: translating an official letter would change what it says.
+// ---------------------------------------------------------------------------
+
+/** Object keys whose value a user reads. `name`, `value` and `message` stay out
+ * on purpose: they carry identifiers, product names and developer errors. */
+export const OBJECT_KEYS = ["label", "title", "description", "hint", "subtitle", "placeholder", "tooltip"];
+
+/** Files that write the artefact rather than the interface, with the reason
+ * each one is out of scope. Kept in code, not in the generated baseline, so the
+ * justification goes through review. */
+export const CONTENT_PATHS = [
+  {
+    path: "src/lib/official-letter.ts",
+    reason: "writes the official letter body, which is Turkish by definition",
+  },
+  {
+    path: "src/lib/official-letter-template.ts",
+    reason: "same letter, as the block template the editor shows (Dağıtım / Gereği / Bilgi)",
+  },
+  {
+    path: "src/lib/ai-task-pack-eval.ts",
+    reason: "sample AI answers used as scoring fixtures, never rendered",
+  },
+];
+
+const TURKISH = /[çğıöşüÇĞİÖŞÜ]/;
+const CONTENT_PRAGMA = /i18n-content:\s*(\S[^\n]*)/;
+
+/** A property name, or null when it is computed. Shorthand assignments are a
+ * different node type and never reach here. */
+function propertyKey(node) {
+  if (ts.isIdentifier(node) || ts.isStringLiteral(node)) return node.text;
+  return null;
+}
+
+/** The value with `as`, `satisfies` and parentheses peeled off. */
+function unwrap(node) {
+  let current = node;
+  for (;;) {
+    if (ts.isAsExpression(current) || ts.isParenthesizedExpression(current)) current = current.expression;
+    else if (typeof ts.isSatisfiesExpression === "function" && ts.isSatisfiesExpression(current))
+      current = current.expression;
+    else return current;
+  }
+}
+
+/** The strings one property value holds, as the user would read them. */
+function valueTexts(initializer) {
+  const node = unwrap(initializer);
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
+  if (ts.isTemplateExpression(node)) {
+    const text = [node.head.text, ...node.templateSpans.map((span) => `\${…}${span.literal.text}`)].join("");
+    return [text];
+  }
+  if (ts.isConditionalExpression(node)) {
+    return [...valueTexts(node.whenTrue), ...valueTexts(node.whenFalse)];
+  }
+  return [];
+}
+
+/** The justification written above a property, or null when there is none. The
+ * reason may not be empty - an empty pragma hides nothing. */
+function contentReason(node, body) {
+  // A pragma above the property counts, and so does one above the declaration
+  // that holds it: `// i18n-content:` over a whole table is easier to keep than
+  // one per entry. Every use is still listed in the report, so nothing hides.
+  for (let current = node; current && !ts.isSourceFile(current); current = current.parent) {
+    for (const range of ts.getLeadingCommentRanges(body, current.getFullStart()) ?? []) {
+      const match = CONTENT_PRAGMA.exec(body.slice(range.pos, range.end));
+      if (match) return match[1].trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Every user-visible string an object literal or a `.ts` module holds.
+ *
+ * `counted` holds what the baseline measures, `excluded` what a `i18n-content:`
+ * pragma or a content whole-file rule keeps out (with its reason), and
+ * `unmarked` the matching keys whose value has no Turkish letter - the info
+ * list that shows what the narrow rule lets through.
+ */
+export function scanObjects(name, body) {
+  const counted = [];
+  const excluded = [];
+  const unmarked = [];
+  const contentFile = CONTENT_PATHS.find((entry) => entry.path === name);
+  if (contentFile) return { contentFile, counted, excluded, unmarked };
+
+  const kind = name.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const source = ts.createSourceFile(name, body, ts.ScriptTarget.Latest, true, kind);
+  const lineOf = (node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+  const visit = (node) => {
+    if (ts.isPropertyAssignment(node)) {
+      const key = propertyKey(node.name);
+      if (key && OBJECT_KEYS.includes(key)) {
+        const reason = contentReason(node, body);
+        for (const text of valueTexts(node.initializer)) {
+          const row = { line: lineOf(node), key, text };
+          if (reason) excluded.push({ ...row, reason });
+          else if (TURKISH.test(text)) counted.push(row);
+          else unmarked.push(row);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return { contentFile: null, counted, excluded, unmarked };
+}

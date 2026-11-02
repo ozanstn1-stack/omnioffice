@@ -175,14 +175,78 @@ formül adları, aday 2–8'in hiçbiri, workflow dosyaları.
 
 ---
 
+# Seçilen iş kalemi 3: E4.6 — nesne literalleri ve `.ts` metinlerini ölçmek
+
+Plan `subagent_claude_opus` (`a57b8339`, 2026-11-02 22:35) tarafından üretildi.
+Ölçüm dilimi: metin düzeltmesi yok, yalnız tarama + ratchet.
+
+## Karar
+`scanObjects` ikinci bir okuyucu olarak eklendi; `.ts` ve `.tsx` dosyalarındaki
+nesne literallerinde duran arayüz metni **ayrı `objects` bölümünde** sayılıyor,
+şema **v4**. Düzeltme (kütüphanelerin `{ code, params }` döndürmesi) sonraki dilim
+(E4.7) — bu dilim yalnız görünürlük ve büyümeyi kilitleme işi.
+
+## Tasarım (dar ve gerekçeli)
+- **Anahtarlar**: `label`, `title`, `description`, `hint`, `subtitle`,
+  `placeholder`, `tooltip`. `name`/`value`/`message` dışarıda (tanımlayıcı, ürün
+  adı, geliştirici hatası).
+- **Türkçe işareti** (`ç ğ ı ö ş ü`) şartı: ürün adları ve tanımlayıcılar
+  (`DeepSeek`, `Letter`) tabana girmez. Bilinçli bedel: ASCII Türkçe ("Belge")
+  de kaçar; raporda `unmarked` listesinde görünür, tabanda değil.
+- **Değer biçimleri**: string, şablon (`${…}` tek yer tutucu), koşullu ifade (her
+  dal bir kez). Birleştirme, `??`, çağrı sayılmaz.
+- **`// i18n-content: <gerekçe>`**: satırın ya da onu tutan bildirimin üstünde;
+  gerekçesiz pragma geçersiz (hiçbir şey sessizce gizlenemez). Raporda listelenir.
+- **`CONTENT_PATHS`**: belgenin kendisini yazan dosyalar
+  (`official-letter.ts`, `official-letter-template.ts`, `ai-task-pack-eval.ts`)
+  kod içinde gerekçesiyle; tabana yazılmaz ki gerekçe incelemeden geçsin.
+- **`--objects-report`** üç bölüm basar: sayılan / dışlanan (gerekçesiyle) /
+  işaretsiz (bilgi).
+
+## İlk kayıt (elle denetlendi)
+**34 dize, 7 dosya**: `lib/document-health.ts` 15, `screens/KvkkWizard.tsx` 6,
+`PetitionWizard` 4, `Invoices` 3, `DocumentHealthScreen` 2, `Redact` 2, `Vault` 1.
+Dışlanan: 12 satır (dil otantik adları) + 3 içerik dosyası. İkinci `--update`
+diff'siz — taban idempotent.
+
+## Kabul (yapıldı)
+- `--check` 0: `hardcoded-jsx=77 hardcoded-attrs=9 hardcoded-props=6 hardcoded-objects=34`.
+- `i18n-jsx-audit.test.ts` 18 → 30 vaka; `ci-workflow.test.ts` pini v4 + props ≤ 6
+  (15'ten sıkılaştı) + objects ≤ 34.
+- Belgeler: `docs/i18n.md` yeni "object literals" bölümü, `RELEASE_READINESS.md`
+  E4.6 maddesi 5 marker'la.
+
+## Kapsam dışı (E4.7)
+`document-health.ts` ve benzeri kütüphanelerin metin yerine anahtar+parametre
+döndürmesi, `options` dizilerinin `labelKey`'e geçmesi, ASCII Türkçe sözcük
+listesi, `??`/birleştirme biçimleri.
+
+---
+
 ## NEREDE KALDIM / SIRADAKI ADIM
 - **Tamamlandı (2026-11-02):** E4.5 prop taraması, iki dilim.
   PR #585 (`f7e90d1`): tarayıcı modülü + taban v3 + `PetitionWizard` etiketleri.
   PR #586 (`67948c1`): kalan dokuz etiket. **Prop tabanı 25 → 15 → 6**; kalan
   altısı Calc formül adları (bilinçli literal).
 - **Repo:** master `67948c1`, çalışma ağacı temiz, `target/` yok, disk %59 (40 GB boş).
-- **Şimdiki iş kalemi (2026-11-02 22:0x UTC):** `hint`/`subtitle` prop taraması
-  + beş dizenin çevirisi (yukarıdaki plan). Opus planı `febca680`.
+- **Kapandı (2026-11-02 22:29 UTC):** `hint`/`subtitle` prop taraması + beş
+  dizenin çevirisi — **PR #587 → `f796b5b`**, 19/19 kontrol yeşil. Opus planı
+  `febca680`. `PROPS` = `label`, `hint`, `subtitle`; **taban değişmedi**
+  (version 3, 77 metin, 9 öznitelik, 6 prop) — `--update` diff'i boş.
+  Ders: kapsam borcunu kapatırken tabanı oynatmayan bir dilim, `--allow-raise`
+  gerekçesi yazmaktan daha temiz.
+- **Kapandı (2026-11-02 22:45 UTC):** E4.6 ölçüm dilimi — nesne literalleri ve
+  `.ts` metinleri artık `objects` bölümünde (şema **v4**, **34 dize / 7 dosya**),
+  `--objects-report` üç liste basıyor, `// i18n-content:` ve `CONTENT_PATHS`
+  gerekçeli kaçış kapıları. Düzeltme E4.7'ye bırakıldı.
+- **Sıradaki aday:** E4.7 — `document-health.ts`'in cümle yerine
+  `{ code, params }` döndürmesi ve `options` dizilerinin `labelKey`'e geçmesi;
+  ardından Scanner E2E / Android ABI (hafta sonu, uzun CI penceresi).
+- **Kapalı ölçüm boşluğu (∂):** (a) nesne literallerindeki
+  `label:` (test dışı 39; Türkçe işaretli 6; çoğu ürün/model adı), (b) `.ts`
+  dosyalarında üretilen metinler — test dışı 44 dize `title:`, 25'i Türkçe
+  (`src/lib/document-health.ts` 9, `src/lib/official-letter.ts` 7). Tarayıcı
+  bugün yalnız `.tsx` okuyor.
 - **Ders (bu turdan):** dosya boyutu bütçeleri **her zaman** son format
   geçişinden sonra kaydedilmeli; yoksa CI ratchet'i haklı olarak kırmızı olur.
 - **Aday kuyruğu (değer/risk):** Scanner E2E (yalnız Windows CI), Android ABI

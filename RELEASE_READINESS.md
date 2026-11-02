@@ -242,7 +242,25 @@ release-train schedule is decided.
   `test:src/lib/i18n-jsx-audit.test.ts#counts the sibling props the components really declare`
   `test:src/lib/i18n-jsx-audit.test.ts#does not count a title twice when a component takes it as a prop`
   `test:src/lib/i18n-jsx-audit.test.ts#fails when a sibling prop grows above its baseline`
-  `test:src/lib/i18n-jsx-audit.test.ts#keeps the baseline schema at v3 when the widened props are recorded`
+  `test:src/lib/i18n-jsx-audit.test.ts#keeps the baseline schema at v4 when the widened props are recorded`
+- **Object literals and `.ts` modules are measured too (E4.6):** interface text
+  that never passes through a JSX literal - the KVKK template options
+  (`{ value: "employee", label: "Çalışan" }`), the wizard toast titles, and the
+  findings `src/lib/document-health.ts` builds - is now counted in a fourth
+  baseline section, `objects`, under schema **v4**. The scan is narrow on
+  purpose: seven text-carrying keys, and only a value with a Turkish-specific
+  letter, so product names and identifiers stay out; `// i18n-content: <reason>`
+  excludes a line or a whole declaration, and a file that writes the document
+  itself (`official-letter`, its template, the AI scoring fixtures) is listed in
+  `CONTENT_PATHS` with its reason in code. First record: **34 strings across 7
+  files**, and `--objects-report` prints what is counted, what is excluded and
+  what the narrow rule let through. This slice measures only - making those
+  strings translatable is the next one.
+  `test:src/lib/i18n-jsx-audit.test.ts#counts the interface text an object literal holds, in a .ts module too`
+  `test:src/lib/i18n-jsx-audit.test.ts#leaves product names and identifiers to the info list`
+  `test:src/lib/i18n-jsx-audit.test.ts#honours an i18n-content pragma, and refuses one without a reason`
+  `test:src/lib/i18n-jsx-audit.test.ts#fails when an object string grows above its baseline`
+  `test:src/lib/i18n-jsx-audit.test.ts#asks for a re-record instead of passing when the baseline has no objects section`
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`

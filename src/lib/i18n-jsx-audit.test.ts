@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ATTRIBUTES, PROPS, scanSource } from "../../scripts/lib/i18n-jsx.mjs";
+import { ATTRIBUTES, CONTENT_PATHS, OBJECT_KEYS, PROPS, scanObjects, scanSource } from "../../scripts/lib/i18n-jsx.mjs";
 
 // The JSX scanner and its ratchet (E4.5). The scanner is a pure function, so the
 // counting rules are tested on inline snippets; the ratchet is tested through
@@ -119,28 +119,22 @@ function run(tree: { root: string; baseline: string }, ...flags: string[]): { st
 }
 
 describe("i18n props ratchet", () => {
-  const emptySections = { files: {}, attributes: {} };
+  const v4 = { files: {}, attributes: {}, props: {}, objects: {} };
 
   it("fails when a file grows above its props baseline", () => {
-    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Field label="Save" />');
+    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field label="Save" />');
     const result = run(tree, "--check");
     expect(result.status).toBe(1);
     expect(result.output).toContain("prop string");
   });
 
   it("accepts the file once the props baseline records it", () => {
-    const tree = tempTree(
-      { version: 3, ...emptySections, props: { "screens/Sample.tsx": 1 } },
-      '<Field label="Save" />',
-    );
+    const tree = tempTree({ version: 4, ...v4, props: { "screens/Sample.tsx": 1 } }, '<Field label="Save" />');
     expect(run(tree, "--check").status).toBe(0);
   });
 
   it("refuses to raise a props count without --allow-raise, and raises it with the flag", () => {
-    const tree = tempTree(
-      { version: 3, ...emptySections, props: { "screens/Sample.tsx": 0 } },
-      '<Field label="Save" />',
-    );
+    const tree = tempTree({ version: 4, ...v4, props: { "screens/Sample.tsx": 0 } }, '<Field label="Save" />');
     const refused = run(tree, "--update");
     expect(refused.status).toBe(1);
     expect(refused.output).toContain("may only shrink");
@@ -150,7 +144,7 @@ describe("i18n props ratchet", () => {
       version: number;
       props: Record<string, number>;
     };
-    expect(written.version).toBe(3);
+    expect(written.version).toBe(4);
     expect(written.props["screens/Sample.tsx"]).toBe(1);
   });
 
@@ -162,7 +156,7 @@ describe("i18n props ratchet", () => {
   });
 
   it("fails when a sibling prop grows above its baseline", () => {
-    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Field hint="Tarih girin" />');
+    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field hint="Tarih girin" />');
     const result = run(tree, "--check");
     expect(result.status).toBe(1);
     expect(result.output).toContain("prop string");
@@ -170,25 +164,122 @@ describe("i18n props ratchet", () => {
   });
 
   it("names the sibling prop in the backlog report", () => {
-    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Screen subtitle="Ekranı anlat" />');
+    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Screen subtitle="Ekranı anlat" />');
     const result = run(tree, "--props-report");
     expect(result.status).toBe(0);
     expect(result.output).toContain("screens/Sample.tsx:1\tsubtitle\tEkranı anlat");
   });
 
-  it("keeps the baseline schema at v3 when the widened props are recorded", () => {
-    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Field hint="Tarih girin" />');
+  it("keeps the baseline schema at v4 when the widened props are recorded", () => {
+    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field hint="Tarih girin" />');
     expect(run(tree, "--update", "--allow-raise").status).toBe(0);
     const written = JSON.parse(readFileSync(tree.baseline, "utf8")) as Record<string, unknown>;
     // Widening PROPS changes what is counted, not how the baseline is shaped.
-    expect(written.version).toBe(3);
-    expect(Object.keys(written).sort()).toEqual(["attributes", "files", "props", "version"]);
+    expect(written.version).toBe(4);
+    expect(Object.keys(written).sort()).toEqual(["attributes", "files", "objects", "props", "version"]);
   });
 
   it("prints the translation backlog with --props-report", () => {
-    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Field label="Save" />');
+    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field label="Save" />');
     const result = run(tree, "--props-report");
     expect(result.status).toBe(0);
     expect(result.output).toContain("screens/Sample.tsx:1\tlabel\tSave");
+  });
+});
+
+describe("i18n object strings (E4.6)", () => {
+  const scanObject = (body: string, name = "lib/Sample.ts") => scanObjects(name, body);
+
+  it("counts the interface text an object literal holds, in a .ts module too", () => {
+    expect(scanObject('const o = { value: "employee", label: "Çalışan" };').counted.map((r) => r.text)).toEqual([
+      "Çalışan",
+    ]);
+    expect(scanObject('const o = { label: "Çalışan" };', "screens/Sample.tsx").counted).toHaveLength(1);
+    expect(scanObject('const o = { "label": "Çalışan" };').counted).toHaveLength(1);
+  });
+
+  it("leaves product names and identifiers to the info list", () => {
+    const found = scanObject('const o = { label: "DeepSeek", title: "Letter" };');
+    expect(found.counted).toHaveLength(0);
+    expect(found.unmarked.map((r) => r.text)).toEqual(["DeepSeek", "Letter"]);
+    // The narrow rule is deliberate: ASCII-only Turkish slips through, visibly.
+    expect(scanObject('const o = { title: "Belge" };').counted).toHaveLength(0);
+  });
+
+  it("reads a template as one string with its placeholders", () => {
+    const found = scanObject("const o = { description: `Belgede ${n} adet geçerli TCKN tespit edildi.` };");
+    expect(found.counted.map((r) => r.text)).toEqual(["Belgede ${…} adet geçerli TCKN tespit edildi."]);
+  });
+
+  it("peels as, satisfies and parentheses, and splits a conditional", () => {
+    expect(scanObject('const o = { label: "Çalışan" as const };').counted).toHaveLength(1);
+    expect(scanObject("const o = { label: ('Ağ') };").counted).toHaveLength(1);
+    expect(scanObject('const o = { label: flag ? "Geçerli" : "Geçersiz" };').counted).toHaveLength(2);
+  });
+
+  it("ignores translation calls, concatenation, computed keys and unlisted keys", () => {
+    expect(scanObject('const o = { label: t("a.b"), title: "Ad" + suffix };').counted).toHaveLength(0);
+    expect(scanObject('const o = { [key]: "Çalışan" };').counted).toHaveLength(0);
+    expect(scanObject('const o = { name: "Çalışan", value: "çalışan", message: "Çalışan yok" };').counted).toHaveLength(
+      0,
+    );
+  });
+
+  it("honours an i18n-content pragma, and refuses one without a reason", () => {
+    const excluded = scanObject('const o = {\n  // i18n-content: fixture text\n  title: "Değerlendirme",\n};');
+    expect(excluded.counted).toHaveLength(0);
+    expect(excluded.excluded[0].reason).toBe("fixture text");
+    // An empty reason hides nothing, so the string stays counted.
+    expect(scanObject('const o = {\n  // i18n-content:\n  title: "Değerlendirme",\n};').counted).toHaveLength(1);
+  });
+
+  it("lets one pragma cover the declaration that holds the entries", () => {
+    const body = '// i18n-content: language autonyms\nconst LANGS = [\n  { code: "tr", label: "Türkçe" },\n];';
+    const found = scanObjects("lib/languages.ts", body);
+    expect(found.counted).toHaveLength(0);
+    expect(found.excluded.map((r) => r.text)).toEqual(["Türkçe"]);
+  });
+
+  it("skips a whole file that writes the document instead of the interface", () => {
+    expect(CONTENT_PATHS.length).toBeGreaterThan(0);
+    for (const entry of CONTENT_PATHS) {
+      const found = scanObjects(entry.path, 'const o = { title: "Gereği:" };');
+      expect(found.contentFile?.reason).toBe(entry.reason);
+      expect(found.counted).toHaveLength(0);
+    }
+  });
+
+  it("keeps the measured keys explicit", () => {
+    expect(OBJECT_KEYS).toEqual(["label", "title", "description", "hint", "subtitle", "placeholder", "tooltip"]);
+    for (const name of ["name", "value", "message"]) expect(OBJECT_KEYS).not.toContain(name);
+  });
+
+  it("asks for a re-record instead of passing when the baseline has no objects section", () => {
+    const tree = tempTree({ version: 3, files: {}, attributes: {}, props: {} }, 'const o = { label: "Çalışan" };');
+    const result = run(tree, "--check");
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("no `objects` section");
+  });
+
+  it("fails when an object string grows above its baseline", () => {
+    const tree = tempTree(
+      { version: 4, files: {}, attributes: {}, props: {}, objects: {} },
+      'const o = { label: "Çalışan" };',
+    );
+    const result = run(tree, "--check");
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("object string");
+  });
+
+  it("prints the object backlog in three sections", () => {
+    const tree = tempTree(
+      { version: 4, files: {}, attributes: {}, props: {}, objects: {} },
+      'const o = { label: "Çalışan", title: "DeepSeek" };',
+    );
+    const result = run(tree, "--objects-report");
+    expect(result.status).toBe(0);
+    expect(result.output).toContain("counted: 1 object string(s)");
+    expect(result.output).toContain("screens/Sample.tsx:1\tlabel\tÇalışan");
+    expect(result.output).toContain("unmarked (info only): 1");
   });
 });
