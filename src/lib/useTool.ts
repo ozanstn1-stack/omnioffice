@@ -162,8 +162,10 @@ export function useTool(options: ToolOptions): ToolSession {
         if (refs.length) setError({ code: "unsupported", message: t("errors.unsupported") });
         return;
       }
-      const sizes = await fileSizes(acceptedRefs.map((ref) => ref.token)).catch(() => acceptedRefs.map(() => null));
-      const entries = tokenEntries(acceptedRefs, sizes);
+      // A size lookup that fails - or answers something other than a list -
+      // must not lose the picked files: they are shown with an unknown size.
+      const sizes = await fileSizes(acceptedRefs.map((ref) => ref.token)).catch(() => null);
+      const entries = tokenEntries(acceptedRefs, Array.isArray(sizes) ? sizes : acceptedRefs.map(() => null));
       setResult(null);
       setError(null);
       setFiles((previous) => (multiple ? [...previous, ...entries] : entries.slice(0, 1)));

@@ -129,6 +129,20 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **The task-pack pipeline runs end to end against a local mock (E4.3):** the
+  AI packs screen now takes documents through `useTool` like every other tool
+  (open-with, drag and drop, dev launch), and `--ai-pack` starts
+  `scripts/mock-deepseek.mjs` on loopback, points the app's provider at it
+  through Settings, launches the screen with a sample document, ticks the
+  consent box and presses Run like a user, and requires the verification card to
+  report `parsed` **and** `ok`. Task packs now accept office documents too, not
+  only PDFs - the office parsers need no native engine, which is what lets the
+  flow run in the engine-free job. The mock answers a pack prompt by echoing the JSON
+  shape the prompt asks for, so the strict contract is what gets tested. No key
+  and no network call are involved, and the flow starts and stops the server
+  itself.
+  `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
+  `test:src/screens/AiPacks.test.tsx#runs a pack through ai_chat and verifies the structured answer`
 - **An Impress flow closes the office trio (E4.3):** `--impress` opens
   `samples/test-presentation.pptx` in the office editor, reads the slide rail
   (`.slide-thumb` + `.is-active`, so no translated label is matched), clicks the

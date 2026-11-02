@@ -718,7 +718,7 @@ export default function App() {
       aiLibrary: <AiLibrary onOpenAi={() => navigate("ai")} />,
       // A desk task (D13) navigates with its pack; the key remounts the screen so the
       // preselection applies even when the user is already on it.
-      aiPacks: <AiPacks key={aiPack ?? "ai-packs"} initialPack={aiPack ?? undefined} />,
+      aiPacks: <AiPacks key={aiPack ?? "ai-packs"} initialPack={aiPack ?? undefined} initialFiles={files} />,
       merge: <Merge initialFiles={files} dragging={dragging} />,
       organize: <Organize initialFiles={files} dragging={dragging} />,
       split: <Split initialFiles={files} dragging={dragging} />,

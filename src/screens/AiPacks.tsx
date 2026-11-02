@@ -9,7 +9,8 @@ import { FileSearch, Play, ShieldAlert, ShieldCheck, Wifi, WifiOff } from "lucid
 import { Badge, Button, Card, Checkbox, Field } from "../components/ui";
 import { Screen } from "../components/layout";
 import { AiPackGrid } from "../components/ai-pack-grid";
-import { pickDocumentToken, type FileToken } from "../lib/file-tokens";
+import { useDev } from "../lib/store";
+import { useTool } from "../lib/useTool";
 import { uid } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { aiChat, aiGetSettings, aiSaveSettings, toAppError } from "../lib/api";
@@ -27,6 +28,8 @@ import { reportError, useToasts } from "../lib/store";
 import type { AiSettingsView } from "../lib/types";
 import type { Translate } from "../lib/i18n";
 
+const NO_FILES: string[] = [];
+
 function issueText(t: Translate, issue: VerificationIssue): string {
   const text = t.plural(
     `aiPacks.issue.${issue.code}`,
@@ -36,12 +39,38 @@ function issueText(t: Translate, issue: VerificationIssue): string {
   return issue.field ? `${issue.field}: ${text}` : text;
 }
 
-export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
+export function AiPacks({
+  initialPack,
+  initialFiles = [],
+}: {
+  initialPack?: TaskPackId;
+  /** Documents handed over by another screen (or the dev launch context). */
+  initialFiles?: string[];
+} = {}) {
   const t = useT();
   const push = useToasts((state) => state.push);
   const [settings, setSettings] = useState<AiSettingsView | null>(null);
   const [packId, setPackId] = useState<TaskPackId>(initialPack ?? TASK_PACKS[0].id);
-  const [file, setFile] = useState<FileToken | null>(null);
+  // The document goes through `useTool` like every other tool screen, so a pack
+  // can be opened with a file (open-with, drag and drop, dev launch) and the
+  // development auto-run hook works here too.
+  // The launch context reaches the screen as a prop, but the store copy is the
+  // reliable one when the screen's lazy chunk mounts late: whichever arrives
+  // first is used, and the other is empty in that case.
+  // A selector that builds a fresh array (`?? []`) would re-render forever, so
+  // the empty case reuses one stable reference.
+  const launchFiles = useDev((state) => state.files);
+  const handedOver = initialFiles.length ? initialFiles : (launchFiles ?? NO_FILES);
+  // A pack needs the document's text, and the office parsers read DOCX/XLSX/PPTX
+  // without a native engine - only PDFs go through pdfium. Accepting the whole
+  // document set is both more useful and the reason the flow can run where the
+  // engines are absent.
+  const session = useTool({ suffix: "_pack", accept: "document", loadInfo: false, initialPaths: handedOver });
+  const primary = session.primary;
+  // A dialog pick arrives as a capability token; a file handed over by the dev
+  // launch context (or another screen) is a path, which `ai_chat` resolves
+  // through the same policy. Either form is what the command wants.
+  const file = primary ? { token: primary.token ?? primary.path, name: primary.name } : null;
   const [consent, setConsent] = useState(false);
   const [running, setRunning] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -96,16 +125,14 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
   };
 
   const pickFile = async () => {
-    const picked = await pickDocumentToken(["pdf"]).catch(() => null);
-    if (!picked) return;
-    setFile(picked);
     setResult(null);
     setRaw("");
     setError(null);
+    await session.pickFiles();
   };
 
   const run = async () => {
-    if (!file) return;
+    if (!file || !consent) return;
     setRunning(true);
     setError(null);
     setResult(null);
@@ -175,6 +202,9 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
             <div className="row">
               <span
                 className="small"
+                data-testid="ai-pack-doc"
+                data-files={String(session.files.length)}
+                data-handed-over={String(handedOver.length)}
                 style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
                 {file ? file.name : t("aiPacks.noDocument")}
@@ -186,6 +216,7 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
           </Field>
           <Checkbox
             checked={consent}
+            testId="ai-pack-consent"
             onChange={(value) => setConsent(value)}
             label={local ? t("aiPacks.consentLocal") : t("aiPacks.consentCloud")}
           />
@@ -195,13 +226,14 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
               variant="primary"
               icon={<Play size={13} />}
               disabled={running || !file || !consent}
+              data-testid="ai-pack-run"
               onClick={() => void run()}
             >
               {running ? t("aiPacks.running") : t("aiPacks.run")}
             </Button>
           </div>
           {error ? (
-            <p className="small" style={{ color: "var(--danger, #ef4444)" }}>
+            <p className="small" data-testid="ai-pack-error" style={{ color: "var(--danger, #ef4444)" }}>
               {error}
             </p>
           ) : null}
@@ -210,34 +242,43 @@ export function AiPacks({ initialPack }: { initialPack?: TaskPackId } = {}) {
 
       {result ? (
         <Card>
-          <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-            <div className="row">
-              {result.ok ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
-              <strong>{result.ok ? t("aiPacks.verified") : t("aiPacks.verificationFailed")}</strong>
-              <Badge tone={result.parsed ? "ok" : "danger"}>{t("aiPacks.jsonLabel")}</Badge>
-              <Badge tone={result.ok ? "ok" : "warn"}>
-                {result.ok
-                  ? t("aiPacks.checksPassed")
-                  : t.plural("aiPacks.problemCount", result.issues.length, { count: result.issues.length })}
-              </Badge>
-            </div>
-            <Button size="sm" variant="ghost" onClick={() => setShowRaw(!showRaw)}>
-              {showRaw ? t("aiPacks.hideRaw") : t("aiPacks.showRaw")}
-            </Button>
-          </div>
-          {result.issues.length ? (
-            <ul className="small mt-2" style={{ paddingLeft: 18 }}>
-              {result.issues.map((issue, index) => (
-                <li key={index}>{issueText(t, issue)}</li>
-              ))}
-            </ul>
-          ) : null}
-          <pre
-            className="small mt-2"
-            style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--surface-2)", padding: 10 }}
+          {/* `Card` renders only its own props, so the flow's hook lives on a
+              wrapper that really reaches the DOM. */}
+          <div
+            className="flex flex-col"
+            data-testid="ai-pack-result"
+            data-ok={String(result.ok)}
+            data-parsed={String(result.parsed !== null)}
           >
-            {showRaw ? raw : result.parsed ? JSON.stringify(result.parsed, null, 2) : raw}
-          </pre>
+            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <div className="row">
+                {result.ok ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
+                <strong>{result.ok ? t("aiPacks.verified") : t("aiPacks.verificationFailed")}</strong>
+                <Badge tone={result.parsed ? "ok" : "danger"}>{t("aiPacks.jsonLabel")}</Badge>
+                <Badge tone={result.ok ? "ok" : "warn"}>
+                  {result.ok
+                    ? t("aiPacks.checksPassed")
+                    : t.plural("aiPacks.problemCount", result.issues.length, { count: result.issues.length })}
+                </Badge>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setShowRaw(!showRaw)}>
+                {showRaw ? t("aiPacks.hideRaw") : t("aiPacks.showRaw")}
+              </Button>
+            </div>
+            {result.issues.length ? (
+              <ul className="small mt-2" style={{ paddingLeft: 18 }}>
+                {result.issues.map((issue, index) => (
+                  <li key={index}>{issueText(t, issue)}</li>
+                ))}
+              </ul>
+            ) : null}
+            <pre
+              className="small mt-2"
+              style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", background: "var(--surface-2)", padding: 10 }}
+            >
+              {showRaw ? raw : result.parsed ? JSON.stringify(result.parsed, null, 2) : raw}
+            </pre>
+          </div>
         </Card>
       ) : null}
     </Screen>

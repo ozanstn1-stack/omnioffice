@@ -18,9 +18,28 @@ const SUMMARY = [
   "No decisions, deadlines or amounts are present in the document.",
 ].join(" ");
 
+/**
+ * The task packs (C7/D5) ask for "SADECE ... JSON nesnesi" and paste the expected
+ * shape as an example. Echoing that example back is what a compliant model does,
+ * and it keeps the mock honest for the pack flow instead of hard-coding a schema.
+ */
+function exampleJson(prompt) {
+  const match = String(prompt).match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    return JSON.stringify(JSON.parse(match[0]));
+  } catch {
+    return null;
+  }
+}
+
 function pickReply(body) {
   const messages = body?.messages ?? [];
   const lastUser = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  if (/JSON (nesnesi|object)/i.test(lastUser)) {
+    const example = exampleJson(lastUser);
+    if (example) return example;
+  }
   if (/JSON object/i.test(messages[0]?.content ?? "")) {
     return '{"title":"Sample report A","author":"OmniOffice samples","subject":"Synthetic test document","keywords":["sample","report","testing","pdf"]}';
   }

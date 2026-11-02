@@ -215,8 +215,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    `e2e/flows/{home,reader,office,pdf,acl,personas}.mjs`, with a structure test
    pinning it; the signature/verification (`--verify`), Calc (`--calc`), Impress
    (`--impress`) and secret-store (`--secrets`) flows run on every PR in the
-   Linux job, so Writer, Calc and Impress are all covered end to end. *Open:*
-   Scanner and the AI-pack flow against `scripts/mock-deepseek.mjs`, a
+   Linux job, so Writer, Calc and Impress are all covered end to end; the AI
+   task-pack pipeline (`--ai-pack`) runs against `scripts/mock-deepseek.mjs` on
+   loopback, including the strict JSON verification; the packs now accept office
+   documents, which is why the flow needs no native engine. *Open:* a Scanner flow, a
    document-vault flow (its folder picker is a native dialog WebDriver cannot
    drive), and the label-triggerable Android emulator run.
 4. **Benchmarks.** Make the criterion gate blocking with a two-consecutive-runs

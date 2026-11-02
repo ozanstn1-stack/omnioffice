@@ -342,7 +342,12 @@ export function AiSettings() {
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <Field label={t("settings.aiBaseUrl")} hint={t("settings.aiBaseUrlHint")}>
-          <TextInput value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} spellCheck={false} />
+          <TextInput
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
+            data-testid="ai-base-url"
+            spellCheck={false}
+          />
         </Field>
         <Field label={t("settings.aiModel")} hint={t("settings.aiModelHint")}>
           <div className="flex flex-col gap-2">

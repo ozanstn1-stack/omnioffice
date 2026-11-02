@@ -19,6 +19,7 @@ const EXPORTS: Record<string, string[]> = {
   "flows/verify.mjs": ["verifyFlow"],
   "flows/calc.mjs": ["calcFlow"],
   "flows/impress.mjs": ["impressFlow"],
+  "flows/ai-pack.mjs": ["aiPackFlow", "configureProviderFlow", "packFlow"],
   "flows/secrets.mjs": ["saveSecretsFlow", "reloadSecretsFlow", "checkSecretFile"],
   "flows/personas.mjs": ["accountantPersona", "studentPersona", "publicPersona", "lawyerPersona"],
   "lib/driver.mjs": ["withSession", "withSessionRetry", "requireAppBinary", "waitForScript"],
