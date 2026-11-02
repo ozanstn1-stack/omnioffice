@@ -26,6 +26,7 @@
     "e2e:flows": "node e2e/smoke.mjs --all",
     "e2e:personas": "node e2e/smoke.mjs --persona accountant,student,public",
     "e2e:acl": "node e2e/smoke.mjs --acl",
+    "e2e:verify": "node e2e/smoke.mjs --verify",
     "test:watch": "vitest",
     "test:rust": "cargo test --workspace",
     "bench:check": "node scripts/check-bench-regression.mjs",

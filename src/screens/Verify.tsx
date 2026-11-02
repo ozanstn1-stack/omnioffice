@@ -76,7 +76,9 @@ function VerdictCard({ report }: { report: SignatureReport }) {
   const verdict = summary.verdict;
   return (
     <Card>
-      <div className="flex items-start gap-3">
+      {/* The end-to-end flow reads the verdict from here, so it does not have to
+          match a translated sentence. */}
+      <div className="flex items-start gap-3" data-testid="signature-verdict" data-verdict={verdict}>
         <span className="mt-0.5" aria-hidden>
           {verdictIcon(verdict)}
         </span>

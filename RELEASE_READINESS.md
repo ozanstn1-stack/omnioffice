@@ -129,6 +129,14 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **A new end-to-end flow proves signature verification (E4.3):** `--verify`
+  launches the app on the Verify screen with the unsigned sample, waits for the
+  screen to report it holds its file, and reads the verdict from a
+  `data-testid`/`data-verdict` hook rather than a translated sentence - the real
+  `pdf_verify_signatures` command must answer "unsigned" and the file must stay
+  listed. It is engine-free (lopdf), so it runs in the Linux tauri-driver job on
+  every PR next to the smoke and ACL gates.
+  `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
 - **The end-to-end suite is modules, not one file (E4.3):** `e2e/smoke.mjs` went
   from 735 lines to a 109-line entry point that parses the flags and dispatches.
   The WebDriver plumbing (bounded calls, one session per scenario, screenshots,

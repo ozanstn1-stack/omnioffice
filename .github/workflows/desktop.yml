@@ -506,6 +506,11 @@ jobs:
       - name: Command ACL (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:acl
+      # Signature verification is engine-free (lopdf): the unsigned sample must
+      # come back as "unsigned" through the real command, not an empty panel.
+      - name: Signature verification (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:verify
       # Engine-free real flows: Writer type -> save, PDF merge and Studio
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)

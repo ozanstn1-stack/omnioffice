@@ -16,6 +16,7 @@ const EXPORTS: Record<string, string[]> = {
   "flows/office.mjs": ["officeRoundtrip", "activateWriter", "typeInWriter", "openReviewRibbon"],
   "flows/pdf.mjs": ["mergeFlow", "sanitizeFlow"],
   "flows/acl.mjs": ["aclGate"],
+  "flows/verify.mjs": ["verifyFlow"],
   "flows/personas.mjs": ["accountantPersona", "studentPersona", "publicPersona", "lawyerPersona"],
   "lib/driver.mjs": ["withSession", "withSessionRetry", "requireAppBinary", "waitForScript"],
   "lib/files.mjs": ["prepareWorkFile", "elementKey"],
