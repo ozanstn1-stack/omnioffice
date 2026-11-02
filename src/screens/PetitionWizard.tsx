@@ -140,11 +140,11 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
       <div className="flex flex-col gap-4 max-w-4xl mx-auto">
         <Card className="p-5 flex flex-col gap-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Tarih" hint="Belgenin sağ üst köşesinde yer alacak tarih.">
+            <Field label={t("petition.field.date")} hint="Belgenin sağ üst köşesinde yer alacak tarih.">
               <TextInput value={data.date} onChange={(e) => update("date", e.target.value)} />
             </Field>
 
-            <Field label="Muhatap Makam / Kurum" hint="Örn: ÇANKAYA KAYMAKAMLIĞINA">
+            <Field label={t("petition.field.authority")} hint="Örn: ÇANKAYA KAYMAKAMLIĞINA">
               <TextInput
                 value={data.recipientAuthority}
                 onChange={(e) => update("recipientAuthority", e.target.value)}
@@ -153,7 +153,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
             </Field>
           </div>
 
-          <Field label="Dilekçe Konusu">
+          <Field label={t("petition.field.subject")}>
             <TextInput
               value={data.subject}
               onChange={(e) => update("subject", e.target.value)}
@@ -161,7 +161,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
             />
           </Field>
 
-          <Field label="Açıklamalar / Olay Anlatımı">
+          <Field label={t("petition.field.body")}>
             <textarea
               className="w-full min-h-[140px] p-3 rounded-lg border border-hairline bg-surface text-text resize-y text-sm focus:outline-none focus:ring-1 focus:ring-accent"
               value={data.bodyText}
@@ -170,7 +170,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
             />
           </Field>
 
-          <Field label="Sonuç ve İstem">
+          <Field label={t("petition.field.demands")}>
             <TextInput
               value={data.demands}
               onChange={(e) => update("demands", e.target.value)}
@@ -179,11 +179,11 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
           </Field>
 
           <div className="border-t border-hairline pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Ad Soyad">
+            <Field label={t("petition.field.fullName")}>
               <TextInput value={data.fullName} onChange={(e) => update("fullName", e.target.value)} />
             </Field>
 
-            <Field label="T.C. Kimlik No" hint="11 haneli TCKN (Mod-11 doğrulanır)">
+            <Field label={t("petition.field.taxId")} hint="11 haneli TCKN (Mod-11 doğrulanır)">
               <TextInput
                 value={data.tckn}
                 onChange={(e) => update("tckn", e.target.value)}
@@ -191,16 +191,16 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
               />
             </Field>
 
-            <Field label="İletişim Adresi">
+            <Field label={t("petition.field.address")}>
               <TextInput value={data.address} onChange={(e) => update("address", e.target.value)} />
             </Field>
 
-            <Field label="Telefon Numarası">
+            <Field label={t("petition.field.phone")}>
               <TextInput value={data.phone} onChange={(e) => update("phone", e.target.value)} />
             </Field>
           </div>
 
-          <Field label="Ekler (İsteğe bağlı)" hint="Varsa ek belgeleri listeleyin.">
+          <Field label={t("petition.field.attachments")} hint="Varsa ek belgeleri listeleyin.">
             <TextInput
               value={data.attachments}
               onChange={(e) => update("attachments", e.target.value)}

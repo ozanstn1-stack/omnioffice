@@ -232,7 +232,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
    (3) moved into the tables, and the five named `aria-label`/`alt` strings were
    translated (baseline 131 -> 80; `docs/i18n.md`). What remains is mostly
    literal by design (`TRY`, accounting-software names, paper sizes, units).
-   The 22 `(s)` strings now use `t.plural` over `Intl.PluralRules`, the audit
+   The scanner also counts component `label` props (baseline v3: 77 text nodes,
+   9 attribute strings, 25 prop strings; `PetitionWizard`'s ten labels moved to
+   the tables, so 15 remain) and `--props-report` prints the queue. The 22 `(s)`
+   strings now use `t.plural` over `Intl.PluralRules`, the audit
    fails on a new one, and it counts JSX **attribute** strings too (`alt`,
    `aria-label`, `title`, `placeholder`) against their own baseline section.
    `Redact`, the KVKK and petition wizard titles/placeholders moved over:

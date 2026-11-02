@@ -3166,5 +3166,15 @@
   "redact.certificateTitle": "Karartma Sertifikası (v5.4)",
   "redact.certificateBody": "Hangi alanların, hangi mevzuata (KVKK) göre karartıldığını ve SHA-256 dosya özetlerini kanıtlayan resmî sertifika oluşturun.",
   "redact.copyCertificate": "Sertifika Kopyala",
-  "redact.saveCertificate": "Sertifika Kaydet (.md)"
+  "redact.saveCertificate": "Sertifika Kaydet (.md)",
+  "petition.field.date": "Tarih",
+  "petition.field.authority": "Muhatap Makam / Kurum",
+  "petition.field.subject": "Dilekçe Konusu",
+  "petition.field.body": "Açıklamalar / Olay Anlatımı",
+  "petition.field.demands": "Sonuç ve İstem",
+  "petition.field.fullName": "Ad Soyad",
+  "petition.field.taxId": "T.C. Kimlik No",
+  "petition.field.address": "İletişim Adresi",
+  "petition.field.phone": "Telefon Numarası",
+  "petition.field.attachments": "Ekler (İsteğe bağlı)"
 }

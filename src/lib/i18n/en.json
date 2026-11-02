@@ -3166,5 +3166,15 @@
   "redact.certificateTitle": "Redaction certificate (v5.4)",
   "redact.certificateBody": "Create an official certificate proving which fields were redacted under which legislation (KVKK), with the SHA-256 digest of the file.",
   "redact.copyCertificate": "Copy certificate",
-  "redact.saveCertificate": "Save certificate (.md)"
+  "redact.saveCertificate": "Save certificate (.md)",
+  "petition.field.date": "Date",
+  "petition.field.authority": "Authority / institution",
+  "petition.field.subject": "Petition subject",
+  "petition.field.body": "Explanation / statement of facts",
+  "petition.field.demands": "Conclusion and request",
+  "petition.field.fullName": "Full name",
+  "petition.field.taxId": "National ID number",
+  "petition.field.address": "Contact address",
+  "petition.field.phone": "Phone number",
+  "petition.field.attachments": "Attachments (optional)"
 }

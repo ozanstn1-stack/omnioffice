@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "files": {
     "App.tsx": 2,
     "components/ai-settings.tsx": 1,
@@ -37,5 +37,13 @@
     "screens/PageTools.tsx": 1,
     "screens/PdfStudio.tsx": 1,
     "screens/Vault.tsx": 1
+  },
+  "props": {
+    "components/files.tsx": 1,
+    "components/pages.tsx": 2,
+    "office/calc/ui/CalcRibbon.tsx": 6,
+    "screens/Annotate.tsx": 2,
+    "screens/KvkkWizard.tsx": 3,
+    "screens/Watermark.tsx": 1
   }
 }

@@ -213,6 +213,20 @@ release-train schedule is decided.
   calls became two, each producing the APK and the AAB for its target and
   keeping the same artifact names and the single `SHA256SUMS-android.txt`.
   `test:src/lib/ci-workflow.test.ts#builds both Android artifacts in one Gradle run per ABI`
+- **The i18n audit measures component props too (E4.5):** the scanner moved to
+  `scripts/lib/i18n-jsx.mjs` and counts a third section - component `label`
+  values - next to text nodes and attributes, in baseline schema **v3**
+  (77 text nodes, 9 attribute strings, 25 prop strings at first record). A
+  value counts when it is a literal (`label="Save"`, `label={"Save"}`,
+  ``label={`Save`}``); a `t(…)` call, a variable or a dynamic template does not.
+  That also closes the braced/template blind spot the attribute scan had. The
+  first slice moved `PetitionWizard`'s ten field labels into the tables and
+  lowered the prop baseline to **15**, and `--props-report` lists the remaining
+  queue.
+  `test:src/lib/i18n-jsx-audit.test.ts#counts the three literal forms of a prop`
+  `test:src/lib/i18n-jsx-audit.test.ts#ignores translated calls, variables and dynamic templates`
+  `test:src/lib/i18n-jsx-audit.test.ts#refuses to raise a props count without --allow-raise, and raises it with the flag`
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`
