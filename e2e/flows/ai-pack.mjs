@@ -105,14 +105,24 @@ export async function packFlow(session) {
     throw new Error(`the screen did not receive the document: "${document}" (${detail})`);
   }
 
-  // The checkbox sits inside a <label>: clicking the input itself lets the
-  // label's activation toggle it a second time, so the label is clicked and the
-  // result is checked before Run is pressed.
+  // The consent box is a controlled checkbox inside a <label>: a plain click can
+  // toggle the DOM without React noticing, so the click is followed by a check
+  // that the Run button actually became enabled, with the native-setter
+  // fallback if it did not.
   const consented = await execute(
     session,
-    "const box=document.querySelector('[data-testid=\"ai-pack-consent\"]'); if(!box) return 'missing'; box.closest('label').click(); return box.checked ? 'checked' : 'unchecked';",
+    `const box=document.querySelector('[data-testid="ai-pack-consent"]');
+     const run=()=>document.querySelector('[data-testid="ai-pack-run"]');
+     if(!box||!run()) return 'missing';
+     box.closest('label').click();
+     if (run().disabled) {
+       const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'checked').set;
+       setter.call(box,true);
+       box.dispatchEvent(new Event('click',{bubbles:true}));
+     }
+     return box.checked && !run().disabled ? 'ready' : 'blocked:' + box.checked + ':' + run().disabled;`,
   );
-  if (consented !== "checked") throw new Error(`the consent box did not stay checked: ${consented}`);
+  if (consented !== "ready") throw new Error(`the consent box did not enable Run: ${consented}`);
 
   const runButton = await findElement(session, '[data-testid="ai-pack-run"]');
   await clickElement(session, elementKey(runButton));
