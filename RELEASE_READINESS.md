@@ -227,6 +227,22 @@ release-train schedule is decided.
   `test:src/lib/i18n-jsx-audit.test.ts#ignores translated calls, variables and dynamic templates`
   `test:src/lib/i18n-jsx-audit.test.ts#refuses to raise a props count without --allow-raise, and raises it with the flag`
   `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+- **The prop scan covers `hint` and `subtitle` too (E4.5):** `PROPS` in
+  `scripts/lib/i18n-jsx.mjs` now lists the names a component really declares -
+  `label` and `hint` (`Field`, `SectionTitle`) and `subtitle` (`Screen`) - so
+  a hint under a field and the line under a screen title cannot slip past the
+  audit any more. `description`, `caption` and `emptyText` were checked and left
+  out on purpose: they are data fields here, not JSX props. `title` stays an
+  attribute only, because counting it as a prop as well would report the same
+  text twice. The five literals the widened scan found (four petition hints and
+  the KVKK screen subtitle) moved into the tables in the same slice, with Turkish
+  keeping the original wording, so **the baseline did not move: version 3, 77
+  text nodes, 9 attribute strings, 6 prop strings** - widening the list changes
+  what is counted, not the shape of the baseline, and no migration was needed.
+  `test:src/lib/i18n-jsx-audit.test.ts#counts the sibling props the components really declare`
+  `test:src/lib/i18n-jsx-audit.test.ts#does not count a title twice when a component takes it as a prop`
+  `test:src/lib/i18n-jsx-audit.test.ts#fails when a sibling prop grows above its baseline`
+  `test:src/lib/i18n-jsx-audit.test.ts#keeps the baseline schema at v3 when the widened props are recorded`
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`

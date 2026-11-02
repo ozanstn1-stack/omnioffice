@@ -97,6 +97,82 @@ tarama yalnız `attr="…"` görüyor) aynı PR'da kapatılıyor.
   en/tr, taban düşürme. `description`/`hint`/`emptyText` prop'ları `label`
   tabanı belirgin düşünce eklenir.
 
+
+---
+
+# Seçilen iş kalemi 2: `hint`/`subtitle` prop taraması + beş dizenin çevirisi (E4.5 kapanışı)
+
+Plan `subagent_claude_opus` (`febca680`, 2026-11-02 22:01) tarafından üretildi;
+uygulama bu dosyadaki adımlarla DeepSeek tarafında yapılır.
+
+## Karar
+`PROPS` listesi `label`ın yanına **`hint`** ve **`subtitle`** ekler; taban şeması
+**v3'te kalır** (v4'e göç yok — `props` bölümü dosya başına toplam tutuyor, prop
+adına göre ayırmıyor; ad eklemek sayma kuralını değiştirir, verinin biçimini
+değiştirmez). Aynı PR'da beş literal `t()`'ye taşınır, böylece taban **hiç
+değişmez** ve ratchet'in gerçekten "yeni literal = kırmızı" dediği kanıtlanır.
+
+## Adım 0 — ön ölçüm (yapıldı)
+- `hint` bir **bileşen prop'u**: `src/components/ui.tsx` içinde `Field` ve
+  `SectionTitle` `hint?: ReactNode` alıyor ve ikisi de görünür metin çiziyor.
+- `subtitle` bir bileşen prop'u: `src/components/layout.tsx` içinde `Screen`
+  `subtitle?: ReactNode` alıyor ve `<p class="muted">` içinde çiziyor.
+- **`description`, `caption`, `emptyText` listeye ALINMADI**: repoda JSX
+  prop'u değiller (`description` `src/lib/plugins.ts` ve
+  `src/lib/document-health.ts` içinde veri alanı; `caption` `office-types.ts`
+  içinde şekil alanı; `emptyText` hiç yok). Opus'un Adım 0 kuralı: "repoda prop
+  olarak tanımlanmamış ad listeye girmez".
+- Literal sayımı: `hint` 4 (hepsi `src/screens/PetitionWizard.tsx`),
+  `subtitle` 1 (`src/screens/KvkkWizard.tsx:167`), diğerleri 0. Toplam **5 dize**.
+- Bütçe 10 dize; aşan ad bu PR'dan çıkar. Aşılmadı.
+- Kapsam dışı açıklar (yalnız sayıldı, çevrilmedi): `options` dizilerindeki nesne
+  literalleri (`KvkkWizard` 177–179 gibi `label:`), `title:` alanlı toast
+  metinleri, koşullu `subtitle` dalları (PetitionWizard 134–138).
+
+## Adım 1 — tarayıcı listesi
+- `scripts/lib/i18n-jsx.mjs`: `PROPS = ["label", "hint", "subtitle"]`; yorum
+  "kardeş prop'lar sonraki dilimlerde" ifadesi güncellenir.
+- `title` `ATTRIBUTES` içinde olduğu için `PROPS`'a **eklenmez** (çift sayım).
+
+## Adım 2 — çeviri dilimi (5 dize)
+- `src/screens/PetitionWizard.tsx` 143/147/186/203 `hint="…"` → `hint={t("…")}`.
+- `src/screens/KvkkWizard.tsx` 167 `subtitle="…"` → `subtitle={t("…")}`.
+- `src/lib/i18n/{en,tr}.json`: `petition.hint.date`, `petition.hint.authority`,
+  `petition.hint.taxId`, `petition.hint.attachments`, `kvkk.subtitle`.
+- **tr değeri özgün metnin birebir aynısı** → tr ile koşan test/E2E seçicisi
+  değişmez. `petition.hint.authority` bilinçli olarak en=tr (örnek Türk makamı).
+
+## Adım 3 — testler
+`src/lib/i18n-jsx-audit.test.ts`: PROPS pini yeni listeye; `it.each` ile her yeni
+adın üç literal biçimi; `t()` ve koşullu dalın sayılmadığı; `Screen title/subtitle`
+çift sayım yapmadığı; ratchet'te `hint` büyümesinin `--check` 1 döndürdüğü;
+`--props-report` satırı; `--update --allow-raise` sonrası şemanın `version: 3`
+kaldığı. `ci-workflow.test.ts` ve `coverage-ratchet.test.ts` **dokunulmaz**.
+
+## Adım 4 — belge
+`docs/i18n.md` (prop listesi + `title` çift rolü notu + kapsam dışı açıklar),
+`RELEASE_READINESS.md` (marker'lı E4.5 maddesi), `CHANGELOG.md` bir satır,
+bu dosyanın "NEREDE KALDIM" bölümü.
+
+## Adım 5 — yerel doğrulama (sıra önemli)
+1. `npm run format` → `npm run format:gate`
+2. `npm run lint`, `npx tsc --noEmit`
+3. `npm run i18n:audit -- --check`, `npm run test`
+4. **En son** `npm run files:check` (kırmızıysa `files:update` + yeniden `files:check`)
+5. `df -h /` (Rust derlemesi yok → `cargo clean` gerekmez)
+
+## Kabul kriterleri
+- `hardcoded-props` özette **6** (yalnız CalcRibbon formül adları).
+- `npm run i18n:audit -- --update` sonrası `git diff scripts/i18n-baseline.json`
+  **boş** (taban v3 aynı kalıyor) — kalemin ana iddiası.
+- en/tr anahtar sayısı eşit, placeholder eşliği temiz, `--check` 0.
+- CI'da tüm kontroller yeşil; beklenen tur **1**.
+
+## Kapsam dışı
+Taban v4 / prop adına göre ratchet, koşullu dallar, nesne literali `label:` ve
+toast `title:` metinleri, `files`/`attributes` bölümlerinde kalanlar, CalcRibbon
+formül adları, aday 2–8'in hiçbiri, workflow dosyaları.
+
 ---
 
 ## NEREDE KALDIM / SIRADAKI ADIM
@@ -105,9 +181,8 @@ tarama yalnız `attr="…"` görüyor) aynı PR'da kapatılıyor.
   PR #586 (`67948c1`): kalan dokuz etiket. **Prop tabanı 25 → 15 → 6**; kalan
   altısı Calc formül adları (bilinçli literal).
 - **Repo:** master `67948c1`, çalışma ağacı temiz, `target/` yok, disk %59 (40 GB boş).
-- **Sıradaki iş kalemi:** `hint`/`description` prop'larını taramaya katmak
-  (`PROPS` listesine eklemek + taban v4 + testler) ve ardından KVKK/dilekçe
-  `hint` metinlerini çevirmek. Bu, yeni bir plan çağrısı hak ediyor (Opus).
+- **Şimdiki iş kalemi (2026-11-02 22:0x UTC):** `hint`/`subtitle` prop taraması
+  + beş dizenin çevirisi (yukarıdaki plan). Opus planı `febca680`.
 - **Ders (bu turdan):** dosya boyutu bütçeleri **her zaman** son format
   geçişinden sonra kaydedilmeli; yoksa CI ratchet'i haklı olarak kırmızı olur.
 - **Aday kuyruğu (değer/risk):** Scanner E2E (yalnız Windows CI), Android ABI

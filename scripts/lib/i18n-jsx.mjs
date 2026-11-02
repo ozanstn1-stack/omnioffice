@@ -17,9 +17,12 @@ import ts from "typescript";
 /** Attributes the user reads or hears (aria, alt, tooltips, form hints). */
 export const ATTRIBUTES = ["alt", "aria-label", "title", "placeholder"];
 
-/** Component props that hold user-visible text. `label` is the first; the
- * sibling props (`description`, `hint`, …) follow in later slices. */
-export const PROPS = ["label"];
+/** Component props that hold user-visible text. Only the names a component
+ * here really declares: `label` and `hint` (`Field`, `SectionTitle`), and
+ * `subtitle` (`Screen`). Adding one is a deliberate change - the test pins the
+ * list. `title` stays out on purpose: it is a real attribute too, so counting
+ * it as a prop as well would count the same text twice. */
+export const PROPS = ["label", "hint", "subtitle"];
 
 const PROSE = /[A-Za-zÇĞİÖŞÜçğıöşü]{2,}/;
 

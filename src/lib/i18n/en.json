@@ -3184,5 +3184,10 @@
   "watermark.tileAcross": "Tile across page",
   "kvkk.field.companyName": "Company / institution name",
   "kvkk.field.contactEmail": "KVKK contact e-mail",
-  "kvkk.field.companyAddress": "Company address"
+  "kvkk.field.companyAddress": "Company address",
+  "petition.hint.date": "Date shown in the top-right corner of the document.",
+  "petition.hint.authority": "e.g. ÇANKAYA KAYMAKAMLIĞINA",
+  "petition.hint.taxId": "11-digit Turkish ID number (TCKN, checked with mod-11)",
+  "petition.hint.attachments": "List any attached documents.",
+  "kvkk.subtitle": "Draft employee, customer, visitor and explicit-consent notices tailored to your organisation in seconds."
 }
