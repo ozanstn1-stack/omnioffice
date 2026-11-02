@@ -7,7 +7,8 @@
  * `samples/test-spreadsheet.xlsx`, and D is `B*C` per row, so a non-zero total
  * means the real engine ran rather than the cached 0 stored in the file.
  */
-import { screenshot, waitForScript } from "../lib/driver.mjs";
+import { clickElement, findElement, screenshot, waitForScript } from "../lib/driver.mjs";
+import { elementKey } from "../lib/files.mjs";
 
 const cellText = (row, col) =>
   `const el=document.querySelector('[data-cell="${row}:${col}"]'); return el ? (el.textContent||'').trim() : '';`;
@@ -43,15 +44,14 @@ export async function calcFlow(session) {
     throw new Error(`the SUM cell should hold a positive total, got "${total}"`);
   }
 
-  // Selecting the cell must put its formula in the formula bar.
+  // Selecting the cell must put its formula in the formula bar. A WebDriver
+  // click is used rather than a synthetic MouseEvent: the grid maps the pointer
+  // to a cell from the event's coordinates, which a hand-built event lacks.
+  const cell = await findElement(session, '[data-cell="1:6"]');
+  await clickElement(session, elementKey(cell));
   const formula = await waitForScript(
     session,
-    `const cell=document.querySelector('[data-cell="1:6"]');
-     if (!cell) return '';
-     cell.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window,button:0}));
-     cell.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window,button:0}));
-     const input=document.querySelector('.formula-input');
-     return input ? String(input.value||'') : '';`,
+    "const input=document.querySelector('.formula-input'); return input ? String(input.value||'') : '';",
     20000,
     "the formula bar",
   );
