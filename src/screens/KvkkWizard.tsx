@@ -164,7 +164,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
           <Badge tone="warn">{t("common.experimental")}</Badge>
         </span>
       }
-      subtitle="Kurumunuza özel çalışan, müşteri, ziyaretçi ve açık rıza taslak metinlerini saniyeler içinde hazırlayın."
+      subtitle={t("kvkk.subtitle")}
     >
       <TwoColumn
         main={

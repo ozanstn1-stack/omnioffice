@@ -3184,5 +3184,10 @@
   "watermark.tileAcross": "Sayfa boyunca döşe",
   "kvkk.field.companyName": "Şirket / Kurum Unvanı",
   "kvkk.field.contactEmail": "KVKK İrtibat E-Postası",
-  "kvkk.field.companyAddress": "Şirket Adresi"
+  "kvkk.field.companyAddress": "Şirket Adresi",
+  "petition.hint.date": "Belgenin sağ üst köşesinde yer alacak tarih.",
+  "petition.hint.authority": "Örn: ÇANKAYA KAYMAKAMLIĞINA",
+  "petition.hint.taxId": "11 haneli TCKN (Mod-11 doğrulanır)",
+  "petition.hint.attachments": "Varsa ek belgeleri listeleyin.",
+  "kvkk.subtitle": "Kurumunuza özel çalışan, müşteri, ziyaretçi ve açık rıza taslak metinlerini saniyeler içinde hazırlayın."
 }

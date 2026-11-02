@@ -57,8 +57,32 @@ describe("i18n JSX scanner", () => {
     expect(found.props[0].line).toBe(2);
   });
 
+  it("counts the sibling props the components really declare", () => {
+    // `hint` is a `Field`/`SectionTitle` prop and `subtitle` a `Screen` prop:
+    // both reach the screen, and neither is a JSX attribute.
+    for (const name of ["hint", "subtitle"]) {
+      expect(scan(`<Field ${name}="Save" />`).props.map((row) => row.name)).toEqual([name]);
+      expect(scan(`<Field ${name}={"Save"} />`).props.map((row) => row.name)).toEqual([name]);
+      expect(scan(`<Field ${name}={\`Save\`} />`).props.map((row) => row.name)).toEqual([name]);
+    }
+  });
+
+  it("leaves a translated or conditional sibling prop out of the count", () => {
+    expect(scan('<Field hint={t("a.b")} />').props).toHaveLength(0);
+    expect(scan("<Field hint={value} />").props).toHaveLength(0);
+    expect(scan('<Screen subtitle={flag ? "A" : "B"} />').props).toHaveLength(0);
+  });
+
+  it("does not count a title twice when a component takes it as a prop", () => {
+    // `title` stays an attribute only: counting it as a prop too would report
+    // the same text twice.
+    const found = scan('<Screen title="Settings" subtitle="Explain the screen" />');
+    expect(found.attributes.map((row) => row.name)).toEqual(["title"]);
+    expect(found.props.map((row) => row.name)).toEqual(["subtitle"]);
+  });
+
   it("keeps the prop list explicit, so a new prop is a deliberate change", () => {
-    expect(PROPS).toEqual(["label"]);
+    expect(PROPS).toEqual(["label", "hint", "subtitle"]);
     expect(ATTRIBUTES).toEqual(["alt", "aria-label", "title", "placeholder"]);
   });
 });
@@ -135,6 +159,30 @@ describe("i18n props ratchet", () => {
     const result = run(tree, "--check");
     expect(result.status).toBe(1);
     expect(result.output).toContain("no `props` section");
+  });
+
+  it("fails when a sibling prop grows above its baseline", () => {
+    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Field hint="Tarih girin" />');
+    const result = run(tree, "--check");
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("prop string");
+    expect(result.output).toContain("screens/Sample.tsx");
+  });
+
+  it("names the sibling prop in the backlog report", () => {
+    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Screen subtitle="Ekranı anlat" />');
+    const result = run(tree, "--props-report");
+    expect(result.status).toBe(0);
+    expect(result.output).toContain("screens/Sample.tsx:1\tsubtitle\tEkranı anlat");
+  });
+
+  it("keeps the baseline schema at v3 when the widened props are recorded", () => {
+    const tree = tempTree({ version: 3, ...emptySections, props: {} }, '<Field hint="Tarih girin" />');
+    expect(run(tree, "--update", "--allow-raise").status).toBe(0);
+    const written = JSON.parse(readFileSync(tree.baseline, "utf8")) as Record<string, unknown>;
+    // Widening PROPS changes what is counted, not how the baseline is shaped.
+    expect(written.version).toBe(3);
+    expect(Object.keys(written).sort()).toEqual(["attributes", "files", "props", "version"]);
   });
 
   it("prints the translation backlog with --props-report", () => {
