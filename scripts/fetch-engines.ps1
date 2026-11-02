@@ -122,10 +122,13 @@ $pinned = @{
     tessDataBase = 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main'
     tessdataLicenseUrl = 'https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/LICENSE'
     pdfTtfUrl = 'https://raw.githubusercontent.com/tesseract-ocr/tesseract/main/tessdata/pdf.ttf'
-    # Version-pinned release asset: the unversioned 7-zip.org/a/7zr.exe is
-    # replaced in place on every 7-Zip release, which broke the pinned hash.
+    # Version-pinned release assets: the unversioned 7-zip.org/a/7zr.exe is
+    # replaced in place on every 7-Zip release, which broke the pinned hash, and
+    # www.7-zip.org itself stopped resolving from the GitHub Windows runners
+    # (2026-11-02) - the release asset is the same bytes (identical SHA-256),
+    # so both come from the pinned GitHub release.
     sevenZrUrl = 'https://github.com/ip7z/7zip/releases/download/23.01/7zr.exe'
-    sevenZipUrl = 'https://www.7-zip.org/a/7z2301-x64.exe'
+    sevenZipUrl = 'https://github.com/ip7z/7zip/releases/download/23.01/7z2301-x64.exe'
     ptSansBase = 'https://raw.githubusercontent.com/google/fonts/main/ofl/ptsans'
     liberationUrl = 'https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz'
 }
