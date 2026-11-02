@@ -91,7 +91,9 @@ export async function packFlow(session) {
   // development auto-run, so the same path is exercised.
   const document = await waitForScript(
     session,
-    "const el=document.querySelector('[data-testid=\"ai-pack-doc\"]'); return el ? el.textContent.trim() : '';",
+    // The row shows a placeholder until the file lands, and waitForScript
+    // resolves on the first truthy value - so the placeholder must not count.
+    "const el=document.querySelector('[data-testid=\"ai-pack-doc\"]'); return el && Number(el.dataset.files) > 0 ? el.textContent.trim() : '';",
     45000,
     "the launched document",
   );
