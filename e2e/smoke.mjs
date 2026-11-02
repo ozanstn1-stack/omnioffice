@@ -26,6 +26,7 @@ import { officeRoundtrip } from "./flows/office.mjs";
 import { mergeFlow, sanitizeFlow } from "./flows/pdf.mjs";
 import { accountantPersona, lawyerPersona, publicPersona, studentPersona } from "./flows/personas.mjs";
 import { reader } from "./flows/reader.mjs";
+import { secretStoreFlow } from "./flows/secrets.mjs";
 import { verifyFlow } from "./flows/verify.mjs";
 import { artifacts, argv, pdf, requireAppBinary, valueOf, withSession, withSessionRetry } from "./lib/driver.mjs";
 import { prepareWorkFile } from "./lib/files.mjs";
@@ -39,6 +40,12 @@ async function main() {
   if (argv.includes("--sanitize") || argv.includes("--all")) scenarios.push("sanitize");
   if (argv.includes("--acl")) scenarios.push("acl");
 
+  // The secret store runs its own two sessions (save, restart, clear) and
+  // checks the file the store wrote.
+  if (argv.includes("--secrets")) {
+    await secretStoreFlow();
+    return;
+  }
   // Calc: the dev launch opens the workbook in the office editor, where the
   // flow reads a computed cell and the formula bar.
   if (argv.includes("--calc")) {

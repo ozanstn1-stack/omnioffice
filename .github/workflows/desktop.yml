@@ -516,6 +516,13 @@ jobs:
       - name: Calc (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:calc
+      # The secret store, end to end: save a key, inspect what reached the disk,
+      # restart the app, read it back, clear it. The Linux runner has no Secret
+      # Service, so the flow takes the documented `plain` fallback path and
+      # asserts the 0600 permission there.
+      - name: Secret store (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:secrets
       # Engine-free real flows: Writer type -> save, PDF merge and Studio
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)
