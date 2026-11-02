@@ -65,7 +65,18 @@ Neden diğerleri değil (kısa):
   mesajı bunu gerekçelendirir; geri alma tek commit revert.
 
 ## NEREDE KALDIM / SIRADAKI ADIM
-- Başlangıç: master `c2f35dd`, temiz ağaç. Sıradaki adım: `scripts/check-rust-coverage.mjs`
-  ve taban dosyasını yaz, testini ekle, CI adımını bağla, PR aç.
-- Opus planı alınamadı (araç hatası); tekrar denenecekse önce `list_agents`/araç
-  durumu kontrol edilmeli.
+- **Tamamlandı (2026-11-02):** Rust kapsam ratchet'i — PR #584, squash `b935b54`.
+  `scripts/check-rust-coverage.mjs` + `scripts/coverage-baseline.json` (54/55/55),
+  CI adımı, `src/lib/coverage-ratchet.test.ts` (5 vaka), `ci-workflow.test.ts`
+  pini, RELEASE_READINESS + PHASE-E güncellemesi, #550'ye yorum.
+- **Repo durumu:** master `b935b54`, çalışma ağacı temiz, disk %59 (40 GB boş),
+  `target/` yok.
+- **Sıradaki adaylar (değer/risk):**
+  1. Scanner E2E akışı — pdfium istiyor, yalnız Windows E2E işinde koşabilir;
+     tasarım hazır sayılır, geri bildirim döngüsü yavaş.
+  2. `Field label=` i18n taraması — makine kısmı küçük, çeviri kuyruğu büyük.
+  3. Android ABI matrisi — `workflow_dispatch` doğrulaması 30-40 dk.
+  4. Motor önbelleğinin release/beta/nightly'a taşınması — PR CI'da doğrulanamaz.
+  5. OpenSSF Scorecard / Renovate kararı — belge + config ağırlıklı.
+- **Opus:** erişilebilir (2.1.316). Sıradaki iş kaleminin planı **Opus'tan**
+  istenecek (yalnız plan, dosya değiştirtmeden), sonra bu dosyaya yazılacak.
