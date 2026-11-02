@@ -87,20 +87,31 @@ export function checkSecretFile(tier) {
     files.sort((left, right) => statSync(join(dir, right)).mtimeMs - statSync(join(dir, left)).mtimeMs)[0],
   );
   const raw = readFileSync(path, "utf8");
+  // Every tier stores base64 behind its prefix (`plain:` is base64 of the
+  // bytes, not raw text), so both forms are checked - the encoded value is what
+  // a lower tier legitimately holds, the raw marker must never appear at all.
+  const encoded = Buffer.from(SECRET_MARKER, "utf8").toString("base64");
+  const prefix = raw.trimStart().slice(0, raw.trimStart().indexOf(":") + 1);
+  if (prefix !== `${tier}:`) {
+    throw new Error(`${path} starts with "${prefix}" but the UI reports the "${tier}" tier`);
+  }
+  if (raw.includes(SECRET_MARKER)) {
+    throw new Error(`${path} leaks the key as plain text although the tier is "${tier}"`);
+  }
 
   if (tier === "plain") {
     // Documented fallback (no platform cipher and no OS keyring): the file is
-    // owner-only and carries the marker behind the `plain:` prefix.
+    // owner-only and holds the base64 value behind `plain:`.
     const mode = statSync(path).mode & 0o777;
     if (mode !== 0o600) throw new Error(`${path} is ${mode.toString(8)}; the plain fallback must be 600`);
-    if (!raw.includes(SECRET_MARKER)) throw new Error(`${path} does not contain the saved key`);
-    console.log(`PASS: the plain fallback stored the key in a 0600 file (${path})`);
+    if (!raw.includes(encoded)) throw new Error(`${path} does not hold the saved key`);
+    console.log(`PASS: the plain fallback stored the key base64 in a 0600 file (${path})`);
     return path;
   }
-  if (raw.includes(SECRET_MARKER)) {
-    throw new Error(`${path} leaks the key in plaintext although the tier is "${tier}"`);
+  if (raw.includes(encoded)) {
+    throw new Error(`${path} holds base64 of the key under the "${tier}" tier, which must encrypt it`);
   }
-  console.log(`PASS: ${path} holds the "${tier}" blob without the key in plaintext`);
+  console.log(`PASS: ${path} holds the "${tier}" blob without the key in any readable form`);
   return path;
 }
 
