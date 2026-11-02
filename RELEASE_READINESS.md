@@ -133,9 +133,11 @@ release-train schedule is decided.
   AI packs screen now takes documents through `useTool` like every other tool
   (open-with, drag and drop, dev launch), and `--ai-pack` starts
   `scripts/mock-deepseek.mjs` on loopback, points the app's provider at it
-  through Settings, launches the screen with a sample document and the
-  development auto-run, and requires the verification card to report
-  `parsed` **and** `ok`. The mock answers a pack prompt by echoing the JSON
+  through Settings, launches the screen with a sample document, ticks the
+  consent box and presses Run like a user, and requires the verification card to
+  report `parsed` **and** `ok`. Task packs now accept office documents too, not
+  only PDFs - the office parsers need no native engine, which is what lets the
+  flow run in the engine-free job. The mock answers a pack prompt by echoing the JSON
   shape the prompt asks for, so the strict contract is what gets tested. No key
   and no network call are involved, and the flow starts and stops the server
   itself.

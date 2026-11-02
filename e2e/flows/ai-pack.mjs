@@ -97,7 +97,7 @@ export async function packFlow(session) {
     45000,
     "the launched document",
   );
-  if (!/sample-1/.test(document)) {
+  if (!/test-document/.test(document)) {
     const detail = await execute(
       session,
       "const el=document.querySelector('[data-testid=\"ai-pack-doc\"]'); const dev=window.__PDFSAK_DEV__; return JSON.stringify({text:el?el.textContent.trim():null, files:el?el.dataset.files:null, handed:el?el.dataset.handedOver:null});",
@@ -152,7 +152,9 @@ export async function aiPackFlow() {
   const server = await startMock();
   try {
     await withSession("ai-pack-settings", { PDFSAK_START_SCREEN: "settings" }, configureProviderFlow);
-    const sample = join(root, "samples", "sample-1.pdf");
+    // A DOCX needs no native engine (officecore reads it), so the pack runs in
+    // the engine-free Linux job.
+    const sample = join(root, "samples", "test-document.docx");
     await withSession(
       "ai-pack-run",
       { PDFSAK_START_SCREEN: "aiPacks", PDFSAK_DEV_FILES: sample, PDFSAK_DEV_RUN: "1" },

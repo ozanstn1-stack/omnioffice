@@ -61,7 +61,11 @@ export function AiPacks({
   // the empty case reuses one stable reference.
   const launchFiles = useDev((state) => state.files);
   const handedOver = initialFiles.length ? initialFiles : (launchFiles ?? NO_FILES);
-  const session = useTool({ suffix: "_pack", accept: "pdf", loadInfo: false, initialPaths: handedOver });
+  // A pack needs the document's text, and the office parsers read DOCX/XLSX/PPTX
+  // without a native engine - only PDFs go through pdfium. Accepting the whole
+  // document set is both more useful and the reason the flow can run where the
+  // engines are absent.
+  const session = useTool({ suffix: "_pack", accept: "document", loadInfo: false, initialPaths: handedOver });
   const primary = session.primary;
   // A dialog pick arrives as a capability token; a file handed over by the dev
   // launch context (or another screen) is a path, which `ai_chat` resolves
