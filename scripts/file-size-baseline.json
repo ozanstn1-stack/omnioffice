@@ -194,7 +194,7 @@
     "src/components/command-palette.tsx": 308,
     "src/components/compatibility.tsx": 347,
     "src/components/files.tsx": 722,
-    "src/components/pages.tsx": 458,
+    "src/components/pages.tsx": 462,
     "src/components/person-cards-dialog.tsx": 298,
     "src/components/ui.tsx": 540,
     "src/lib/ai-task-packs-catalog.ts": 358,
@@ -315,6 +315,6 @@
     "src/screens/Sync.tsx": 994,
     "src/screens/Vault.tsx": 861,
     "src/screens/Verify.tsx": 351,
-    "src/screens/Watermark.tsx": 288
+    "src/screens/Watermark.tsx": 292
   }
 }
