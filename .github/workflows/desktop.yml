@@ -388,6 +388,10 @@ jobs:
         run: |
           cargo llvm-cov --lcov --output-path lcov.info --lib $(node scripts/workspace-crates.mjs release)
           cargo llvm-cov report --summary-only | tee coverage-summary.txt
+      # The floors are a ratchet: a measurement raises them, never lowers them,
+      # so a lost test fails here instead of quietly shrinking the number.
+      - name: Coverage floors (ratchet)
+        run: node scripts/check-rust-coverage.mjs coverage-summary.txt
       - name: Upload the coverage report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

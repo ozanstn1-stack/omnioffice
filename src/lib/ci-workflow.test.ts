@@ -202,6 +202,8 @@ describe("Rust coverage and Android build shape (E4.1, E5)", () => {
     expect(coverage, "rust-coverage job").toBeDefined();
     expect(coverage?.body).toContain("cargo llvm-cov --lcov");
     expect(coverage?.body).toContain("cargo llvm-cov report --summary-only");
+    // Measuring without a floor would let a regression pass silently.
+    expect(coverage?.body).toContain("node scripts/check-rust-coverage.mjs coverage-summary.txt");
     expect(coverage?.body).toContain("name: coverage-rust");
     expect(coverage?.body).toContain("node scripts/workspace-crates.mjs release");
   });

@@ -190,6 +190,16 @@ release-train schedule is decided.
   every module in `flows/` is imported, and the guard stays out of module load.
   `test:src/lib/e2e-structure.test.ts#keeps the entry point to argument parsing and dispatch`
   `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
+- **The Rust coverage floors are a ratchet (E4.1):** the numbers from the
+  `rust-coverage` job are now enforced. `scripts/check-rust-coverage.mjs` reads
+  the `TOTAL` row of `cargo llvm-cov report --summary-only` and compares it with
+  `scripts/coverage-baseline.json`; a measurement under a floor fails the job,
+  and `--update` refuses to lower one (the floors may only rise). The first
+  baseline is 54/55/55 against the 2026-11-02 measurement of 55.23/56.37/56.30,
+  so run-to-run noise cannot redden a green PR while a lost test still fails.
+  `test:src/lib/coverage-ratchet.test.ts#fails a measurement below a floor and names the metric`
+  `test:src/lib/coverage-ratchet.test.ts#refuses to lower a floor through --update`
+  `test:src/lib/ci-workflow.test.ts#measures Rust coverage and publishes the report instead of guessing a floor`
 - **Rust coverage is measured and published (E4.1):** a `rust-coverage` job runs
   `cargo llvm-cov --lib` over the library crates (the set that runs on every
   platform), prints the summary and uploads `coverage-rust` (`lcov.info` plus

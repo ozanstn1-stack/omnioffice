@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "measured": "2026-11-02",
+  "source": "cargo llvm-cov report --summary-only over the library crates (--lib)",
+  "comment": "Ratchet floors. Each one sits about a point under the first measurement (regions 55.23, functions 56.37, lines 56.30) so run-to-run noise cannot redden a green PR, while a real regression still fails. Raise them with `node scripts/check-rust-coverage.mjs <summary> --update`; the script refuses to lower them.",
+  "rust": {
+    "regions": 54,
+    "functions": 55,
+    "lines": 55
+  }
+}
