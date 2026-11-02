@@ -106,7 +106,7 @@ export function resetAiConsent(docId?: string): void {
 // Language / tone choices shared by the editors
 // ---------------------------------------------------------------------------
 
-/** UI language code -> {native label, English name used in the prompt}. */
+// UI language code -> {native label, English name used in the prompt}; i18n-content: a language is shown in its own name
 export const AI_LANGUAGES: Array<{ code: string; label: string; name: string }> = [
   { code: "en", label: "English", name: "English" },
   { code: "tr", label: "Türkçe", name: "Turkish" },

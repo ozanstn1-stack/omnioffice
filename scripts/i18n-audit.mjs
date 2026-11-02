@@ -31,7 +31,7 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanSource } from "./lib/i18n-jsx.mjs";
+import { scanObjects, scanSource } from "./lib/i18n-jsx.mjs";
 
 // Test hooks: a temporary tree can be audited without touching the repository
 // (the same shape `check-reproducibility-inputs.mjs` uses with REPRO_ROOT).
@@ -141,7 +141,7 @@ const fakePlurals = enKeys.filter((key) => /\(s\)/.test(String(en[key])) || /\(s
 // generics and comparisons cannot be mistaken for prose. Each section - text
 // nodes, attributes, props - has its own baseline and its own ratchet.
 // ---------------------------------------------------------------------------
-const scan = { files: {}, attributes: {}, props: {} };
+const scan = { files: {}, attributes: {}, props: {}, objects: {} };
 const samples = new Map();
 const propRows = [];
 for (const file of walk(srcRoot)) {
@@ -166,14 +166,55 @@ if (process.argv.includes("--props-report")) {
   process.exit(0);
 }
 
+// Object literals and `.ts` modules (E4.6): interface text that never passes
+// through a JSX literal. Only a value with a Turkish-specific letter counts;
+// `--objects-report` prints what is counted, what a `i18n-content:` pragma or a
+// content file keeps out, and what the narrow rule let through.
+const objectRows = { counted: [], excluded: [], unmarked: [], contentFiles: [] };
+for (const file of walk(srcRoot)) {
+  const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
+  const found = scanObjects(`src/${relative}`, readFileSync(file, "utf8"));
+  if (found.contentFile) {
+    objectRows.contentFiles.push(found.contentFile);
+    continue;
+  }
+  if (found.counted.length) scan.objects[relative] = found.counted.length;
+  for (const row of found.counted) objectRows.counted.push(`${relative}:${row.line}\t${row.key}\t${row.text}`);
+  for (const row of found.excluded)
+    objectRows.excluded.push(`${relative}:${row.line}\t${row.key}\t${row.text}\t${row.reason}`);
+  for (const row of found.unmarked) objectRows.unmarked.push(`${relative}:${row.line}\t${row.key}\t${row.text}`);
+}
+
+if (process.argv.includes("--objects-report")) {
+  console.log(
+    `counted: ${objectRows.counted.length} object string(s) across ${Object.keys(scan.objects).length} file(s)`,
+  );
+  for (const line of objectRows.counted.sort()) console.log(line);
+  console.log(`excluded: ${objectRows.excluded.length} line(s), ${objectRows.contentFiles.length} content file(s)`);
+  for (const entry of objectRows.contentFiles) console.log(`  content file: ${entry.path} (${entry.reason})`);
+  for (const line of objectRows.excluded.sort()) console.log(line);
+  console.log(`unmarked (info only): ${objectRows.unmarked.length}`);
+  for (const line of objectRows.unmarked.sort()) console.log(line);
+  process.exit(0);
+}
+
 const baseline = existsSync(baselinePath)
   ? JSON.parse(readFileSync(baselinePath, "utf8"))
-  : { version: 3, files: {}, attributes: {}, props: {} };
+  : { version: 4, files: {}, attributes: {}, props: {}, objects: {} };
 if (process.argv.includes("--check") && baseline.props === undefined) {
   console.error("i18n: the baseline has no `props` section yet; run `npm run i18n:audit -- --update --allow-raise`.");
   process.exit(1);
 }
-const known = { files: baseline.files ?? {}, attributes: baseline.attributes ?? {}, props: baseline.props ?? {} };
+if (process.argv.includes("--check") && baseline.objects === undefined) {
+  console.error("i18n: the baseline has no `objects` section yet; run `npm run i18n:audit -- --update --allow-raise`.");
+  process.exit(1);
+}
+const known = {
+  files: baseline.files ?? {},
+  attributes: baseline.attributes ?? {},
+  props: baseline.props ?? {},
+  objects: baseline.objects ?? {},
+};
 
 if (process.argv.includes("--update")) {
   const grown = Object.entries(scan).flatMap(([section, counts]) =>
@@ -187,7 +228,7 @@ if (process.argv.includes("--update")) {
     process.exit(1);
   }
   const sort = (counts) => Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
-  const next = { version: 3 };
+  const next = { version: 4 };
   for (const section of Object.keys(scan)) next[section] = sort(scan[section]);
   writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
   const totals = Object.keys(scan).map(
@@ -197,7 +238,12 @@ if (process.argv.includes("--update")) {
   process.exit(0);
 }
 
-const LABELS = { files: "text node", attributes: "attribute string", props: "prop string" };
+const LABELS = {
+  files: "text node",
+  attributes: "attribute string",
+  props: "prop string",
+  objects: "object string",
+};
 const problemsBySection = Object.entries(scan).map(([section, counts]) => ({
   section,
   lines: Object.entries(counts)
@@ -234,7 +280,9 @@ console.log(
     " hardcoded-attrs=" +
     totals.attributes +
     " hardcoded-props=" +
-    totals.props,
+    totals.props +
+    " hardcoded-objects=" +
+    totals.objects,
 );
 if (missing.length) {
   console.log("  missing (first 20): " + missing.slice(0, 20).join(", "));

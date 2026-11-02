@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "files": {
     "App.tsx": 2,
     "components/ai-settings.tsx": 1,
@@ -40,5 +40,14 @@
   },
   "props": {
     "office/calc/ui/CalcRibbon.tsx": 6
+  },
+  "objects": {
+    "lib/document-health.ts": 15,
+    "screens/DocumentHealthScreen.tsx": 2,
+    "screens/Invoices.tsx": 3,
+    "screens/KvkkWizard.tsx": 7,
+    "screens/PetitionWizard.tsx": 4,
+    "screens/Redact.tsx": 2,
+    "screens/Vault.tsx": 1
   }
 }
