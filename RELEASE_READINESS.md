@@ -129,6 +129,15 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **An Impress flow closes the office trio (E4.3):** `--impress` opens
+  `samples/test-presentation.pptx` in the office editor, reads the slide rail
+  (`.slide-thumb` + `.is-active`, so no translated label is matched), clicks the
+  second slide and requires it to become active, adds a slide through the
+  `.slide-add` button and requires the rail to grow by one, then saves with a
+  real Ctrl+S through the shared `useEditorShortcuts` handler and requires the
+  PPTX on disk to change. With Writer and Calc this covers all three office
+  editors in the Linux tauri-driver job on every PR.
+  `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
 - **The secret store is exercised end to end (E4.3):** `--secrets` types a
   marker key into the Settings field, clicks Save, and reads the tier the UI
   reports from `data-key-storage`. It then inspects what reached the disk: above

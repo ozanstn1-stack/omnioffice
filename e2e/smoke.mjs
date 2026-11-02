@@ -22,6 +22,7 @@ import { resolve } from "node:path";
 import { aclGate } from "./flows/acl.mjs";
 import { calcFlow } from "./flows/calc.mjs";
 import { homeAndSettings } from "./flows/home.mjs";
+import { impressFlow } from "./flows/impress.mjs";
 import { officeRoundtrip } from "./flows/office.mjs";
 import { mergeFlow, sanitizeFlow } from "./flows/pdf.mjs";
 import { accountantPersona, lawyerPersona, publicPersona, studentPersona } from "./flows/personas.mjs";
@@ -40,6 +41,13 @@ async function main() {
   if (argv.includes("--sanitize") || argv.includes("--all")) scenarios.push("sanitize");
   if (argv.includes("--acl")) scenarios.push("acl");
 
+  // Impress: the dev launch opens the deck in the office editor, where the
+  // flow navigates, adds a slide and saves through the shared Ctrl+S handler.
+  if (argv.includes("--impress")) {
+    const deck = prepareWorkFile("test-presentation.pptx");
+    await withSession("impress", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: deck }, impressFlow);
+    return;
+  }
   // The secret store runs its own two sessions (save, restart, clear) and
   // checks the file the store wrote.
   if (argv.includes("--secrets")) {
