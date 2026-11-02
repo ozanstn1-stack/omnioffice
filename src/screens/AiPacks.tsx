@@ -53,7 +53,10 @@ export function AiPacks({
   // development auto-run hook works here too.
   const session = useTool({ suffix: "_pack", accept: "pdf", loadInfo: false, initialPaths: initialFiles });
   const primary = session.primary;
-  const file = primary?.token ? { token: primary.token, name: primary.name } : null;
+  // A dialog pick arrives as a capability token; a file handed over by the dev
+  // launch context (or another screen) is a path, which `ai_chat` resolves
+  // through the same policy. Either form is what the command wants.
+  const file = primary ? { token: primary.token ?? primary.path, name: primary.name } : null;
   const [consent, setConsent] = useState(false);
   const [running, setRunning] = useState(false);
   const [switching, setSwitching] = useState(false);
