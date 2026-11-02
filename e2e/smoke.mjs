@@ -20,6 +20,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { aclGate } from "./flows/acl.mjs";
+import { calcFlow } from "./flows/calc.mjs";
 import { homeAndSettings } from "./flows/home.mjs";
 import { officeRoundtrip } from "./flows/office.mjs";
 import { mergeFlow, sanitizeFlow } from "./flows/pdf.mjs";
@@ -38,6 +39,13 @@ async function main() {
   if (argv.includes("--sanitize") || argv.includes("--all")) scenarios.push("sanitize");
   if (argv.includes("--acl")) scenarios.push("acl");
 
+  // Calc: the dev launch opens the workbook in the office editor, where the
+  // flow reads a computed cell and the formula bar.
+  if (argv.includes("--calc")) {
+    const book = prepareWorkFile("test-spreadsheet.xlsx");
+    await withSession("calc", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: book }, calcFlow);
+    return;
+  }
   // Signature verification: the dev launch opens the file on the Verify screen
   // and that screen runs the offline check itself.
   if (argv.includes("--verify")) {
