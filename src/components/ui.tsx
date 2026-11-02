@@ -318,11 +318,14 @@ export function Checkbox({
   onChange,
   label,
   disabled = false,
+  testId,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   label: ReactNode;
   disabled?: boolean;
+  /** Stable hook for the end-to-end flows (the label is translated). */
+  testId?: string;
 }) {
   return (
     <label className="checkbox">
@@ -330,6 +333,7 @@ export function Checkbox({
         type="checkbox"
         checked={checked}
         disabled={disabled}
+        data-testid={testId}
         onChange={(event) => onChange(event.target.checked)}
       />
       <span>{label}</span>

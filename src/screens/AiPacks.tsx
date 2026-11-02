@@ -114,9 +114,8 @@ export function AiPacks({
     await session.pickFiles();
   };
 
-  const run = async (consented = false) => {
-    if (!file) return;
-    if (!consent && !consented) return;
+  const run = async () => {
+    if (!file || !consent) return;
     setRunning(true);
     setError(null);
     setResult(null);
@@ -154,16 +153,6 @@ export function AiPacks({
     }
   };
 
-  // Development automation (PDFSAK_DEV_RUN=1) only: the end-to-end flow cannot
-  // tick a checkbox through the native driver reliably, and the run is driven
-  // by the same handler a click uses.
-  useEffect(() => {
-    session.registerAutoRun(() => {
-      setConsent(true);
-      void run(true);
-    });
-  }, [session, run]);
-
   return (
     <Screen
       title={t("aiPacks.title")}
@@ -196,6 +185,7 @@ export function AiPacks({
             <div className="row">
               <span
                 className="small"
+                data-testid="ai-pack-doc"
                 style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
                 {file ? file.name : t("aiPacks.noDocument")}
@@ -207,6 +197,7 @@ export function AiPacks({
           </Field>
           <Checkbox
             checked={consent}
+            testId="ai-pack-consent"
             onChange={(value) => setConsent(value)}
             label={local ? t("aiPacks.consentLocal") : t("aiPacks.consentCloud")}
           />
@@ -223,7 +214,7 @@ export function AiPacks({
             </Button>
           </div>
           {error ? (
-            <p className="small" style={{ color: "var(--danger, #ef4444)" }}>
+            <p className="small" data-testid="ai-pack-error" style={{ color: "var(--danger, #ef4444)" }}>
               {error}
             </p>
           ) : null}

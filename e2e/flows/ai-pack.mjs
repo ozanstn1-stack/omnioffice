@@ -85,6 +85,22 @@ export async function configureProviderFlow(session) {
 
 /** Waits for the pack run and requires a verified answer. */
 export async function packFlow(session) {
+  // The dev launch hands the document to the screen; the flow then does what a
+  // user does - tick the consent box and press Run - instead of relying on the
+  // development auto-run, so the same path is exercised.
+  const document = await waitForScript(
+    session,
+    "const el=document.querySelector('[data-testid=\"ai-pack-doc\"]'); return el ? el.textContent.trim() : '';",
+    45000,
+    "the launched document",
+  );
+  if (!/sample-1/.test(document)) throw new Error(`the screen did not receive the document: "${document}"`);
+
+  const consent = await findElement(session, '[data-testid="ai-pack-consent"]');
+  await clickElement(session, elementKey(consent));
+  const runButton = await findElement(session, '[data-testid="ai-pack-run"]');
+  await clickElement(session, elementKey(runButton));
+
   const state = await waitForScript(
     session,
     "const el=document.querySelector('[data-testid=\"ai-pack-result\"]'); return el ? el.dataset.parsed + '|' + el.dataset.ok : '';",
@@ -92,8 +108,15 @@ export async function packFlow(session) {
     "the task-pack verdict",
   );
   const [parsed, ok] = state.split("|");
-  if (parsed !== "true") throw new Error(`the pack answer did not parse as JSON: ${state}`);
-  if (ok !== "true") throw new Error(`the pack verified nothing: ${state}`);
+  if (parsed !== "true" || ok !== "true") {
+    const shown = await waitForScript(
+      session,
+      "const el=document.querySelector('[data-testid=\"ai-pack-error\"]'); return el ? el.textContent.trim() : '';",
+      5000,
+      "the screen error",
+    ).catch(() => "");
+    throw new Error(`the pack did not verify (${state})${shown ? `: ${shown}` : ""}`);
+  }
   const text = await waitForScript(
     session,
     "const el=document.querySelector('[data-testid=\"ai-pack-result\"]'); return el ? el.innerText.slice(0, 400) : '';",
