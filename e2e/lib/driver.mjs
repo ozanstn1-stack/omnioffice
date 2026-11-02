@@ -69,6 +69,18 @@ export function findElement(session, selector) {
   return webdriver(session.port, `/session/${session.id}/element`, "POST", { using: "css selector", value: selector });
 }
 
+export async function clearElement(session, elementId) {
+  await webdriver(session.port, `/session/${session.id}/element/${elementId}/clear`, "POST", {});
+}
+
+/** Types into a real input; the driver scrolls it into view first. */
+export async function sendKeys(session, elementId, text) {
+  await webdriver(session.port, `/session/${session.id}/element/${elementId}/value`, "POST", {
+    text,
+    value: [...text],
+  });
+}
+
 export function clickElement(session, elementId) {
   return webdriver(session.port, `/session/${session.id}/element/${elementId}/click`, "POST", {});
 }

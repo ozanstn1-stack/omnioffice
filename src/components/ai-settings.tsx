@@ -322,6 +322,7 @@ export function AiSettings() {
             <TextInput
               type="password"
               value={apiKey}
+              data-testid="ai-key-input"
               placeholder={keyState.maskedKey || preset.keyPlaceholder}
               onChange={(event) => setApiKey(event.target.value)}
               autoComplete="off"
@@ -494,6 +495,7 @@ export function AiSettings() {
           variant="primary"
           icon={saving ? <Spinner size={14} /> : <Bot size={15} />}
           onClick={() => void save()}
+          data-testid="ai-save"
           disabled={saving}
         >
           {t("common.save")}
@@ -507,7 +509,7 @@ export function AiSettings() {
           {t("settings.aiTestConnection")}
         </Button>
         {needsApiKey && keyState.configured ? (
-          <Button variant="danger" icon={<Trash2 size={15} />} onClick={() => void clear()}>
+          <Button variant="danger" icon={<Trash2 size={15} />} onClick={() => void clear()} data-testid="ai-clear">
             {t("settings.aiClearKey")}
           </Button>
         ) : null}
@@ -556,7 +558,14 @@ export function AiSettings() {
         />
       </div>
 
-      <p className="text-xs muted">
+      {/* The end-to-end secret flow reads the tier and the configured flag from
+          here, so it does not have to match a translated sentence. */}
+      <p
+        className="text-xs muted"
+        data-testid="ai-key-storage"
+        data-key-storage={keyState.keyStorage}
+        data-configured={String(keyState.configured)}
+      >
         {t("settings.aiStorage")}: {t(storageLabelKey(keyState.keyStorage))}
       </p>
     </Card>

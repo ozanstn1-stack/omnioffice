@@ -190,7 +190,7 @@
     "src-tauri/src/worker.rs": 288,
     "src-tauri/src/worker/containment.rs": 222,
     "src/App.tsx": 1155,
-    "src/components/ai-settings.tsx": 564,
+    "src/components/ai-settings.tsx": 573,
     "src/components/command-palette.tsx": 308,
     "src/components/compatibility.tsx": 347,
     "src/components/files.tsx": 721,

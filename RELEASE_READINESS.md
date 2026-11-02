@@ -129,6 +129,16 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **The secret store is exercised end to end (E4.3):** `--secrets` types a
+  marker key into the Settings field, clicks Save, and reads the tier the UI
+  reports from `data-key-storage`. It then inspects what reached the disk: above
+  the fallback the file must **not** contain the key, and on the documented
+  `plain` fallback (a Linux session with no Secret Service, which is what CI
+  has) the file must be **0600** and carry the marker. A second app launch must
+  read the key back as configured, and the flow clears it again. This proves the
+  three-tier store across a real process restart, which a unit test with a fake
+  vault cannot.
+  `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
 - **A Calc flow proves the formula engine in the real UI (E4.3):** `--calc`
   opens `samples/test-spreadsheet.xlsx` in the office editor and asserts, through
   `data-cell="row:col"` hooks rather than labels or coordinates, that the header
