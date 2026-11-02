@@ -516,6 +516,11 @@ jobs:
       - name: Calc (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:calc
+      # Impress: navigate the slide rail, add a slide, save with Ctrl+S and
+      # prove the PPTX on disk changed. Engine-free as well.
+      - name: Impress (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:impress
       # The secret store, end to end: save a key, inspect what reached the disk,
       # restart the app, read it back, clear it. The Linux runner has no Secret
       # Service, so the flow takes the documented `plain` fallback path and

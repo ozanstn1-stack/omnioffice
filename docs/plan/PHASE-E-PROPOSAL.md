@@ -213,9 +213,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
 3. **E2E.** *Partly delivered:* the split is done - `e2e/smoke.mjs` is a
    109-line dispatcher over `e2e/lib/driver.mjs`, `e2e/lib/files.mjs` and
    `e2e/flows/{home,reader,office,pdf,acl,personas}.mjs`, with a structure test
-   pinning it; the signature/verification (`--verify`), Calc (`--calc`) and
-   secret-store (`--secrets`) flows run on every PR in the Linux job. *Open:*
-   Impress, Scanner and the AI-pack flow against `scripts/mock-deepseek.mjs`, a
+   pinning it; the signature/verification (`--verify`), Calc (`--calc`), Impress
+   (`--impress`) and secret-store (`--secrets`) flows run on every PR in the
+   Linux job, so Writer, Calc and Impress are all covered end to end. *Open:*
+   Scanner and the AI-pack flow against `scripts/mock-deepseek.mjs`, a
    document-vault flow (its folder picker is a native dialog WebDriver cannot
    drive), and the label-triggerable Android emulator run.
 4. **Benchmarks.** Make the criterion gate blocking with a two-consecutive-runs
