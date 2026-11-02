@@ -3176,5 +3176,13 @@
   "petition.field.taxId": "National ID number",
   "petition.field.address": "Contact address",
   "petition.field.phone": "Phone number",
-  "petition.field.attachments": "Attachments (optional)"
+  "petition.field.attachments": "Attachments (optional)",
+  "common.dismiss": "Dismiss",
+  "common.previous": "Previous",
+  "common.next": "Next",
+  "annotate.opacity": "Opacity",
+  "watermark.tileAcross": "Tile across page",
+  "kvkk.field.companyName": "Company / institution name",
+  "kvkk.field.contactEmail": "KVKK contact e-mail",
+  "kvkk.field.companyAddress": "Company address"
 }

@@ -441,15 +441,20 @@ export function Pager({
   pageCount: number;
   onChange: (page: number) => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-1.5">
-      <IconButton label="Previous" onClick={() => onChange(Math.max(1, page - 1))} disabled={page <= 1}>
+      <IconButton label={t("common.previous")} onClick={() => onChange(Math.max(1, page - 1))} disabled={page <= 1}>
         <ChevronLeft size={15} />
       </IconButton>
       <span className="text-xs tabular-nums muted min-w-[70px] text-center">
         {page} / {pageCount}
       </span>
-      <IconButton label="Next" onClick={() => onChange(Math.min(pageCount, page + 1))} disabled={page >= pageCount}>
+      <IconButton
+        label={t("common.next")}
+        onClick={() => onChange(Math.min(pageCount, page + 1))}
+        disabled={page >= pageCount}
+      >
         <ChevronRight size={15} />
       </IconButton>
     </div>

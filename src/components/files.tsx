@@ -688,6 +688,7 @@ function PasswordDialogBody() {
 // ---------------------------------------------------------------------------
 
 export function Toasts() {
+  const t = useT();
   const toasts = useToasts((s) => s.toasts);
   const dismiss = useToasts((s) => s.dismiss);
   return (
@@ -711,7 +712,7 @@ export function Toasts() {
             <p className="font-semibold text-[13px]">{toast.title}</p>
             {toast.detail ? <p className="text-xs muted break-words">{toast.detail}</p> : null}
           </div>
-          <IconButton label="Dismiss" onClick={() => dismiss(toast.id)}>
+          <IconButton label={t("common.dismiss")} onClick={() => dismiss(toast.id)}>
             <X size={14} />
           </IconButton>
         </div>

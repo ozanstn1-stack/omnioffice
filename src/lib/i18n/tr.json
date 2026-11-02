@@ -3176,5 +3176,13 @@
   "petition.field.taxId": "T.C. Kimlik No",
   "petition.field.address": "İletişim Adresi",
   "petition.field.phone": "Telefon Numarası",
-  "petition.field.attachments": "Ekler (İsteğe bağlı)"
+  "petition.field.attachments": "Ekler (İsteğe bağlı)",
+  "common.dismiss": "Kapat",
+  "common.previous": "Önceki",
+  "common.next": "Sonraki",
+  "annotate.opacity": "Saydamlık",
+  "watermark.tileAcross": "Sayfa boyunca döşe",
+  "kvkk.field.companyName": "Şirket / Kurum Unvanı",
+  "kvkk.field.contactEmail": "KVKK İrtibat E-Postası",
+  "kvkk.field.companyAddress": "Şirket Adresi"
 }
