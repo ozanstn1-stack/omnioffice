@@ -29,13 +29,20 @@
  *   node scripts/i18n-audit.mjs --update   # re-record the JSX-text baseline
  */
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { scanSource } from "./lib/i18n-jsx.mjs";
 
-const enPath = fileURLToPath(new URL("../src/lib/i18n/en.json", import.meta.url));
-const trPath = fileURLToPath(new URL("../src/lib/i18n/tr.json", import.meta.url));
-const baselinePath = fileURLToPath(new URL("./i18n-baseline.json", import.meta.url));
+// Test hooks: a temporary tree can be audited without touching the repository
+// (the same shape `check-reproducibility-inputs.mjs` uses with REPRO_ROOT).
+const auditRoot = process.env.I18N_AUDIT_ROOT ? resolve(process.env.I18N_AUDIT_ROOT) : undefined;
+const repoPath = (relative) =>
+  auditRoot ? join(auditRoot, relative) : fileURLToPath(new URL(`../${relative}`, import.meta.url));
+const enPath = repoPath("src/lib/i18n/en.json");
+const trPath = repoPath("src/lib/i18n/tr.json");
+const baselinePath = process.env.I18N_BASELINE
+  ? resolve(process.env.I18N_BASELINE)
+  : fileURLToPath(new URL("./i18n-baseline.json", import.meta.url));
 
 // The dictionaries are JSON assets the app fetches at runtime; they are the
 // source of truth for this audit.
@@ -60,7 +67,7 @@ if (process.argv.includes("--tsv")) {
 
 // Keys used in code with a literal dotted name, e.g. t("ai.run"), label("nav.redact", …).
 const USAGE = /(?:\bt|\blabel|\btr)\(\s*"([a-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)+)"/g;
-const srcRoot = fileURLToPath(new URL("../src", import.meta.url));
+const srcRoot = repoPath("src");
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -130,97 +137,82 @@ for (const key of [...pluralKeys].sort()) {
 const fakePlurals = enKeys.filter((key) => /\(s\)/.test(String(en[key])) || /\(s\)/.test(String(tr[key] ?? "")));
 
 // ---------------------------------------------------------------------------
-// Hardcoded JSX text, measured with a real parser so generics and comparisons
-// (`a > b`, `Map<K, V>`) cannot be mistaken for prose. The baseline is a
-// ratchet: it may only shrink, which is how the strings move into the table.
+// Hardcoded strings, measured with a real parser (see lib/i18n-jsx.mjs) so
+// generics and comparisons cannot be mistaken for prose. Each section - text
+// nodes, attributes, props - has its own baseline and its own ratchet.
 // ---------------------------------------------------------------------------
-const PROSE = /[A-Za-zÇĞİÖŞÜçğıöşü]{2,}/;
-// Attributes the user reads or hears. A model prompt example ("tr, en, de") or a
-// format name ("pdf, docx, md") is literal on purpose and still counted - which
-// is why the baseline exists instead of a zero target.
-const ATTRIBUTES = ["alt", "aria-label", "title", "placeholder"];
-
-function jsxStrings() {
-  const counts = {};
-  const attributes = {};
-  const samples = new Map();
-  for (const file of walk(srcRoot)) {
-    if (!file.endsWith(".tsx")) continue;
-    const body = readFileSync(file, "utf8");
-    const source = ts.createSourceFile(file, body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-    const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
-    const visit = (node) => {
-      if (ts.isJsxText(node)) {
-        const text = node.text.replace(/\s+/g, " ").trim();
-        // Letters are what makes text user-visible; "—", "·", "1" and "/" are
-        // separators the table never needs to hold.
-        if (PROSE.test(text)) {
-          counts[relative] = (counts[relative] ?? 0) + 1;
-          if (!samples.has(relative)) samples.set(relative, []);
-          if (samples.get(relative).length < 3) samples.get(relative).push(text.slice(0, 48));
-        }
-      }
-      if (ts.isJsxAttribute(node) && node.initializer && ts.isStringLiteral(node.initializer)) {
-        const name = node.name.getText(source);
-        if (ATTRIBUTES.includes(name) && PROSE.test(node.initializer.text.trim())) {
-          attributes[relative] = (attributes[relative] ?? 0) + 1;
-        }
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-  }
-  return { counts, attributes, samples };
+const scan = { files: {}, attributes: {}, props: {} };
+const samples = new Map();
+const propRows = [];
+for (const file of walk(srcRoot)) {
+  if (!file.endsWith(".tsx")) continue;
+  const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
+  const found = scanSource(file, readFileSync(file, "utf8"));
+  if (found.texts.length) scan.files[relative] = found.texts.length;
+  if (found.attributes.length) scan.attributes[relative] = found.attributes.length;
+  if (found.props.length) scan.props[relative] = found.props.length;
+  if (found.texts.length)
+    samples.set(
+      relative,
+      found.texts.slice(0, 3).map((row) => row.text.slice(0, 48)),
+    );
+  for (const row of found.props) propRows.push(`${relative}:${row.line}\t${row.name}\t${row.text}`);
 }
 
-const { counts: jsxCounts, attributes: attrCounts, samples: jsxSamples } = jsxStrings();
-const baseline = existsSync(baselinePath)
-  ? JSON.parse(readFileSync(baselinePath, "utf8"))
-  : { version: 2, files: {}, attributes: {} };
-const known = baseline.files ?? {};
-const knownAttributes = baseline.attributes ?? {};
-
-if (process.argv.includes("--update")) {
-  const grown = [
-    ...Object.entries(jsxCounts).filter(([file, count]) => known[file] !== undefined && count > known[file]),
-    ...Object.entries(attrCounts).filter(
-      ([file, count]) => knownAttributes[file] !== undefined && count > knownAttributes[file],
-    ),
-  ];
-  if (grown.length && !process.argv.includes("--allow-raise")) {
-    for (const [file, count] of grown) {
-      console.error(`i18n:update: ${file} would grow ${known[file] ?? knownAttributes[file]} -> ${count}`);
-    }
-    console.error(
-      "i18n:update: the hardcoded-text baseline may only shrink; pass --allow-raise to move it on purpose.",
-    );
-    process.exit(1);
-  }
-  const sort = (counts) => Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
-  const sorted = sort(jsxCounts);
-  const sortedAttributes = sort(attrCounts);
-  writeFileSync(
-    baselinePath,
-    `${JSON.stringify({ version: 2, files: sorted, attributes: sortedAttributes }, null, 2)}
-`,
-  );
-  const total = Object.values(sorted).reduce((sum, count) => sum + count, 0);
-  const attrTotal = Object.values(sortedAttributes).reduce((sum, count) => sum + count, 0);
-  console.log(`i18n:update: ${total} hardcoded JSX text nodes and ${attrTotal} attribute strings recorded`);
+if (process.argv.includes("--props-report")) {
+  // The translation backlog, cheapest source first: one line per prop string.
+  console.log(propRows.sort().join("\n"));
+  console.log(`i18n:props-report: ${propRows.length} prop string(s) across ${Object.keys(scan.props).length} file(s)`);
   process.exit(0);
 }
 
-const jsxProblems = Object.entries(jsxCounts)
-  .filter(([file, count]) => count > (known[file] ?? 0))
-  .map(([file, count]) => `${file}: ${count} hardcoded text node(s), baseline ${known[file] ?? 0}`);
-const attrProblems = Object.entries(attrCounts)
-  .filter(([file, count]) => count > (knownAttributes[file] ?? 0))
-  .map(([file, count]) => `${file}: ${count} hardcoded attribute string(s), baseline ${knownAttributes[file] ?? 0}`);
+const baseline = existsSync(baselinePath)
+  ? JSON.parse(readFileSync(baselinePath, "utf8"))
+  : { version: 3, files: {}, attributes: {}, props: {} };
+if (process.argv.includes("--check") && baseline.props === undefined) {
+  console.error("i18n: the baseline has no `props` section yet; run `npm run i18n:audit -- --update --allow-raise`.");
+  process.exit(1);
+}
+const known = { files: baseline.files ?? {}, attributes: baseline.attributes ?? {}, props: baseline.props ?? {} };
+
+if (process.argv.includes("--update")) {
+  const grown = Object.entries(scan).flatMap(([section, counts]) =>
+    Object.entries(counts)
+      .filter(([file, count]) => known[section][file] !== undefined && count > known[section][file])
+      .map(([file, count]) => `${section}: ${file} would grow ${known[section][file]} -> ${count}`),
+  );
+  if (grown.length && !process.argv.includes("--allow-raise")) {
+    for (const line of grown) console.error(`i18n:update: ${line}`);
+    console.error("i18n:update: the baseline may only shrink; pass --allow-raise to move it on purpose.");
+    process.exit(1);
+  }
+  const sort = (counts) => Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
+  const next = { version: 3 };
+  for (const section of Object.keys(scan)) next[section] = sort(scan[section]);
+  writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
+  const totals = Object.keys(scan).map(
+    (section) => `${Object.values(scan[section]).reduce((sum, n) => sum + n, 0)} ${section}`,
+  );
+  console.log(`i18n:update: recorded ${totals.join(", ")}`);
+  process.exit(0);
+}
+
+const LABELS = { files: "text node", attributes: "attribute string", props: "prop string" };
+const problemsBySection = Object.entries(scan).map(([section, counts]) => ({
+  section,
+  lines: Object.entries(counts)
+    .filter(([file, count]) => count > (known[section][file] ?? 0))
+    .map(([file, count]) => `${file}: ${count} hardcoded ${LABELS[section]}(s), baseline ${known[section][file] ?? 0}`),
+}));
 
 const untranslated = enKeys.filter((key) => trKeys.has(key) && en[key] === tr[key]);
 const unused = enKeys.filter((key) => !usedKeys.has(key));
-const jsxTotal = Object.values(jsxCounts).reduce((sum, count) => sum + count, 0);
-const attrTotal = Object.values(attrCounts).reduce((sum, count) => sum + count, 0);
+const totals = Object.fromEntries(
+  Object.entries(scan).map(([section, counts]) => [
+    section,
+    Object.values(counts).reduce((sum, count) => sum + count, 0),
+  ]),
+);
 
 console.log(
   "i18n: en=" +
@@ -238,9 +230,11 @@ console.log(
     " plural-usage=" +
     pluralKeys.size +
     " hardcoded-jsx=" +
-    jsxTotal +
+    totals.files +
     " hardcoded-attrs=" +
-    attrTotal,
+    totals.attributes +
+    " hardcoded-props=" +
+    totals.props,
 );
 if (missing.length) {
   console.log("  missing (first 20): " + missing.slice(0, 20).join(", "));
@@ -260,13 +254,13 @@ for (const mismatch of placeholderMismatches.slice(0, 20)) {
     .join("; ");
   console.log(`  placeholder mismatch: ${mismatch.key} (${detail})`);
 }
-for (const file of Object.keys(jsxCounts)
-  .sort((a, b) => jsxCounts[b] - jsxCounts[a])
+for (const file of Object.keys(scan.files)
+  .sort((a, b) => scan.files[b] - scan.files[a])
   .slice(0, 10)) {
   console.log(
-    `  hardcoded text: ${file} has ${jsxCounts[file]} node(s)` +
-      (known[file] !== undefined ? ` (baseline ${known[file]})` : " (not in the baseline)") +
-      ` e.g. ${JSON.stringify(jsxSamples.get(file) ?? [])}`,
+    `  hardcoded text: ${file} has ${scan.files[file]} node(s)` +
+      (known.files[file] !== undefined ? ` (baseline ${known.files[file]})` : " (not in the baseline)") +
+      ` e.g. ${JSON.stringify(samples.get(file) ?? [])}`,
   );
 }
 console.log(`  advisory: identical-in-en-and-tr=${untranslated.length}, not-reached-by-a-literal-key=${unused.length}`);
@@ -278,10 +272,11 @@ const problems =
   placeholderMismatches.length +
   pluralProblems.length +
   fakePlurals.length +
-  jsxProblems.length +
-  attrProblems.length;
+  problemsBySection.reduce((sum, entry) => sum + entry.lines.length, 0);
 if (check && problems) {
-  for (const problem of [...jsxProblems, ...attrProblems].slice(0, 20)) console.error("  " + problem);
+  for (const entry of problemsBySection) {
+    for (const line of entry.lines.slice(0, 20)) console.error("  " + line);
+  }
   console.error("i18n-audit: the translation tables are out of sync");
   process.exit(1);
 }

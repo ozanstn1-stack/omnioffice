@@ -187,12 +187,14 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
       version: number;
       files: Record<string, number>;
       attributes: Record<string, number>;
+      props: Record<string, number>;
     };
-    expect(baseline.version).toBe(2);
-    const total = Object.values(baseline.files).reduce((sum, count) => sum + count, 0);
-    const attributes = Object.values(baseline.attributes).reduce((sum, count) => sum + count, 0);
-    expect(total).toBeLessThanOrEqual(77);
-    expect(attributes).toBeLessThanOrEqual(9);
+    expect(baseline.version).toBe(3);
+    const total = (section: Record<string, number>) =>
+      Object.values(section).reduce((sum, count) => sum + count, 0);
+    expect(total(baseline.files)).toBeLessThanOrEqual(77);
+    expect(total(baseline.attributes)).toBeLessThanOrEqual(9);
+    expect(total(baseline.props)).toBeLessThanOrEqual(15);
   });
 });
 
