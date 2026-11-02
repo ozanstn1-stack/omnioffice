@@ -25,6 +25,7 @@ import { officeRoundtrip } from "./flows/office.mjs";
 import { mergeFlow, sanitizeFlow } from "./flows/pdf.mjs";
 import { accountantPersona, lawyerPersona, publicPersona, studentPersona } from "./flows/personas.mjs";
 import { reader } from "./flows/reader.mjs";
+import { verifyFlow } from "./flows/verify.mjs";
 import { artifacts, argv, pdf, requireAppBinary, valueOf, withSession, withSessionRetry } from "./lib/driver.mjs";
 import { prepareWorkFile } from "./lib/files.mjs";
 
@@ -37,6 +38,13 @@ async function main() {
   if (argv.includes("--sanitize") || argv.includes("--all")) scenarios.push("sanitize");
   if (argv.includes("--acl")) scenarios.push("acl");
 
+  // Signature verification: the dev launch opens the file on the Verify screen
+  // and that screen runs the offline check itself.
+  if (argv.includes("--verify")) {
+    const sample = prepareWorkFile("sample-1.pdf");
+    await withSession("verify", { PDFSAK_START_SCREEN: "verify", PDFSAK_DEV_FILES: sample }, verifyFlow);
+    return;
+  }
   if (pdf) {
     await withSession("reader", { PDFSAK_START_SCREEN: "reader", PDFSAK_DEV_FILES: resolve(pdf) }, reader);
     return;

@@ -314,7 +314,7 @@
     "src/screens/Split.tsx": 220,
     "src/screens/Sync.tsx": 994,
     "src/screens/Vault.tsx": 861,
-    "src/screens/Verify.tsx": 349,
+    "src/screens/Verify.tsx": 351,
     "src/screens/Watermark.tsx": 288
   }
 }
