@@ -511,6 +511,11 @@ jobs:
       - name: Signature verification (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:verify
+      # Calc is engine-free too: officecore parses the XLSX and evaluates the
+      # formulas, so the grid, the computed cell and the formula bar are all real.
+      - name: Calc (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:calc
       # Engine-free real flows: Writer type -> save, PDF merge and Studio
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)

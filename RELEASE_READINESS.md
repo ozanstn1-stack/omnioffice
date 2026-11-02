@@ -129,6 +129,15 @@ release-train schedule is decided.
   `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
   `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
   `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+- **A Calc flow proves the formula engine in the real UI (E4.3):** `--calc`
+  opens `samples/test-spreadsheet.xlsx` in the office editor and asserts, through
+  `data-cell="row:col"` hooks rather than labels or coordinates, that the header
+  row came from the workbook's shared strings ("Name", "Quantity", "Total"), that
+  `G2 = SUM(D2:D101)` holds a positive total (the file caches 0, so a positive
+  number is the engine's own answer), and that selecting that cell puts
+  `=SUM(...)` in `.formula-input`. Engine-free (officecore), so it runs in the
+  Linux tauri-driver job on every PR.
+  `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
 - **A new end-to-end flow proves signature verification (E4.3):** `--verify`
   launches the app on the Verify screen with the unsigned sample, waits for the
   screen to report it holds its file, and reads the verdict from a

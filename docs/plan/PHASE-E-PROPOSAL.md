@@ -213,10 +213,10 @@ secret migration, ACL capability list, CSP header, install confirmation), and
 3. **E2E.** *Partly delivered:* the split is done - `e2e/smoke.mjs` is a
    109-line dispatcher over `e2e/lib/driver.mjs`, `e2e/lib/files.mjs` and
    `e2e/flows/{home,reader,office,pdf,acl,personas}.mjs`, with a structure test
-   pinning it, and the signature/verification flow (`--verify`) runs on every PR
-   in the Linux job. *Open:* the remaining flows (Calc, Impress, Scanner, Vault,
-   AI packs against `scripts/mock-deepseek.mjs`) and the label-triggerable
-   Android emulator run.
+   pinning it; the signature/verification (`--verify`) and Calc (`--calc`) flows
+   run on every PR in the Linux job. *Open:* the remaining flows (Impress,
+   Scanner, Vault, AI packs against `scripts/mock-deepseek.mjs`) and the
+   label-triggerable Android emulator run.
 4. **Benchmarks.** Make the criterion gate blocking with a two-consecutive-runs
    rule (or median of two), instead of advisory.
 5. **i18n.** *Partly delivered.* `i18n-audit.mjs` now fails on placeholder
