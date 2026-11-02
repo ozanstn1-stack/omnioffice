@@ -35,8 +35,11 @@ export async function calcFlow(session) {
     20000,
     "the computed SUM",
   );
-  const value = Number(total.replace(/[^\d.,-]/g, "").replace(",", "."));
-  if (!Number.isFinite(value) || value <= 0) {
+  // The engine's value arrives locale-formatted ("9,820.00" or "9820,00"), so
+  // only the magnitude is asserted: the file caches 0, so any non-zero digits
+  // can only come from the formula being evaluated.
+  const digits = total.replace(/[^\d]/g, "");
+  if (!digits || Number(digits) <= 0) {
     throw new Error(`the SUM cell should hold a positive total, got "${total}"`);
   }
 
