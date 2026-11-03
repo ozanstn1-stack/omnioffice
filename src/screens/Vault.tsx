@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type * as specta from "../lib/generated/specta";
 import { commands, unwrap } from "../lib/typed-ipc";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -32,6 +32,10 @@ import {
 } from "../components/ui";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
+import { HitRow } from "./vault-hits";
+import { useScreenReady } from "../lib/screen-ready";
+import { useDev } from "../lib/store";
+import { devVaultFolders } from "./vault-dev";
 import { errorMessage, useToasts } from "../lib/store";
 import { cancelJob, onProgress, toAppError, vaultScan } from "../lib/api";
 import { formatBytes, formatDate } from "../lib/format";
@@ -73,64 +77,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-function Snippet({ text }: { text: string }) {
-  if (!text) return null;
-  const parts = text.split(/(<<[^<>]*>>)/g).filter(Boolean);
-  return (
-    <span className="block text-[13px] leading-snug" style={{ color: "var(--text-1)" }}>
-      {parts.map((part, index) =>
-        part.startsWith("<<") && part.endsWith(">>") ? (
-          <mark
-            key={index}
-            style={{ background: "var(--accent-weak)", color: "var(--accent)", borderRadius: 3, padding: "0 2px" }}
-          >
-            {part.slice(2, -2)}
-          </mark>
-        ) : (
-          <span key={index}>{part}</span>
-        ),
-      )}
-    </span>
-  );
-}
-
-function HitRow({
-  hit,
-  active,
-  onSelect,
-}: {
-  hit: VaultSearchHit;
-  active: boolean;
-  onSelect: (hit: VaultSearchHit) => void;
-}) {
-  const t = useT();
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(hit)}
-      className="card-soft text-left flex flex-col gap-1 px-3 py-2.5"
-      style={active ? { outline: "2px solid var(--accent)" } : undefined}
-    >
-      <span className="flex w-full items-center gap-2 flex-wrap">
-        <span className="font-medium text-[13px] truncate" style={{ color: "var(--text-1)" }}>
-          {hit.fileName}
-        </span>
-        <Badge>{hit.extension.toUpperCase()}</Badge>
-        <Badge tone="accent">{hit.matchLabel}</Badge>
-        <span className="text-xs muted ml-auto">{t("vault.score", { score: Math.round(hit.score ?? 0) })}</span>
-      </span>
-      <span className="block w-full text-xs muted truncate" title={hit.path}>
-        {hit.path}
-      </span>
-      <span className="block text-xs muted">
-        {formatBytes(hit.size)} · {formatDate(hit.modified)}
-      </span>
-      <Snippet text={hit.snippet} />
-    </button>
-  );
-}
-
-export function Vault() {
+export function Vault({ initialFiles }: { initialFiles?: string[] } = {}) {
   const t = useT();
   // Android cannot browse folders: the user imports documents instead and the
   // backend indexes the app-private copies. `status` carries the platform
@@ -170,6 +117,13 @@ export function Vault() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const previewId = useRef("");
+
+  // A development auto-run seeds the vault from the handed-over file's folder;
+  // a normal launch never indexes anything on its own.
+  const autoRun = useDev((state) => state.autoRun);
+  const seedFolders = useMemo(() => devVaultFolders(initialFiles ?? []), [initialFiles]);
+  const [seeding, setSeeding] = useState(seedFolders.length > 0 && autoRun && !android);
+  const seeded = useRef(false);
 
   const busy = scanning || buildingIndex || Boolean(status?.scanning);
   const percent =
@@ -238,12 +192,12 @@ export function Vault() {
     void saveConfig({ ...config, folders: config.folders.filter((entry) => entry !== folder) });
   };
 
-  const startScan = async () => {
+  const startScan = async (folders: string[] = config.folders) => {
     setScanning(true);
     setScanError(null);
     setProgress(null);
     try {
-      const request: VaultScanRequest = { folders: config.folders, rescan: false, maxFiles: 20000 };
+      const request: VaultScanRequest = { folders, rescan: false, maxFiles: 20000 };
       const next = await vaultScan<VaultStatus>(request);
       setStatus(next);
       setStatusError(null);
@@ -257,6 +211,32 @@ export function Vault() {
       setProgress(null);
     }
   };
+
+  const startScanRef = useRef(startScan);
+  // Kept current in an effect, not during render: a ref written while rendering
+  // is exactly what the hook rules forbid.
+  useEffect(() => {
+    startScanRef.current = startScan;
+  });
+
+  useEffect(() => {
+    if (seeded.current || !seedFolders.length || !autoRun || android) return;
+    seeded.current = true;
+    // The latest startScan, without making the effect depend on its identity.
+    void (async () => {
+      try {
+        await startScanRef.current(seedFolders);
+        setConfig((current) => ({
+          ...current,
+          folders: [...new Set([...current.folders, ...seedFolders])],
+        }));
+      } finally {
+        setSeeding(false);
+      }
+    })();
+  }, [autoRun, android, seedFolders]);
+
+  useScreenReady("vault", status !== null && !busy && !seeding, String(status?.indexed ?? 0));
 
   const cancelScan = () => {
     void cancelJob("vault-scan").catch(() => undefined);
@@ -460,7 +440,12 @@ export function Vault() {
               {config.folders.length ? (
                 <div className="flex flex-col gap-2">
                   {config.folders.map((folder) => (
-                    <div key={folder} className="card-soft flex items-center gap-2 px-3 py-2">
+                    <div
+                      key={folder}
+                      data-testid="vault-folder"
+                      data-path={folder}
+                      className="card-soft flex items-center gap-2 px-3 py-2"
+                    >
                       <FolderOpen size={15} className="muted shrink-0" />
                       <span className="text-xs truncate flex-1" title={folder}>
                         {folder}
@@ -540,6 +525,7 @@ export function Vault() {
 
             <OptionCard title={t("vault.searchTitle")}>
               <form
+                data-testid="vault-search"
                 className="flex flex-col gap-3"
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -640,7 +626,12 @@ export function Vault() {
                     <span className="text-xs muted">{t("vault.tookMs", { ms: result.tookMs })}</span>
                     {result.retrievalMode ? <Badge>{result.retrievalMode}</Badge> : null}
                   </div>
-                  <div className="flex flex-col gap-2">
+                  <div
+                    className="flex flex-col gap-2"
+                    data-testid="vault-hits"
+                    data-total={result.total}
+                    data-mode={result.retrievalMode ?? ""}
+                  >
                     {result.hits.map((entry) => (
                       <HitRow
                         key={entry.documentId}
@@ -713,6 +704,7 @@ export function Vault() {
                   </p>
                 ) : preview ? (
                   <pre
+                    data-testid="vault-preview"
                     className="text-xs whitespace-pre-wrap break-words max-h-[420px] overflow-auto p-3 rounded-lg"
                     style={{ background: "var(--surface-2)", color: "var(--text-1)" }}
                   >

@@ -97,6 +97,7 @@ vi.mock("../lib/mobile", async (importOriginal) => {
 // the missing-key fallback does at runtime.
 vi.mock("../lib/i18n", () => ({ useT: () => (key: string) => key }));
 
+import { useDev } from "../lib/store";
 import { Vault } from "./Vault";
 import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 
@@ -220,4 +221,75 @@ it("pages through results with dictionary keys, not Turkish literals", async () 
   expect(container.textContent).not.toContain("Sonraki");
   expect(container.textContent).not.toContain("Semantik");
   expect(screen.getByText("vault.buildSemanticIndex")).toBeInTheDocument();
+});
+
+describe("vault development seeding", () => {
+  beforeEach(() => {
+    useDev.getState().set({ autoRun: false, startScreen: null, files: [] });
+    delete document.documentElement.dataset.screenReady;
+    delete document.documentElement.dataset.screenReadyDetail;
+  });
+
+  it("indexes the handed-over file's folder in a development auto-run", async () => {
+    useDev.getState().set({ autoRun: true, startScreen: "vault", files: [] });
+    render(<Vault initialFiles={["C:/seed/field-notes.md"]} />);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("vault_scan", {
+        request: expect.objectContaining({ folders: ["C:/seed"] }),
+      }),
+    );
+    expect(await screen.findByTestId("vault-folder")).toHaveAttribute("data-path", "C:/seed");
+    await waitFor(() => expect(document.documentElement.dataset.screenReady).toBe("vault"));
+    expect(document.documentElement.dataset.screenReadyDetail).toBe("3");
+    // The scan runs once, not on every render.
+    expect(invoke.mock.calls.filter(([command]) => command === "vault_scan")).toHaveLength(1);
+  });
+
+  it("never indexes anything on a normal launch", async () => {
+    render(<Vault initialFiles={["C:/seed/field-notes.md"]} />);
+    await waitFor(() => expect(screen.getByText("vault.indexed")).toBeInTheDocument());
+    expect(invoke.mock.calls.filter(([command]) => command === "vault_scan")).toHaveLength(0);
+  });
+
+  it("never seeds on Android, where folders cannot be browsed", async () => {
+    useDev.getState().set({ autoRun: true, startScreen: "vault", files: [] });
+    vi.mocked(isAndroid).mockReturnValue(true);
+    render(<Vault initialFiles={["C:/seed/field-notes.md"]} />);
+    await waitFor(() => expect(screen.getByText("vault.indexed")).toBeInTheDocument());
+    expect(invoke.mock.calls.filter(([command]) => command === "vault_scan")).toHaveLength(0);
+  });
+
+  it("holds the ready signal until the seeded scan finishes", async () => {
+    useDev.getState().set({ autoRun: true, startScreen: "vault", files: [] });
+    let release: (() => void) | undefined;
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "vault_scan") {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return statusFixture;
+      }
+      return handler(command);
+    });
+    render(<Vault initialFiles={["C:/seed/field-notes.md"]} />);
+    await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === "vault_scan")).toBe(true));
+    // The screen must not report "ready with 0" while the scan is still running.
+    expect(document.documentElement.dataset.screenReady).toBeUndefined();
+    release?.();
+    await waitFor(() => expect(document.documentElement.dataset.screenReady).toBe("vault"));
+  });
+
+  it("exposes the result attributes the driver reads", async () => {
+    const user = userEvent.setup();
+    render(<Vault />);
+    await waitFor(() => expect(screen.getByText("vault.indexed")).toBeInTheDocument());
+    await user.type(screen.getByPlaceholderText("vault.queryPlaceholder"), "vault");
+    await user.click(screen.getByRole("button", { name: "vault.searchButton" }));
+    const hits = await screen.findByTestId("vault-hits");
+    expect(hits).toHaveAttribute("data-total", "2");
+    const rows = screen.getAllByTestId("vault-hit");
+    expect(rows.map((row) => row.getAttribute("data-file-name"))).toEqual(["alpha.txt", "beta.md"]);
+    await user.click(rows[0]);
+    await waitFor(() => expect(screen.getByTestId("vault-preview")).toHaveTextContent("Full preview text"));
+  });
 });

@@ -29,6 +29,7 @@ import { mergeFlow, sanitizeFlow } from "./flows/pdf.mjs";
 import { accountantPersona, lawyerPersona, publicPersona, studentPersona } from "./flows/personas.mjs";
 import { reader } from "./flows/reader.mjs";
 import { scannerScenario } from "./flows/scanner.mjs";
+import { vaultScenario } from "./flows/vault.mjs";
 import { secretStoreFlow } from "./flows/secrets.mjs";
 import { verifyScenario } from "./flows/verify.mjs";
 import { artifacts, argv, pdf, requireAppBinary, valueOf, withSession, withSessionRetry } from "./lib/driver.mjs";
@@ -56,6 +57,7 @@ async function main() {
     ["--calc", calcScenario],
     ["--verify", verifyScenario],
     ["--scanner", scannerScenario],
+    ["--vault", vaultScenario],
   ];
   for (const [flag, run] of simple) {
     if (argv.includes(flag)) {
