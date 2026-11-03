@@ -3231,5 +3231,17 @@
   "kvkk.toast.copiedDetail": "The KVKK text is on the clipboard; use it in Word/Writer or as a PDF output.",
   "vault.pagePrevious": "Previous",
   "vault.pageNext": "Next",
-  "vault.buildSemanticIndex": "Build semantic vector index"
+  "vault.buildSemanticIndex": "Build semantic vector index",
+  "files.passwordNote": "Passwords are never stored or written to logs.",
+  "writer.pageBreak": "— page break —",
+  "pageTools.formatPageN": "Page 1",
+  "pageTools.formatPageNOfTotal": "Page 1 / 20",
+  "redact.toast.certVerified.one": "Certificate ({id}) verified — {count} item.",
+  "redact.toast.certVerified.other": "Certificate ({id}) verified — {count} items.",
+  "redact.toast.certUnverified.one": "Certificate ({id}) could NOT be verified — {count} item.",
+  "redact.toast.certUnverified.other": "Certificate ({id}) could NOT be verified — {count} items.",
+  "redact.toast.certSaved": "The report was saved to a file.",
+  "organize.sourcePage": "Source page {page}",
+  "batch.fileCount.one": "{count} file",
+  "batch.fileCount.other": "{count} files"
 }

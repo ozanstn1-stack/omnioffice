@@ -255,7 +255,7 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
             {!session.files.length ? (
               <DropZone onPaths={(paths) => void session.addPaths(paths)} dragging={dragging} multiple accept="pdf" />
             ) : (
-              <OptionCard title={`${session.files.length} ${t("common.pages")}`}>
+              <OptionCard title={t.plural("batch.fileCount", session.files.length)}>
                 <FileList
                   files={session.files}
                   reorder
@@ -457,7 +457,9 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
               <div className="flex items-center gap-2">
                 <FileImage size={13} /> {t("common.outputFolder")}: {outputDir || "—"}
               </div>
-              <div>{formatBytes(session.files.reduce((sum, file) => sum + file.sizeBytes, 0))} total</div>
+              <div>
+                {formatBytes(session.files.reduce((sum, file) => sum + file.sizeBytes, 0))} {t("common.total")}
+              </div>
             </Card>
             {result ? <ResultCard result={result} onReset={() => setResult(null)} /> : null}
           </>

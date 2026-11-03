@@ -913,9 +913,9 @@ function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; draggi
                 onChange={(event) => patch({ format: event.target.value as NumberingOptions["format"] })}
               >
                 <option value="n">1, 2, 3</option>
-                <option value="page_n">Page 1</option>
+                <option value="page_n">{t("pageTools.formatPageN")}</option>
                 <option value="n_of_total">1 / 20</option>
-                <option value="page_n_of_total">Page 1 of 20</option>
+                <option value="page_n_of_total">{t("pageTools.formatPageNOfTotal")}</option>
               </select>
             </Field>
             <Field label={t("pageTools.startNumber")}>

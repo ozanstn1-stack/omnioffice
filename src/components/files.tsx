@@ -677,7 +677,7 @@ function PasswordDialogBody() {
         </p>
       ) : null}
       <p className="text-xs muted mt-3 flex items-center gap-1.5">
-        <Lock size={12} /> Passwords are never stored or written to logs.
+        <Lock size={12} /> {t("files.passwordNote")}
       </p>
     </Modal>
   );

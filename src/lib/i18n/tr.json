@@ -3231,5 +3231,17 @@
   "kvkk.toast.copiedDetail": "KVKK metni panoya aktarıldı, Word/Writer veya PDF çıktısı olarak kullanabilirsiniz.",
   "vault.pagePrevious": "Önceki",
   "vault.pageNext": "Sonraki",
-  "vault.buildSemanticIndex": "Semantik Vektör İndeksi Oluştur"
+  "vault.buildSemanticIndex": "Semantik Vektör İndeksi Oluştur",
+  "files.passwordNote": "Parolalar asla saklanmaz veya günlüklere yazılmaz.",
+  "writer.pageBreak": "— sayfa sonu —",
+  "pageTools.formatPageN": "Sayfa 1",
+  "pageTools.formatPageNOfTotal": "Sayfa 1 / 20",
+  "redact.toast.certVerified.one": "Sertifika ({id}) doğrulandı — {count} madde.",
+  "redact.toast.certVerified.other": "Sertifika ({id}) doğrulandı — {count} madde.",
+  "redact.toast.certUnverified.one": "Sertifika ({id}) DOĞRULANAMADI — {count} madde.",
+  "redact.toast.certUnverified.other": "Sertifika ({id}) DOĞRULANAMADI — {count} madde.",
+  "redact.toast.certSaved": "Rapor dosyaya kaydedildi.",
+  "organize.sourcePage": "Kaynak sayfa {page}",
+  "batch.fileCount.one": "{count} dosya",
+  "batch.fileCount.other": "{count} dosya"
 }
