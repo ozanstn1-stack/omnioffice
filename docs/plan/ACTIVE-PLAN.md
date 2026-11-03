@@ -359,11 +359,20 @@ indirdiği koşuda yok.
   soğuk önbellek). Artefaktlar: `android-abi-arm64-v8a`, `android-abi-armeabi-v7a`,
   `android-apks` (5 dosya); `ABI matrix OK` + 4× `: OK`. Emülatör işi `-PabiList`
   ile tek kütüphane derliyor, i686 kalktı.
-- **SIRADAKİ ADIM:** **(a)** tag yolu doğrulaması — bir sonraki `v*` etiketinden
-  önce master'da bir `workflow_dispatch` koşusu önerilir (iki kol imzası +
-  `assemble` identity/attach PR'da sınanamıyor); **(b)** ya da i18n'de
-  `detail` alanlarını tarayıcıya katmak; **(c)** Vault E2E akışı. Seçim Opus'a
-  sorulacak. Açık pencere yarın 01:00 UTC'ye kadar.
+- **Kapandı (2026-11-03 17:55 UTC):** **(a) tag yolu doğrulaması** — imzalı
+  master dispatch'i `41683412923` **success**: iki kol da `f17e1d97…` ile
+  imzaladı, `assemble` `ABI matrix OK … one signing identity` dedi. Kalan tek
+  risk: tag'e bağlı üç adım (`Require the keystore`, `verify-android-release.sh`,
+  release attach) yalnız `v*` etiketinde koşar.
+- **Kapandı (2026-11-03 17:57 UTC):** Vault sabit Türkçe metinleri + Invoices
+  `TRY` soneki — **PR #601 → `2823b63`**, 19/19 yeşil. `hardcoded-jsx`
+  **75 → 56** (Invoices 19→3: yalnız Luca/Logo/Zirve; Vault listeden çıktı).
+  KDV tutarları artık `money()` ile: **üç ondalık hatası da düzeldi**
+  (`toLocaleString` varsayılanı 3'tü).
+- **SIRADAKİ ADIM:** i18n `detail` alanlarını tarayıcıya katmak (bilinçli
+  `--allow-raise` ölçüm PR'ı, ardından çeviri dilimi) **ya da** Vault E2E akışı
+  (`vault_configure` tohumlaması tasarım ister) **ya da** Rust kapsam tabanını
+  yükseltmek. Seçim Opus'a sorulacak. Açık pencere yarın 01:00 UTC'ye kadar.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
   E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
