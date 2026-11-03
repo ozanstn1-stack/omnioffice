@@ -95,9 +95,20 @@ export function countByFile(entries) {
 //     as a whole: translating an official letter would change what it says.
 // ---------------------------------------------------------------------------
 
-/** Object keys whose value a user reads. `name`, `value` and `message` stay out
- * on purpose: they carry identifiers, product names and developer errors. */
-export const OBJECT_KEYS = ["label", "title", "description", "hint", "subtitle", "placeholder", "tooltip"];
+/** Object keys whose value a user reads. `detail` is the second line a toast
+ * shows, so it reaches the screen like a title does. `name`, `value` and
+ * `message` stay out on purpose: they carry identifiers, product names and
+ * developer errors. */
+export const OBJECT_KEYS = [
+  "label",
+  "title",
+  "description",
+  "hint",
+  "subtitle",
+  "placeholder",
+  "tooltip",
+  "detail",
+];
 
 /** Files that write the artefact rather than the interface, with the reason
  * each one is out of scope. Kept in code, not in the generated baseline, so the
