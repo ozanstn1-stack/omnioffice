@@ -154,7 +154,7 @@ describe("supply chain and toolchain pinning (E5)", () => {
   });
 
   it("caches the engine downloads by lock hash", () => {
-    const key = "hashFiles('scripts/engines.lock.json')";
+    const key = "hashFiles('scripts/engines.lock.json', 'scripts/fetch-engines.ps1')";
     const rust = jobBlocks().find((entry) => entry.name === "rust");
     expect(rust, "rust job").toBeDefined();
     expect(rust?.body).toContain(key);
@@ -162,6 +162,70 @@ describe("supply chain and toolchain pinning (E5)", () => {
     const windowsE2e = jobBlocks().find((entry) => entry.name === "e2e-windows");
     expect(windowsE2e, "e2e-windows job").toBeDefined();
     expect(windowsE2e?.body).toContain(key);
+  });
+
+  it("restores the engine cache before fetching them, everywhere but the nightly", () => {
+    // ~100 MB of pinned third-party artifacts were downloaded again on every
+    // release and beta run. The key carries the lock *and* the fetch script, so
+    // either one changing invalidates the entry; a cache restored after the
+    // fetch would cache nothing, which is why the order is asserted.
+    const key =
+      "key: engines-${{ runner.os }}-${{ hashFiles('scripts/engines.lock.json', 'scripts/fetch-engines.ps1') }}";
+    const restorers = [
+      ["desktop.yml", desktop],
+      ["release.yml", release],
+      ["beta.yml", beta],
+    ] as const;
+    for (const [name, workflow] of restorers) {
+      expect(workflow, name).toContain(key);
+      expect(workflow, name).toContain("path: src-tauri/resources/engines");
+      const cache = workflow.search(/Restore (cached )?engine binaries|Cache engine binaries/);
+      expect(cache, name).toBeGreaterThan(-1);
+      expect(cache, name).toBeLessThan(workflow.indexOf("npm run engines:fetch"));
+    }
+  });
+
+  it("publishing workflows only read the engine cache", () => {
+    // Trust boundary: the entry is written by the Desktop run on the default
+    // branch and only read by the jobs that publish. A publishing run that
+    // stores its own entry would seed a cache other runs then trust.
+    for (const [name, workflow] of [
+      ["release.yml", release],
+      ["beta.yml", beta],
+    ] as const) {
+      expect(workflow, name).toMatch(/uses: actions\/cache\/restore@[0-9a-f]{40}/);
+      expect(workflow, name).not.toContain("uses: actions/cache@");
+      expect(workflow, name).not.toContain("actions/cache/save@");
+    }
+  });
+
+  it("pins one actions/cache commit for the engine cache", () => {
+    // Only the steps that touch the engine directory count: the same workflow
+    // caches other things (the bench baseline) on its own action version.
+    const shas = new Set<string>();
+    for (const name of readdirSync(path.join(root, ".github", "workflows"))) {
+      const text = read(name);
+      if (!text.includes("path: src-tauri/resources/engines")) continue;
+      for (const step of text.split(/\n(?= {6}- )/)) {
+        if (!step.includes("path: src-tauri/resources/engines")) continue;
+        for (const match of step.matchAll(/actions\/cache(?:\/restore|\/save)?@([0-9a-f]{40})/g)) {
+          shas.add(match[1]);
+        }
+      }
+    }
+    // Dependabot bumping one file is exactly what this catches: a split would
+    // leave one workflow writing entries the others cannot see.
+    expect([...shas]).toHaveLength(1);
+  });
+
+  it("nightly stays the uncached upstream-drift canary", () => {
+    // Several pins point at mutable `main` URLs; caching the nightly would hide
+    // the drift it exists to catch.
+    const nightly = read("nightly.yml");
+    expect(nightly).toContain("npm run engines:fetch");
+    expect(nightly).toContain("Deliberately uncached");
+    expect(nightly).not.toContain("path: src-tauri/resources/engines");
+    expect(nightly).not.toContain("actions/cache");
   });
 
   it("analyzes the frontend and the workflows themselves", () => {

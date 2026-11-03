@@ -312,13 +312,15 @@ jobs:
       # compression, OCR, rendering). Linux/macOS run the engine-free suites
       # plus a full workspace compile so cross-platform build breakage shows up.
       # Engine binaries are ~100 MB of pinned third-party artifacts; the lock
-      # hash is the cache key, so a lock change invalidates it automatically.
+      # and fetch-script hashes are the cache key, so either one changing
+      # invalidates it. Only this job writes the entry: the publishing
+      # workflows restore it and never store one.
       - name: Cache engine binaries (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: src-tauri/resources/engines
-          key: engines-${{ runner.os }}-${{ hashFiles('scripts/engines.lock.json') }}
+          key: engines-${{ runner.os }}-${{ hashFiles('scripts/engines.lock.json', 'scripts/fetch-engines.ps1') }}
       - name: Fetch engines (Windows)
         if: runner.os == 'Windows'
         run: npm run engines:fetch
@@ -597,7 +599,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: src-tauri/resources/engines
-          key: engines-${{ runner.os }}-${{ hashFiles('scripts/engines.lock.json') }}
+          key: engines-${{ runner.os }}-${{ hashFiles('scripts/engines.lock.json', 'scripts/fetch-engines.ps1') }}
       - name: Fetch engines (pdfium, qpdf, tesseract, fonts)
         run: npm run engines:fetch
       # msedgedriver asks WebView2 for a DevTools port through the

@@ -43,6 +43,15 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
 
       - run: npm ci
+      # Engine binaries are ~100 MB of pinned third-party artifacts. This job
+      # only restores the entry the Desktop run of the same commit stored on
+      # the default branch; it never writes one, so a publishing run cannot
+      # seed a cache other runs trust. A miss is a normal, verified download.
+      - name: Restore cached engine binaries
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: src-tauri/resources/engines
+          key: engines-${{ runner.os }}-${{ hashFiles('scripts/engines.lock.json', 'scripts/fetch-engines.ps1') }}
       - name: Fetch bundled engines (pdfium, qpdf, tesseract, fonts)
         run: npm run engines:fetch
       - name: Type check and tests
