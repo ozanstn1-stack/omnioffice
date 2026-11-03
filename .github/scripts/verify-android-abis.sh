@@ -64,12 +64,25 @@ for abi in "${!machine[@]}"; do
 done
 
 # The same identity has to sign both APKs, or an update replaces the app.
+# `apksigner` is not on PATH on the runner; it ships with build-tools, which the
+# job installs, so it is located through ANDROID_HOME. A missing tool is a
+# failure, not a skipped check: the summary below claims the identity was
+# compared, and a claim that was never tested is worse than no claim.
+apksigner_bin=""
 if command -v apksigner >/dev/null 2>&1; then
+  apksigner_bin=$(command -v apksigner)
+elif [ -n "${ANDROID_HOME:-}" ]; then
+  apksigner_bin=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n1 || true)
+fi
+if [ -z "$apksigner_bin" ]; then
+  fail "apksigner not found (looked on PATH and under \$ANDROID_HOME/build-tools), so the signing identity was not compared"
+else
+  echo "using $apksigner_bin"
   digests=()
   for abi in "${!machine[@]}"; do
     file="$dir/OmniOffice-Android-$version-$abi.apk"
     [ -f "$file" ] || continue
-    digest=$(apksigner verify --print-certs "$file" 2>/dev/null |
+    digest=$("$apksigner_bin" verify --print-certs "$file" 2>/dev/null |
       sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)
     if [ -z "$digest" ]; then
       fail "$file: apksigner reported no certificate"
@@ -81,8 +94,6 @@ if command -v apksigner >/dev/null 2>&1; then
   if [ "${#digests[@]}" -gt 1 ] && [ "$(printf '%s\n' "${digests[@]}" | sort -u | wc -l)" -ne 1 ]; then
     fail "the APKs are signed with different certificates"
   fi
-else
-  echo "apksigner not on PATH; the signing identity was not compared"
 fi
 
 # The checksum list the release attaches must match the files next to it.
