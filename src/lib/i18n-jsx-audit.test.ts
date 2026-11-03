@@ -27,6 +27,15 @@ describe("i18n JSX scanner", () => {
     expect(scan("<Field label={`Save`} />").props.map((row) => row.text)).toEqual(["Save"]);
   });
 
+  it("reads a template attribute's fixed words", () => {
+    // `alt={`Page ${page}`}` used to be invisible: the scan only looked at
+    // plain strings, so a fixed English word inside a template shipped unseen.
+    expect(scan("<img alt={`Page ${page}`} />").attributes.map((row) => row.text)).toEqual(["Page ${…}"]);
+    expect(scan("<button title={`${name} (Ctrl+K)`} />").attributes.map((row) => row.text)).toEqual(["${…} (Ctrl+K)"]);
+    // A template whose words are only placeholders is not prose.
+    expect(scan("<img alt={`${page}`} />").attributes).toHaveLength(0);
+  });
+
   it("counts a braced string on an attribute too", () => {
     expect(scan('<input title={"Help"} />').attributes.map((row) => row.text)).toEqual(["Help"]);
     expect(scan("<img alt={`Chart`} />").attributes.map((row) => row.text)).toEqual(["Chart"]);
@@ -35,7 +44,9 @@ describe("i18n JSX scanner", () => {
   it("ignores translated calls, variables and dynamic templates", () => {
     expect(scan('<Field label={t("a.b")} />').props).toHaveLength(0);
     expect(scan("<Field label={value} />").props).toHaveLength(0);
-    expect(scan("<Field label={`Total ${count}`} />").props).toHaveLength(0);
+    // A template's fixed words count now; only a bare placeholder does not.
+    expect(scan("<Field label={`Total ${count}`} />").props.map((row) => row.text)).toEqual(["Total ${…}"]);
+    expect(scan("<Field label={`${count}`} />").props).toHaveLength(0);
     // A conditional's branches are the documented gap of the first version.
     expect(scan('<Field label={flag ? "A" : "B"} />').props).toHaveLength(0);
   });

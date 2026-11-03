@@ -387,7 +387,18 @@ indirdiği koşuda yok.
   deterministik görünüyor. 55/56/56'ya çıkarma ölçütü "düşük ölçüm yeni tabanı
   ≥0,5 puan aşmalı" idi; 55.23−55 = **0.23** → **taban yükseltilmedi** (mevcut
   ~1 puanlık pay korunuyor).
-- **SIRADAKİ ADIM:** (1) Rust kapsam tabanı **ertelendi** (yukarıdaki ölçüt), (2) motor önbelleğini release/beta/nightly'a taşımak,
+- **Kapandı (2026-11-03 19:35 UTC):** i18n son İngilizce metinler — **PR #604 →
+  `4eb2acc`**, 19/19 yeşil. Altı gerçek sızıntı çevrildi: parola notu, writer
+  `— page break —` (iki yol), sayfa numarası biçim örnekleri, **sertifika
+  bildirimi** (cümle `${…}` içinde olduğu için tarayıcı hiç görmemişti),
+  Organize `alt`/`title` şablonları ve Batch'te `… total` + dosya sayısı başlığı
+  ("N sayfa" → "N dosya"). `hardcoded-jsx` **56 → 50**; kalanlar bilinçli literal.
+- **SIRADAKİ ADIM:** tarayıcının iki boşluğu (sonraki doğal dilim): (a) `${…}`
+  içeren şablon **attribute**'ları (`alt`, `title`, `aria-label`) hiç sayılmıyor,
+  (b) `valueTexts` şablon parçalarının içindeki dize literallerine inmiyor.
+  İkisi de tabanı bir kez `--allow-raise` ile yükseltir → ayrı ölçüm PR'ı.
+  Ardından: motor önbelleği (tag/nightly), Scorecard/Renovate.
+- **Ertelendi:** (1) Rust kapsam tabanı (yukarıdaki ölçüt), (2) motor önbelleğini release/beta/nightly'a taşımak,
   (3) Scorecard/Renovate kararı, (4) `Redact` kalan 1 metin düğümü + `Vault`
   kalan 1 attribute. Seçim Opus'a sorulacak.
   Bekleyen risk: tag'e bağlı üç Android adımı ilk `v*` etiketinde sınanacak.

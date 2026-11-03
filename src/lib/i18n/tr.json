@@ -3243,5 +3243,6 @@
   "redact.toast.certSaved": "Rapor dosyaya kaydedildi.",
   "organize.sourcePage": "Kaynak sayfa {page}",
   "batch.fileCount.one": "{count} dosya",
-  "batch.fileCount.other": "{count} dosya"
+  "batch.fileCount.other": "{count} dosya",
+  "table.gridSize": "{rows} × {cols}"
 }
