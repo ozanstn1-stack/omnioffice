@@ -304,7 +304,14 @@ akışın Windows'ta koşması, RELEASE_READINESS iddiası.
   Kalan 13 toast dizesi taşındı, `ci-workflow.test.ts` pini **0**'a çekildi.
   Bu pencerenin toplamı: `objects` **34 → 0**, `files` **77 → 75**, üç PR
   (#588, #589, #590).
-- **Şimdiki kalem (2026-11-03 10:15 UTC):** Scanner E2E akışı (yukarıdaki plan).
+- **Kapandı (2026-11-03 10:50 UTC):** Scanner E2E akışı — **PR #596 → `cbdb793`**,
+  19/19 yeşil **ilk turda**. CI kanıtı: `PASS: the scanner wrote 6210 bytes with 2
+  pages; detector auto=true,false`. Scanner'ın pdfium istemediği doğrulandı →
+  akış her PR'da Linux işinde koşuyor. `smoke.mjs` 148 → 142 (dört akış kendi
+  launch context'ini taşıyor).
+- **Sıradaki kalem:** Android ABI matrisi + etiketle tetiklenen emülatör koşusu
+  (tek `workflow_dispatch` oturumu). PR kapısı değil; bu pencerede doğrulanabilir.
+  Başlamadan `subagent_claude_opus` planı alınacak.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
   E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
