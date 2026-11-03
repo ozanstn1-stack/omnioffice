@@ -261,6 +261,23 @@ release-train schedule is decided.
   `test:src/lib/i18n-jsx-audit.test.ts#honours an i18n-content pragma, and refuses one without a reason`
   `test:src/lib/i18n-jsx-audit.test.ts#fails when an object string grows above its baseline`
   `test:src/lib/i18n-jsx-audit.test.ts#asks for a re-record instead of passing when the baseline has no objects section`
+- **The document-health findings became translatable (E4.7):** a `.ts` module
+  cannot translate anything - it has no language - so `analyzeDocumentHealth`
+  stopped building Turkish sentences. A `HealthIssue` now carries
+  `titleKey`/`descriptionKey` and `params` (`{count}`, `{fields}`), and the screen
+  draws it with `t(key, params)`, which also means the text follows a language
+  change instead of freezing at first render. Nine findings, eighteen dictionary
+  keys, and the Turkish wording is byte-for-byte what it was - a golden test
+  holds all nine pairs against the old sentences. The KVKK template options moved
+  the same way. `hardcoded-objects` **34 -> 13**; what is left is the toast
+  titles still written inside `push({ title: … })` calls.
+  On the way this fixed a real rendering bug: `KvkkWizard` printed the literal
+  text `t("kvkk.lawBody")` and `t("kvkk.legalWarningBody")` where the law text
+  should be, so the frame showed the call instead of the paragraph
+  (`hardcoded-jsx` 77 -> 75).
+  `test:src/lib/document-health-text.test.ts#keeps the Turkish wording exactly as the screen said it before`
+  `test:src/lib/document-health-text.test.ts#gives every finding an English title and description, with no placeholder left`
+  `test:src/lib/document-health-text.test.ts#keeps both tables in step for every finding key`
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`

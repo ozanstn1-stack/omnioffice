@@ -17,9 +17,9 @@ describe("DocumentHealthScreen (v5.4.0)", () => {
       <DocumentHealthScreen initialText={dirtyText} initialMetadata={{ author: "Mehmet Yılmaz", creator: "Word" }} />,
     );
 
-    expect(screen.getByText("T.C. Kimlik Numarası (TCKN) Tespit Edildi")).toBeInTheDocument();
-    expect(screen.getByText("IBAN Numarası Tespit Edildi")).toBeInTheDocument();
-    expect(screen.getByText("Gizli Belge Meta Verileri")).toBeInTheDocument();
+    expect(screen.getByText(en["health.issue.tcknTitle"])).toBeInTheDocument();
+    expect(screen.getByText(en["health.issue.ibanTitle"])).toBeInTheDocument();
+    expect(screen.getByText(en["health.issue.metadataTitle"])).toBeInTheDocument();
 
     const fixButtons = screen.getAllByText(en["health.fixAll"]);
     expect(fixButtons.length).toBeGreaterThan(0);

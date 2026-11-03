@@ -105,8 +105,8 @@ export function DocumentHealthScreen({
       }
       push({
         kind: "success",
-        title: "Belge Analiz Edildi",
-        detail: `${fileBaseName(path)} üzerinde KVKK, meta veri, yazı tipi ve e-imza denetimi tamamlandı.`,
+        title: t("health.analyzedTitle"),
+        detail: t("health.analyzedDetail", { name: fileBaseName(path) }),
       });
     } catch (error) {
       reportError(error, t);
@@ -174,21 +174,21 @@ export function DocumentHealthScreen({
       }
       push({
         kind: "success",
-        title: "Meta veriler temizlendi",
-        detail: "Yazar, kurum ve yazılım bilgileri başarıyla kaldırıldı.",
+        title: t("health.metadataClearedTitle"),
+        detail: t("health.metadataClearedDetail"),
       });
     } else if (issue.fixAction === "redact_kvkk") {
       push({
         kind: "info",
-        title: "Karartma Aracı",
-        detail: "Kişisel veriler Redact sekmesinde karartılmak üzere hazır.",
+        title: t("health.redactToolTitle"),
+        detail: t("health.redactToolDetail"),
       });
       onNavigate?.("redact");
     } else {
       push({
         kind: "info",
-        title: "Düzeltme Uygulandı",
-        detail: `${issue.title} için önerilen düzeltme adımı uygulandı.`,
+        title: t("health.fixAppliedTitle"),
+        detail: t("health.fixAppliedDetail", { title: t(issue.titleKey, issue.params) }),
       });
     }
   };
@@ -290,10 +290,10 @@ export function DocumentHealthScreen({
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm">{issue.title}</span>
+                            <span className="font-semibold text-sm">{t(issue.titleKey, issue.params)}</span>
                             {getSeverityBadge(issue.severity)}
                           </div>
-                          <p className="text-xs muted mt-1">{issue.description}</p>
+                          <p className="text-xs muted mt-1">{t(issue.descriptionKey, issue.params)}</p>
                         </div>
                       </div>
 

@@ -200,7 +200,7 @@
     "src/lib/ai-task-packs-catalog.ts": 358,
     "src/lib/api.ts": 932,
     "src/lib/commands.ts": 318,
-    "src/lib/document-health.ts": 261,
+    "src/lib/document-health.ts": 271,
     "src/lib/format.ts": 207,
     "src/lib/jobs.ts": 440,
     "src/lib/legal-deadline.ts": 225,

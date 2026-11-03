@@ -235,13 +235,30 @@ listesi, `??`/birleştirme biçimleri.
   (version 3, 77 metin, 9 öznitelik, 6 prop) — `--update` diff'i boş.
   Ders: kapsam borcunu kapatırken tabanı oynatmayan bir dilim, `--allow-raise`
   gerekçesi yazmaktan daha temiz.
-- **Kapandı (2026-11-02 22:45 UTC):** E4.6 ölçüm dilimi — nesne literalleri ve
-  `.ts` metinleri artık `objects` bölümünde (şema **v4**, **34 dize / 7 dosya**),
-  `--objects-report` üç liste basıyor, `// i18n-content:` ve `CONTENT_PATHS`
-  gerekçeli kaçış kapıları. Düzeltme E4.7'ye bırakıldı.
-- **Sıradaki aday:** E4.7 — `document-health.ts`'in cümle yerine
-  `{ code, params }` döndürmesi ve `options` dizilerinin `labelKey`'e geçmesi;
-  ardından Scanner E2E / Android ABI (hafta sonu, uzun CI penceresi).
+- **Kapandı (2026-11-02 23:02 UTC):** E4.6 ölçüm dilimi — **PR #588 →
+  `383639f`**, 19/19 kontrol yeşil. Nesne literalleri ve `.ts` metinleri artık
+  `objects` bölümünde (şema **v4**, **34 dize / 7 dosya**, 12 satır + 3 içerik
+  dosyası gerekçeli dışlanmış), `--objects-report` üç liste basıyor. İkinci
+  `--update` diff'siz.
+- **Bu turun iki dilimi:** PR #587 (`f796b5b`, `hint`/`subtitle` prop taraması —
+  taban hiç oynamadı) ve PR #588 (`383639f`, E4.6 `objects` bölümü). Öncesinde
+  bekleyen `0cbf9c4` plan commit'i ve `6735615` benzeri yerel commit yok; ağaç
+  temiz, master `383639f`, disk %59 (40 GB boş), `target/` yok.
+- **E4.7 birinci yarı (2026-11-03 04:10 UTC):** `objects` **34 → 13**. Dokuz
+  `document-health` bulgusu `titleKey`/`descriptionKey` + `params` taşıyor,
+  ekran `t(key, params)` ile çiziyor (dil değişince metin de değişiyor; eskiden
+  `useMemo` içinde Türkçe donuyordu). KVKK şablon seçenekleri `t()`'ye geçti.
+  Altın test dokuz çiftin Türkçesini eski cümlelerle birebir karşılaştırıyor.
+  Yol üstünde gerçek bir çizim hatası düzeldi: `KvkkWizard` `t("kvkk.lawBody")`
+  ve `t("kvkk.legalWarningBody")` metnini **çağrı olarak** basıyordu
+  (`hardcoded-jsx` 77 → 75).
+- **SIRADAKİ ADIM (E4.8):** kalan 13 `objects` dizesi — `push({ title: … })`
+  bildirimleri: `PetitionWizard` 4, `Invoices` 3, `KvkkWizard` 2 (`common.
+  documentSaved` yeniden kullanılabilir), `Redact` 2, `Vault` 1.
+  Sonra Scanner E2E / Android ABI hafta sonu uzun CI penceresinde.
+- **Neden burada duruldu:** sessiz saat Pzt-Cum UTC 01:00-04:00; E4.7 mimari bir
+  refactor ve Opus planı gerektiriyor, sıfırdan başlatmak yerine temiz bir
+  noktada bırakıldı. Başlamak için tek komut yeterli.
 - **Kapalı ölçüm boşluğu (∂):** (a) nesne literallerindeki
   `label:` (test dışı 39; Türkçe işaretli 6; çoğu ürün/model adı), (b) `.ts`
   dosyalarında üretilen metinler — test dışı 44 dize `title:`, 25'i Türkçe
