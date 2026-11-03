@@ -4,6 +4,110 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.5.0] - Uçtan uca kanıt (Phase E / E4 kalanları, E5)
+
+### Added
+
+- **Seven more end-to-end flows drive the real UI (E4.3):** the smoke script
+  became modules - a 109-line entry point that parses flags and dispatches, the
+  WebDriver plumbing in `e2e/lib/driver.mjs`, the sample copies in
+  `e2e/lib/files.mjs` and one module per flow in `e2e/flows/` (#577) - and every
+  one of them runs in the Linux tauri-driver job on every pull request:
+  signature verification on an unsigned document (#578), the Calc formula engine
+  through `data-cell` hooks (#580), the three-tier secret store across a real
+  process restart including the `0600` fallback file (#581), Impress (select a
+  slide, add one, save the PPTX) (#582), the AI task-pack pipeline against
+  `scripts/mock-deepseek.mjs` on loopback (#583), the scanner's photo round trip
+  with the detector finding a page in one frame and nothing on a bare wall
+  (#596), and the vault, from a seeded folder through the real index to a
+  highlighted hit and its preview (#603). No flow asserts a translated string:
+  they read `data-testid`, `data-*` hooks and the files on disk.
+- **Rust coverage is measured, published and enforced (E4.1):** a
+  `rust-coverage` job runs `cargo llvm-cov --lib` over the five library crates
+  and uploads `coverage-rust` (#576); `scripts/check-rust-coverage.mjs` then
+  compares the `TOTAL` row with `scripts/coverage-baseline.json`, and `--update`
+  refuses to lower a floor (#584). The floors are 54/55/55 against the measured
+  55.23 regions / 56.37 functions / 56.30 lines, so run-to-run noise cannot
+  redden a green suite while a lost test still fails the job.
+- **The Android artifacts are verified before anything is published (E5):** each
+  APK and AAB is read as a file - it carries only its own ABI's `lib/`
+  directory with the three native libraries, the libraries are the right ELF
+  shape, both APKs share one signing certificate, and the checksum list matches
+  the files next to it (#597). The same change put
+  `SHA256SUMS-android.txt` into the uploaded run artifact, which had been
+  attached to the release while missing from the artifact, so nobody
+  downloading a run could verify a build.
+- **Android CI runs on demand and in parallel (E5):** adding the `android-ci`
+  label to a pull request runs the dispatched build (#598), and the version
+  moved to a two-ABI matrix with one `assemble` job that verifies and publishes
+  (#599). The tagged dispatch went from 40m21s to 20m44s while both arms started
+  on the same second, and the emulator arm now builds only the libraries it
+  runs.
+- **The i18n audit reaches the text JSX attributes and modules hid (E4.5-E4.8):**
+  the scanner moved out of `scripts/i18n-audit.mjs` into
+  `scripts/lib/i18n-jsx.mjs` and counts component `label` props (#585, #586),
+  `hint` and `subtitle` (#587), text held in object literals and `.ts` modules
+  (#588), toast titles (#590) and `detail` lines (#602), and `${...}` template
+  attributes, whose plain words decide whether they count (#605). The baseline
+  schema is v4 - `files`, `attributes`, `props`, `objects` - and the measured
+  totals moved from 80 to 50 hardcoded text nodes, from 25 to 6 props, from 34
+  to 0 object strings, and from 9 to 11 attributes (that last one rose because
+  more is measured, not because text was added).
+
+### Changed
+
+- **Document-health findings are keys with parameters (E4.7):** a `.ts` module
+  stopped composing sentences and returns `titleKey`/`descriptionKey` plus the
+  numbers a sentence needs, so the screen renders `t(key, params)` and the text
+  follows a language change instead of freezing at the first render (#589). A
+  golden test pins that all nine findings read exactly as before in Turkish.
+- **`KvkkWizard`, Vault and Invoices speak both languages (E4.5):** the KVKK
+  screen's law paragraph, the vault paging and semantic-index controls and the
+  KDV amounts moved into the tables (#589, #601), and six English sentences
+  followed them out of the Turkish interface (#604) - including the certificate
+  toast, which the scanner could not see because its plain fragments carried no
+  Turkish-specific letter.
+- `file-size-baseline.json` grew to a documented budget for the two files the
+  model work enlarged.
+
+### Fixed
+
+- **The KDV amounts print two decimals (#601):** sixteen hand-written `} TRY`
+  suffixes now go through one `money()` helper, and it passes `{minimumFractionDigits: 2,
+  maximumFractionDigits: 2}` - `toLocaleString`'s default of three decimals
+  could print `1.500,005`.
+- **`KvkkWizard` printed the key instead of the paragraph (#589):** the screen
+  rendered the literal `kvkk.lawBody` text rather than the sentence behind it.
+- **Two template attributes were English in the Turkish interface (#605):**
+  `Source page ${n}` became `Kaynak sayfa {page}` and `${rows} by ${cols}` became
+  `{rows} x {cols}`, matching how the size reads in Turkish.
+- **A page-number format string claimed a file count (#604):** the batch header
+  said "N sayfa" while counting files.
+- **The fastlane check named the wrong "current" version (#606):** it treated the
+  last CHANGELOG entry as the newest release, so `fastlane:check` compared the
+  translated locales against 6.6.0 and a missing `tr-TR/changelogs/<code>.txt`
+  never failed. It now picks the highest version, and 7.5.0's Turkish store
+  notes exist.
+- **`RUSTSEC-2026-0429` is documented and 7-Zip comes from its pinned
+  release (#579):** the advisory in the updater's `zip 4.6.1` is recorded in
+  `deny.toml` with its reason (calamine 9.0.5 is patched), and the 7-Zip
+  download moved off `www.7-zip.org`, which stopped resolving, onto the GitHub
+  release asset with the same sha256.
+
+### Notes
+
+- The Windows installers remain **unsigned by decision** (`docs/signing.md`,
+  D10): SmartScreen shows "unknown publisher". Verify a download against
+  `SHA256SUMS-windows.txt`.
+- The Android release path - two matrix arms signing separately, `assemble`
+  comparing the identities - was exercised by a signed dispatch on master
+  (`ABI matrix OK: 4 artifacts, two ABIs, one signing identity`) before this
+  release; the three tag-only steps still meet a `v*` tag for the first time
+  here.
+- Moved to 7.6.0: the engine cache in `release.yml`/`beta.yml`/nightly, the
+  OpenSSF Scorecard and Renovate decision, the scanner gaps that remain (JSX
+  conditional branches, `${...}` inside object literals) and the fuzz extension.
+
 ## [7.4.0] - Kalite hattı (Phase E / E1 kalanları, E4, E5)
 
 ### Added
