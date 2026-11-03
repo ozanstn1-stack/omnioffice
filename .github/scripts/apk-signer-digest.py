@@ -9,7 +9,7 @@ the v2/v3 record we need sits in the first signer. Cross-checked against
 
     python3 .github/scripts/apk-signer-digest.py app.apk
 """
-import hashlib, struct, sys
+import hashlib, struct, sys, zipfile
 
 PAIR_V2, PAIR_V3 = 0x7109871A, 0xF05368C0
 
@@ -46,8 +46,31 @@ def certificate(block):
     der, _ = chunk(certificates, 0)
     return der
 
+def v1_digest(path):
+    """The v1 (JAR) signature file, hashed.
+
+    A debug-signed build carries no APK Signing Block, so there is no v2/v3
+    certificate record to read. The PKCS#7 file under META-INF embeds the
+    certificate, and two packages signed with the same key carry the same
+    bytes - which is exactly what "one signing identity" means here. Parsing
+    the PKCS#7 to pull the certificate out would need an ASN.1 decoder for no
+    extra certainty.
+    """
+    with zipfile.ZipFile(path) as archive:
+        names = [
+            name
+            for name in archive.namelist()
+            if name.upper().startswith("META-INF/") and name.upper().endswith((".RSA", ".DSA", ".EC"))
+        ]
+        if not names:
+            raise SystemExit(f"{path}: no APK Signing Block and no META-INF signature file")
+        return hashlib.sha256(archive.read(sorted(names)[0])).hexdigest()
+
 for path in sys.argv[1:]:
     data = open(path, "rb").read()
+    if b"APK Sig Block 42" not in data:
+        print(f"{v1_digest(path)}  {path}  v1")
+        continue
     found = pairs(data)
     for scheme, pair_id in (("v2", PAIR_V2), ("v3", PAIR_V3)):
         if pair_id in found:
@@ -57,4 +80,4 @@ for path in sys.argv[1:]:
             print(f"{hashlib.sha256(der).hexdigest()}  {path}  {scheme}")
             break
     else:
-        raise SystemExit(f"{path}: no v2 or v3 signature")
+        print(f"{v1_digest(path)}  {path}  v1")
