@@ -352,11 +352,18 @@ indirdiği koşuda yok.
   R2 `41653625266` (dispatch, `f17e1d97…`). Üç gerçek kusur çıktı ve düzeltildi:
   v1 imza yedeği, `--require-signature` (PR imzasız doğuyor), macOS işi bir kez
   dış nedenle iptal oldu→yeniden koştu.
-- **SIRADAKİ ADIM:** Android paralel iş bölünmesi (`build` matrisi + `assemble`).
-  Önce `universal` test görevinin **tüm ABI `.so`** bağımlılığı çözülecek; iş
-  artık kendi PR'ında `android-ci` etiketiyle ~35 dk'da doğrulanabilir (dispatch
-  gerekmiyor). Açık risk: tag yolunun gerçek sınavı bir sonraki `v*` etiketi.
-  Alternatif küçük iş: `detail` alanlarını tarayıcıya katmak.
+- **Kapandı (2026-11-03 17:25 UTC):** Android ABI matris bölünmesi —
+  **PR #599 → `909b921`**, 24/24 yeşil. Etiket koşusu `41679341450`: dört iş
+  paralel (arm64 14dk35, armv7 12dk30, tests 19dk48, assemble 32sn), toplam
+  **20dk44sn** vs önceki tek-iş koşusu **40dk21sn** (%49 kısalma, iki kol da
+  soğuk önbellek). Artefaktlar: `android-abi-arm64-v8a`, `android-abi-armeabi-v7a`,
+  `android-apks` (5 dosya); `ABI matrix OK` + 4× `: OK`. Emülatör işi `-PabiList`
+  ile tek kütüphane derliyor, i686 kalktı.
+- **SIRADAKİ ADIM:** **(a)** tag yolu doğrulaması — bir sonraki `v*` etiketinden
+  önce master'da bir `workflow_dispatch` koşusu önerilir (iki kol imzası +
+  `assemble` identity/attach PR'da sınanamıyor); **(b)** ya da i18n'de
+  `detail` alanlarını tarayıcıya katmak; **(c)** Vault E2E akışı. Seçim Opus'a
+  sorulacak. Açık pencere yarın 01:00 UTC'ye kadar.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
   E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
