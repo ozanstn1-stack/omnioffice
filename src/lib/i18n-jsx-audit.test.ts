@@ -250,7 +250,16 @@ describe("i18n object strings (E4.6)", () => {
   });
 
   it("keeps the measured keys explicit", () => {
-    expect(OBJECT_KEYS).toEqual(["label", "title", "description", "hint", "subtitle", "placeholder", "tooltip"]);
+    expect(OBJECT_KEYS).toEqual([
+      "label",
+      "title",
+      "description",
+      "hint",
+      "subtitle",
+      "placeholder",
+      "tooltip",
+      "detail",
+    ]);
     for (const name of ["name", "value", "message"]) expect(OBJECT_KEYS).not.toContain(name);
   });
 
@@ -281,5 +290,48 @@ describe("i18n object strings (E4.6)", () => {
     expect(result.output).toContain("counted: 1 object string(s)");
     expect(result.output).toContain("screens/Sample.tsx:1\tlabel\tÇalışan");
     expect(result.output).toContain("unmarked (info only): 1");
+  });
+});
+
+describe("toast details in the object scan", () => {
+  it("counts the second line of a toast, and not its title", () => {
+    const found = scanObjects("lib/toast.ts", 'push({ title: t("a.b"), detail: "Dosya açılamadı" });');
+    expect(found.counted.map((row) => row.key)).toEqual(["detail"]);
+    expect(found.counted[0].text).toBe("Dosya açılamadı");
+  });
+
+  it("keeps a template's placeholders", () => {
+    const found = scanObjects("lib/toast.ts", "push({ detail: `${path} açılamadı` });");
+    expect(found.counted.map((row) => row.text)).toEqual(["${…} açılamadı"]);
+  });
+
+  it("ignores a detail that is computed rather than written", () => {
+    for (const body of [
+      "push({ detail: String(err) });",
+      "push({ detail: err.message });",
+      "push({ detail: path });",
+    ]) {
+      expect(scanObjects("lib/toast.ts", body).counted).toHaveLength(0);
+    }
+  });
+
+  it("leaves an ASCII path to the info list", () => {
+    const found = scanObjects("lib/toast.ts", 'push({ detail: "C:/out/report.pdf" });');
+    expect(found.counted).toHaveLength(0);
+    expect(found.unmarked.map((row) => row.key)).toEqual(["detail"]);
+  });
+
+  it("still honours the content pragma on a detail", () => {
+    const found = scanObjects(
+      "lib/toast.ts",
+      'push({\n  // i18n-content: log line, not interface text\n  detail: "Günlük yazıldı",\n});',
+    );
+    expect(found.counted).toHaveLength(0);
+    expect(found.excluded[0].reason).toBe("log line, not interface text");
+  });
+
+  it("leaves message out, even next to a counted detail", () => {
+    const found = scanObjects("lib/toast.ts", 'push({ detail: "Ağ hatası", message: "Ağ hatası" });');
+    expect(found.counted.map((row) => row.key)).toEqual(["detail"]);
   });
 });
