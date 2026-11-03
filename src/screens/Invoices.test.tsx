@@ -198,6 +198,25 @@ describe("invoice screen", () => {
     expect(await screen.findByText(en["invoices.kdv.title"])).toBeInTheDocument();
   });
 
+  it("shows every KDV amount with the shared money format", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<Invoices initialFiles={["C:/invoices/fatura.xml"]} />);
+    await screen.findByText("GIB2026000000001");
+    await user.click(screen.getByRole("button", { name: new RegExp(en["invoices.kdv.open"], "i") }));
+    expect(await screen.findByText(en["invoices.kdv.title"])).toBeInTheDocument();
+
+    // Every amount goes through money(): tr-TR grouping and exactly two
+    // decimals. The data carries 1500.00, so a cell that renders 1.500 or
+    // 1.500,000 would mean the suffix was pasted by hand again.
+    const cells = Array.from(container.querySelectorAll("td")).filter((cell) =>
+      (cell.textContent ?? "").includes("TRY"),
+    );
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      expect(cell.textContent ?? "").toMatch(/^\d{1,3}(\.\d{3})*,\d{2} TRY$/);
+    }
+  });
+
   it("detects duplicate invoices and removes duplicates when clicking deduplicate", async () => {
     const user = userEvent.setup();
     // Pass two files that both return the same mocked invoice

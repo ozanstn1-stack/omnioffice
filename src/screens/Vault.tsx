@@ -661,7 +661,7 @@ export function Vault() {
                         disabled={searching || offset === 0}
                         onClick={() => void runSearch(Math.max(0, offset - limit))}
                       >
-                        ← Önceki
+                        <span aria-hidden="true">←</span> {t("vault.pagePrevious")}
                       </Button>
                       <span className="text-xs muted tabular-nums">
                         {offset + 1}–{Math.min(result.total, offset + result.hits.length)} / {result.total}
@@ -672,7 +672,7 @@ export function Vault() {
                         disabled={searching || offset + limit >= result.total}
                         onClick={() => void runSearch(offset + limit)}
                       >
-                        Sonraki →
+                        {t("vault.pageNext")} <span aria-hidden="true">→</span>
                       </Button>
                     </div>
                   ) : null}
@@ -745,7 +745,7 @@ export function Vault() {
                   disabled={busy || !embeddingConsent || !status?.indexed}
                   onClick={() => void buildSemanticIndex()}
                 >
-                  Semantik Vektör İndeksi Oluştur
+                  {t("vault.buildSemanticIndex")}
                 </Button>
               </div>
               {busy ? (

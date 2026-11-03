@@ -679,55 +679,36 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                     <tbody>
                       <tr>
                         <td className="py-1">%1</td>
-                        <td className="py-1">
-                          {report.rates[1].taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
-                        <td className="py-1">
-                          {report.rates[1].vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
+                        <td className="py-1">{money(report.rates[1].taxableAmount, "TRY")}</td>
+                        <td className="py-1">{money(report.rates[1].vatAmount, "TRY")}</td>
                       </tr>
                       <tr>
                         <td className="py-1">%10</td>
-                        <td className="py-1">
-                          {report.rates[10].taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
-                        <td className="py-1">
-                          {report.rates[10].vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
+                        <td className="py-1">{money(report.rates[10].taxableAmount, "TRY")}</td>
+                        <td className="py-1">{money(report.rates[10].vatAmount, "TRY")}</td>
                       </tr>
                       <tr>
                         <td className="py-1">%20</td>
-                        <td className="py-1">
-                          {report.rates[20].taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
-                        <td className="py-1">
-                          {report.rates[20].vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
+                        <td className="py-1">{money(report.rates[20].taxableAmount, "TRY")}</td>
+                        <td className="py-1">{money(report.rates[20].vatAmount, "TRY")}</td>
                       </tr>
                       {report.exemptionAmount > 0 ? (
                         <tr>
                           <td className="py-1">{t("invoices.kdv.exempt")}</td>
-                          <td className="py-1">
-                            {report.exemptionAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                          </td>
-                          <td className="py-1">0,00 TRY</td>
+                          <td className="py-1">{money(report.exemptionAmount, "TRY")}</td>
+                          <td className="py-1">{money(0, "TRY")}</td>
                         </tr>
                       ) : null}
                       <tr className="border-t font-bold">
                         <td className="py-1">{t("invoices.kdv.total")}</td>
-                        <td className="py-1">
-                          {report.totalTaxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
-                        <td className="py-1">
-                          {report.totalCalculatedVat.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                        </td>
+                        <td className="py-1">{money(report.totalTaxableAmount, "TRY")}</td>
+                        <td className="py-1">{money(report.totalCalculatedVat, "TRY")}</td>
                       </tr>
                     </tbody>
                   </table>
                   {report.totalWithholdingVat > 0 ? (
                     <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs">
-                      <strong>{t("invoices.kdv.withholding")}</strong>{" "}
-                      {report.totalWithholdingVat.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
+                      <strong>{t("invoices.kdv.withholding")}</strong> {money(report.totalWithholdingVat, "TRY")}
                     </div>
                   ) : null}
                   {ownTaxId.trim() ? (
@@ -744,30 +725,20 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
                         <tr>
                           <td className="py-1">{t("invoices.kdv.sales")}</td>
                           <td className="py-1">{report.sales.invoiceCount}</td>
-                          <td className="py-1">
-                            {report.sales.taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                          </td>
-                          <td className="py-1">
-                            {report.sales.vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                          </td>
+                          <td className="py-1">{money(report.sales.taxableAmount, "TRY")}</td>
+                          <td className="py-1">{money(report.sales.vatAmount, "TRY")}</td>
                         </tr>
                         <tr>
                           <td className="py-1">{t("invoices.kdv.purchases")}</td>
                           <td className="py-1">{report.purchases.invoiceCount}</td>
-                          <td className="py-1">
-                            {report.purchases.taxableAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                          </td>
-                          <td className="py-1">
-                            {report.purchases.vatAmount.toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                          </td>
+                          <td className="py-1">{money(report.purchases.taxableAmount, "TRY")}</td>
+                          <td className="py-1">{money(report.purchases.vatAmount, "TRY")}</td>
                         </tr>
                         <tr className="border-t font-bold">
                           <td className="py-1" colSpan={3}>
                             {report.netVat >= 0 ? t("invoices.kdv.payable") : t("invoices.kdv.carry")}
                           </td>
-                          <td className="py-1">
-                            {Math.abs(report.netVat).toLocaleString("tr-TR", { minimumFractionDigits: 2 })} TRY
-                          </td>
+                          <td className="py-1">{money(Math.abs(report.netVat), "TRY")}</td>
                         </tr>
                         {report.unclassified > 0 ? (
                           <tr>

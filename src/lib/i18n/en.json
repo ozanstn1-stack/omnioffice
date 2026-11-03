@@ -3228,5 +3228,8 @@
   "redact.toast.certEmbedded": "Redaction certificate created and embedded in the PDF",
   "vault.toast.indexUpdated": "Vector index updated ({embedded} new, {reused} cached)",
   "kvkk.toast.copiedTitle": "Text copied to the clipboard",
-  "kvkk.toast.copiedDetail": "The KVKK text is on the clipboard; use it in Word/Writer or as a PDF output."
+  "kvkk.toast.copiedDetail": "The KVKK text is on the clipboard; use it in Word/Writer or as a PDF output.",
+  "vault.pagePrevious": "Previous",
+  "vault.pageNext": "Next",
+  "vault.buildSemanticIndex": "Build semantic vector index"
 }

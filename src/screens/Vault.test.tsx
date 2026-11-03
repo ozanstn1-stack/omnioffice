@@ -43,7 +43,7 @@ const searchFixture = {
   indexMissing: false,
 };
 
-const invoke = vi.fn(async (command: string) => {
+const handler = async (command: string) => {
   switch (command) {
     case "vault_status":
       return statusFixture;
@@ -79,7 +79,9 @@ const invoke = vi.fn(async (command: string) => {
     default:
       return null;
   }
-});
+};
+
+const invoke = vi.fn(handler);
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...args: unknown[]) => invoke(...(args as [string])) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => undefined) }));
@@ -101,6 +103,7 @@ import { isAndroid, pickOfficeFiles } from "../lib/mobile";
 describe("the vault screen renders against the real wire format", () => {
   beforeEach(() => {
     invoke.mockClear();
+    invoke.mockImplementation(handler);
     // restoreMocks resets the factory implementations before every test.
     vi.mocked(isAndroid).mockReturnValue(false);
     vi.mocked(pickOfficeFiles).mockResolvedValue([]);
@@ -189,4 +192,32 @@ describe("the vault screen renders against the real wire format", () => {
     await user.click(within(androidDialog).getByRole("button", { name: "vault.clearAction" }));
     await waitFor(() => expect(invoke).toHaveBeenCalledWith("vault_clear", { deleteImports: true }));
   });
+});
+
+it("pages through results with dictionary keys, not Turkish literals", async () => {
+  invoke.mockImplementation(async (command: string) =>
+    command === "vault_search_hybrid" ? { ...searchFixture, total: 120 } : handler(command),
+  );
+  const user = userEvent.setup();
+  const { container } = render(<Vault />);
+  await waitFor(() => expect(screen.getByText("vault.indexed")).toBeInTheDocument());
+
+  await user.type(screen.getByPlaceholderText("vault.queryPlaceholder"), "vault");
+  await user.click(screen.getByRole("button", { name: "vault.searchButton" }));
+
+  const previous = await screen.findByRole("button", { name: /vault\.pagePrevious/ });
+  const next = screen.getByRole("button", { name: /vault\.pageNext/ });
+  expect(previous).toBeDisabled();
+
+  await user.click(next);
+  await waitFor(() =>
+    expect(invoke).toHaveBeenCalledWith("vault_search_hybrid", {
+      request: expect.objectContaining({ query: "vault", offset: 50 }),
+    }),
+  );
+  // The screen no longer carries Turkish paging labels of its own.
+  expect(container.textContent).not.toContain("Önceki");
+  expect(container.textContent).not.toContain("Sonraki");
+  expect(container.textContent).not.toContain("Semantik");
+  expect(screen.getByText("vault.buildSemanticIndex")).toBeInTheDocument();
 });
