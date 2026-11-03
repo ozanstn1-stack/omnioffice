@@ -393,11 +393,17 @@ indirdiği koşuda yok.
   bildirimi** (cümle `${…}` içinde olduğu için tarayıcı hiç görmemişti),
   Organize `alt`/`title` şablonları ve Batch'te `… total` + dosya sayısı başlığı
   ("N sayfa" → "N dosya"). `hardcoded-jsx` **56 → 50**; kalanlar bilinçli literal.
-- **SIRADAKİ ADIM:** tarayıcının iki boşluğu (sonraki doğal dilim): (a) `${…}`
-  içeren şablon **attribute**'ları (`alt`, `title`, `aria-label`) hiç sayılmıyor,
-  (b) `valueTexts` şablon parçalarının içindeki dize literallerine inmiyor.
-  İkisi de tabanı bir kez `--allow-raise` ile yükseltir → ayrı ölçüm PR'ı.
-  Ardından: motor önbelleği (tag/nightly), Scorecard/Renovate.
+- **Kapandı (2026-11-03 19:58 UTC):** i18n şablon boşlukları — **PR #605 →
+  `82a69be`**, 19/19 yeşil. `literalText()` artık `${…}` içeren şablon
+  attribute/prop'larını **düz kelimeleriyle** sayıyor (her enterpolasyon tek
+  `${…}`); hemen iki gerçek sızıntı çıktı ve çevrildi: `Source page ${n}` ve
+  `${rows} by ${cols}` (TR: `{rows} × {cols}`). Taban `attributes` 9 → **11**
+  (kalan ikisi kısayol ipucu: `${…} (Ctrl+K)`). Ölçüldü: nesne tarafındaki
+  `${…}` içi dizeler **0** — o boşluk boş çıktı, kapatılmadı.
+- **SIRADAKİ ADIM:** motor önbelleğini release/beta/nightly'a taşımak
+  (tag/nightly'de sınanır), Scorecard/Renovate kararı, ya da kalan
+  `${…}`-içi/koşullu dal boşlukları (sayım çok satıra geçer). Seçim Opus'a
+  sorulacak.
 - **Ertelendi:** (1) Rust kapsam tabanı (yukarıdaki ölçüt), (2) motor önbelleğini release/beta/nightly'a taşımak,
   (3) Scorecard/Renovate kararı, (4) `Redact` kalan 1 metin düğümü + `Vault`
   kalan 1 attribute. Seçim Opus'a sorulacak.
@@ -421,3 +427,87 @@ indirdiği koşuda yok.
 - **Aday kuyruğu (değer/risk):** Scanner E2E (yalnız Windows CI), Android ABI
   matrisi (dispatch), motor önbelleği (release/beta/nightly), Scorecard/Renovate
   kararı, Rust kapsam tabanını yükseltme.
+
+---
+
+# Seçilen iş kalemi: **v7.5.0 sürüm treni** (Opus kararı, 2026-11-03 20:00 UTC)
+
+Opus (`subagent 2f6659ad`) adayları karşılaştırdı ve **sürümü** seçti:
+kalıcı talimat her sürümde APK + exe paylaşmayı istiyor, v7.4.0'dan bu yana 25
+commit birikti, içlerinde kullanıcının gördüğü düzeltmeler var (`money()` iki
+ondalık hatası, sekiz İngilizce sızıntı, Vault/Faturalar çevirisi) ve
+`[7.4.0]` Notes Android ABI matrisini açıkça v7.5.0'a yazmıştı.
+
+**Kritik bulgu (planı değiştirdi):** geri dönüşsüz adım elle tag değil,
+**sürüm PR'ının merge'ü**. `auto-tag.yml` master'da Desktop yeşil bitince
+`v$version` tag'ini kendi oluşturup `release.yml` + `android.yml`'ı tag üzerinde
+başlatıyor. Yani merge'den ~40 dk sonra sürüm, kimse onay vermeden yayınlanır.
+Elle tag atılmaz.
+
+## Adım 0 — Envanter (yapıldı)
+- `v7.4.0..origin/master`: **25 commit / 24 PR** (#575–#605; #600 yok).
+- Sürüm dosyaları: `package.json`, `package-lock.json` (2 yer), `Cargo.toml`,
+  `Cargo.lock` (7 üye), `src-tauri/tauri.conf.json`,
+  `src-tauri/gen/android/app/tauri.properties` (versionName + versionCode).
+- `fuzz/Cargo.lock` **zaten bayat** (officecore 6.5.1) ve hiçbir kapı onu
+  okumuyor; fuzz işleri `--locked` kullanmıyor → dokunulmaz (kasıtlı).
+- Fastlane dizinleri: **en-US + tr-TR** (başka yerel yok).
+- v7.4.0 varlık sayısı: **18** (10 Windows/Linux ortak + 5 Android + 3 checksum…
+  tam liste: 2 exe, 1 sig, 1 zip, 2 Linux, 4 Android, 1 build-info, 1 latest.json,
+  2 SBOM, 4 SHA256SUMS).
+- `release.yml` / `linux-package.yml` / `package.ps1` / `make-latest-json.mjs`
+  v7.4.0'dan beri **değişmedi** → `release.yml` dispatch provası gerekmiyor.
+  Yalnız `android.yml` değişti (192+/62-) → **android dispatch zorunlu**.
+- i18n tabanları: v7.4.0 `files`=80 → bugün **50**; `props` 25 → **6**;
+  `objects` 34 → **0**; `attributes` 9 → **11**. i18n anahtarı en=tr=3245.
+
+## Adım 1–2 — Sürüm, CHANGELOG, fastlane, README, READINESS (yapıldı)
+- Sürüm **7.5.0**, Android versionCode **7005000**; sürüm tutarlılık kapısı
+  (release.yml'in aynısı) ve `cargo metadata --locked` yerelde yeşil.
+- `CHANGELOG.md` `[7.5.0] - Uçtan uca kanıt` bölümü yazıldı (release gövdesi
+  buradan üretiliyor).
+- `fastlane:sync` en-US `7005000.txt` üretti; tr-TR elle yazıldı.
+- README: sürüm satırı, "What's new (6.2 to 7.5.0)", 7.5.0 paragrafı, indirme
+  bloğu, `docs:stats` istatistik tablosu.
+- RELEASE_READINESS: başlık 7.5.0; tag sonrası giren 18 madde yeni
+  `## Implemented (this cycle, 7.5.0)` bölümüne taşındı, eski bölüm
+  `(v7.4.0 cycle)` olarak etiketlendi.
+
+## Yol üstünde bulunan gerçek hata: fastlane "current version"
+`scripts/fastlane-changelogs.mjs` çevrilmiş yerelleri **en eski** CHANGELOG
+bölümüyle karşılaştırıyordu (`wanted[wanted.length - 1]`), yani sonsuza kadar
+6.6.0 ile. tr-TR `7005000.txt` yoktu ve `fastlane:check` yine de yeşildi —
+yani mağaza listesi 7.4.0 notlarında kalacaktı. Düzeltildi: en yüksek sürüm
+seçiliyor, eksik dosya adıyla hata veriyor, `FASTLANE_ROOT` test kancası var,
+yazma modu eksik çeviriyi **rapor ediyor ama düşmüyor** (İngilizce gövde önce
+üretilebilsin; kapı `--check`, yani CI). 4 test eklendi.
+
+## Adım 3 — Yerel kapılar
+`lint`, `tsc --noEmit`, tam vitest paketi, `i18n:audit --check`,
+`claims:check`, `docs:stats:check`, `files:check`, `fastlane:check`,
+`format:check`, sürüm tutarlılığı, `cargo metadata --locked`.
+
+## Adım 4 — PR ve tag öncesi prova
+- PR `chore(release): v7.5.0`; PR CI'da beklenen: 19+ kontrol.
+- **Zorunlu prova:** `android.yml` dalda `workflow_dispatch` — imzalı yol,
+  `--require-signature`, ABI matrisi; tag'e bağlı yükleme adımları atlanır.
+- **Merge şartı:** tüm PR kontrolleri + dispatch yeşil.
+
+## Adım 5 — Tag sonrası (otomatik)
+`auto-tag.yml` → tag `v7.5.0` → `release.yml` (Windows 10 varlık + Linux 3) ve
+`android.yml` (5 varlık) → **toplam 18 varlık**.
+
+## Adım 6 — Kanıt
+Üç koşunun `success` olması, 18 varlık, `SHA256SUMS` satırlarının API digest'iyle
+eşleşmesi, `latest.json` sürümü 7.5.0, release gövdesinin
+`changelog-section.mjs 7.5.0` çıktısıyla birebir aynı olması, Android logunda
+`versionCode 7005000` + imza kimliğinin v7.4.0 ile aynı olması.
+
+## Ertelenen (7.6.0)
+Motor önbelleğini release/beta/nightly'a taşımak, OpenSSF Scorecard/Renovate
+kararı, tarayıcı boşlukları (koşullu dallar, nesne içi `${…}`), fuzz genişletmesi.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** v7.5.0 sürüm PR'ı hazırlanıyor
+  (`release/v7.5.0` dalı). Sıradaki adım: yerel kapılar → PR → `android.yml`
+  dispatch provası → kontrol yeşilse squash merge (merge = otomatik tag ve
+  yayın) → 18 varlığı doğrula → #550'ye kapanış yorumu.

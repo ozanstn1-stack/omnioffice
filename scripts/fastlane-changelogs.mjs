@@ -16,10 +16,14 @@
 // there, never overwrites one.
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+// `FASTLANE_ROOT` lets a test drive a fixture tree instead of this repository;
+// the same escape hatch `i18n-audit.mjs` has with `I18N_AUDIT_ROOT`.
+const root = process.env.FASTLANE_ROOT
+  ? resolve(process.env.FASTLANE_ROOT)
+  : join(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_LOCALE = "en-US";
 // The catalogue metadata started with 6.6.0; older codes are not backfilled to
 // keep the tree small. Bump this when old entries are pruned.
@@ -122,6 +126,7 @@ if (wanted.length === 0) {
 }
 
 const problems = [];
+const missingTranslated = [];
 const sourceDir = join(metadataDir, SOURCE_LOCALE, "changelogs");
 for (const section of wanted) {
   const path = join(sourceDir, `${section.code}.txt`);
@@ -137,17 +142,32 @@ for (const section of wanted) {
 const locales = readdirSync(metadataDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name);
-const latest = wanted[wanted.length - 1];
+// The section list follows CHANGELOG order, so the last entry is the oldest.
+// The translated locales must carry the *newest* version or the store listing
+// keeps showing the notes of the version before it.
+const latest = wanted.reduce((left, right) =>
+  compareVersions(left.version, right.version) >= 0 ? left : right,
+);
+// Only `--check` demands the translated file: `--check` is what CI runs, while
+// write mode is how the English bodies are produced before a translator can
+// hand in the localised note. Reporting the gap there without failing keeps
+// `npm run fastlane:sync` usable for bootstrapping a new version.
 for (const locale of locales) {
   if (locale === SOURCE_LOCALE) continue;
   const path = join(metadataDir, locale, "changelogs", `${latest.code}.txt`);
-  if (!existsSync(path)) problems.push(`${locale}/changelogs/${latest.code}.txt is missing (hand-maintained)`);
+  if (existsSync(path)) continue;
+  const message = `${locale}/changelogs/${latest.code}.txt is missing (hand-maintained)`;
+  if (check) problems.push(message);
+  else missingTranslated.push(message);
 }
 
 if (problems.length > 0) {
   console.error(`fastlane-changelogs: ${problems.length} problem(s):`);
   for (const problem of problems) console.error(`  - ${problem}`);
   process.exit(1);
+}
+if (!check) {
+  for (const message of missingTranslated) console.log(`fastlane-changelogs: ${message}`);
 }
 console.log(
   `fastlane-changelogs: ${check ? "checked" : "wrote"} ${wanted.length} changelog(s) for ${SOURCE_LOCALE}; ` +

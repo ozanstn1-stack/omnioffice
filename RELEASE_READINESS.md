@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.4.0
+# Release Readiness — OmniOffice 7.5.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,19 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (this cycle, 7.4.0) - E1 kalanları ve kalite altyapısı (E4/E5)
+## Implemented (this cycle, 7.5.0) - Kanıt akışları ve E4 kalanları (E4/E5)
+
+- **The store listing cannot fall behind a release (E5):** `scripts/fastlane-changelogs.mjs`
+  generates `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` from
+  the CHANGELOG section and requires every translated locale to carry the newest
+  version by hand. It used to take the *last* CHANGELOG entry as the current
+  version, which is the oldest one, so the translated locales were checked
+  against 6.6.0 forever and a missing file could not fail; the check now selects
+  the highest version and fails by name. `FASTLANE_ROOT` lets the test drive a
+  fixture tree, and write mode reports a missing translated note without failing
+  so the English bodies can be produced first.
+  `test:src/lib/fastlane-changelogs.test.ts#demands the newest version, not the oldest, from a translated locale`
+  `test:src/lib/fastlane-changelogs.test.ts#never overwrites a hand-written translated changelog`
 
 - **The vault has an end-to-end flow (E4.3):** `npm run e2e:vault` hands a text
   file to the app through the dev launch context; the screen turns that file's
@@ -91,68 +103,6 @@ release-train schedule is decided.
   wrong or mixed-ABI package fails the build instead of reaching a device.
   `test:src/lib/ci-workflow.test.ts#checks the ABI matrix on the artifacts and publishes the checksum list`
 
-- **Coverage floors raised to the measured suite (E4.1):** the vitest thresholds
-  move from 62/69/46/62 to 77/79/64/77 after re-measuring the full suite
-  (statements 78.4, branches 80.2, functions 65.9, lines 78.4 across 219 files /
-  2472 tests); each floor sits one point under its measurement so run-to-run
-  jitter cannot redden a green suite. The frontend job now uploads `coverage/` as
-  the `coverage-frontend` artifact, so a failing gate can be read instead of
-  guessed at. Rust coverage (`cargo llvm-cov`) is still unmeasured and is the
-  remaining half of E4.1.
-  `test:src/lib/ci-workflow.test.ts#publishes the coverage report from the frontend job`
-- **A coverage floor may only rise:** a workflow test reads `vite.config.ts` and
-  fails when any threshold drops below the 2026-11-01 measurement, so a red build
-  cannot be made green by relaxing the gate.
-  `test:src/lib/ci-workflow.test.ts#never lowers a vitest coverage floor`
-- **Linux runners pinned (E5):** every workflow asks for `ubuntu-24.04` instead
-  of `ubuntu-latest` (five jobs in `desktop.yml`, plus `auto-tag.yml` and
-  `fuzz-pr.yml`), so an image rollover cannot change a build between runs; a test
-  fails if a workflow brings the floating label back.
-  `test:src/lib/ci-workflow.test.ts#no workflow falls back to ubuntu-latest`
-- **Toolchain and runtime pinned (E5):** `rust-toolchain.toml` declares the
-  `stable` channel with clippy and rustfmt, so a contributor and CI install the
-  same tools. A toolchain file takes precedence over the installed default, so
-  the MSRV job sets `RUSTUP_TOOLCHAIN: "1.89.0"` explicitly - otherwise it would
-  silently test stable and the minimum would never be proven - and the fuzz jobs
-  set `RUSTUP_TOOLCHAIN: nightly`. Tests pin all three facts.
-  `test:src/lib/ci-workflow.test.ts#pins the toolchain without letting the file mask the MSRV job`
-  `test:src/lib/ci-workflow.test.ts#keeps the fuzz jobs on nightly despite the toolchain file`
-- **Node version declared (E5):** `.nvmrc` says 22 (what CI runs) and
-  `package.json` declares `engines.node >= 20` (what the toolchain actually
-  needs), so the README's "20+" and the CI version stop disagreeing.
-  `test:src/lib/ci-workflow.test.ts#declares the node version the suite is built and tested with`
-- **Engine downloads cached (E5):** the workspace-test and Windows E2E jobs cache
-  `src-tauri/resources/engines` under the `scripts/engines.lock.json` hash, so a
-  lock change invalidates the cache and a lock-identical build stops re-fetching
-  the pinned engines. The release, beta and nightly workflows still download
-  fresh and are the next step.
-  `test:src/lib/ci-workflow.test.ts#caches the engine downloads by lock hash`
-- **Plural forms come from `Intl.PluralRules` (E4.5):** `t.plural("key", n)`
-  picks `key.one` / `key.other` through the runtime's plural rules instead of the
-  `{count} file(s)` suffix that English readers saw in Turkish text. The 22
-  strings that spelled a plural as "(s)" now carry both variants (Turkish uses
-  the same sentence for both, because the noun is not pluralised after a
-  numeral), 15 literal call sites moved over, and the audit fails on a new
-  "(s)" value or on a `t.plural` key missing a variant. The proposal's "68 fake
-  plurals" counted both languages and every call site; the dictionary had 22
-  keys.
-  `test:src/lib/i18n.test.ts#picks the singular and plural English forms`
-  `test:src/lib/i18n.test.ts#keeps the Turkish sentence the same for every count`
-- **The three untested components now have tests (E4.2):** `LanSyncPlan`
-  (6 cases: one row per document, the three explicit conflict choices, and the
-  delete/restore pair for each side a file was removed from - nothing is ever
-  chosen by default), `ScannerPageList` (8 cases: page ids rather than photo
-  paths as row identity, the two halves of a book spread, auto vs hand-cropped
-  badges, filter/move/adjust/remove/clear callbacks, and the locked state while
-  the detector runs) and `CornerPicker` (6 cases: the preview comes from the
-  backend, the detector's "nothing found" path, arrow keys moving a handle by
-  1 % / 5 % with Shift, saving pixel corners, and `undefined` when the whole
-  photo is kept). `PdfStudio`, `Reader`, `Ai` and `Vault` already had coverage
-  through `pdf-screens.test.tsx`, `Ai.test.tsx` and `Vault.test.tsx`, so the
-  slice added the genuinely missing files instead of duplicating them.
-  `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
-  `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
-  `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
 - **The task-pack pipeline runs end to end against a local mock (E4.3):** the
   AI packs screen now takes documents through `useTool` like every other tool
   (open-with, drag and drop, dev launch), and `--ai-pack` starts
@@ -167,6 +117,7 @@ release-train schedule is decided.
   itself.
   `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
   `test:src/screens/AiPacks.test.tsx#runs a pack through ai_chat and verifies the structured answer`
+
 - **An Impress flow closes the office trio (E4.3):** `--impress` opens
   `samples/test-presentation.pptx` in the office editor, reads the slide rail
   (`.slide-thumb` + `.is-active`, so no translated label is matched), clicks the
@@ -176,6 +127,7 @@ release-train schedule is decided.
   PPTX on disk to change. With Writer and Calc this covers all three office
   editors in the Linux tauri-driver job on every PR.
   `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
+
 - **The secret store is exercised end to end (E4.3):** `--secrets` types a
   marker key into the Settings field, clicks Save, and reads the tier the UI
   reports from `data-key-storage`. It then inspects what reached the disk: above
@@ -186,6 +138,7 @@ release-train schedule is decided.
   three-tier store across a real process restart, which a unit test with a fake
   vault cannot.
   `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
+
 - **A Calc flow proves the formula engine in the real UI (E4.3):** `--calc`
   opens `samples/test-spreadsheet.xlsx` in the office editor and asserts, through
   `data-cell="row:col"` hooks rather than labels or coordinates, that the header
@@ -195,6 +148,7 @@ release-train schedule is decided.
   `=SUM(...)` in `.formula-input`. Engine-free (officecore), so it runs in the
   Linux tauri-driver job on every PR.
   `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
+
 - **A new end-to-end flow proves signature verification (E4.3):** `--verify`
   launches the app on the Verify screen with the unsigned sample, waits for the
   screen to report it holds its file, and reads the verdict from a
@@ -203,6 +157,7 @@ release-train schedule is decided.
   listed. It is engine-free (lopdf), so it runs in the Linux tauri-driver job on
   every PR next to the smoke and ACL gates.
   `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
+
 - **The end-to-end suite is modules, not one file (E4.3):** `e2e/smoke.mjs` went
   from 735 lines to a 109-line entry point that parses the flags and dispatches.
   The WebDriver plumbing (bounded calls, one session per scenario, screenshots,
@@ -214,6 +169,7 @@ release-train schedule is decided.
   every module in `flows/` is imported, and the guard stays out of module load.
   `test:src/lib/e2e-structure.test.ts#keeps the entry point to argument parsing and dispatch`
   `test:src/lib/e2e-structure.test.ts#exports every flow the CI jobs and the personas run`
+
 - **The Rust coverage floors are a ratchet (E4.1):** the numbers from the
   `rust-coverage` job are now enforced. `scripts/check-rust-coverage.mjs` reads
   the `TOTAL` row of `cargo llvm-cov report --summary-only` and compares it with
@@ -224,6 +180,7 @@ release-train schedule is decided.
   `test:src/lib/coverage-ratchet.test.ts#fails a measurement below a floor and names the metric`
   `test:src/lib/coverage-ratchet.test.ts#refuses to lower a floor through --update`
   `test:src/lib/ci-workflow.test.ts#measures Rust coverage and publishes the report instead of guessing a floor`
+
 - **Rust coverage is measured and published (E4.1):** a `rust-coverage` job runs
   `cargo llvm-cov --lib` over the library crates (the set that runs on every
   platform), prints the summary and uploads `coverage-rust` (`lcov.info` plus
@@ -232,11 +189,13 @@ release-train schedule is decided.
   (GTK/WebKit) and the Windows-only engine integration tests, which would report
   coverage for the wrong target.
   `test:src/lib/ci-workflow.test.ts#measures Rust coverage and publishes the report instead of guessing a floor`
+
 - **Android builds both artifacts in one Gradle run per ABI (E5):** `--apk` and
   `--aab` are independent flags, so the four sequential `tauri android build`
   calls became two, each producing the APK and the AAB for its target and
   keeping the same artifact names and the single `SHA256SUMS-android.txt`.
   `test:src/lib/ci-workflow.test.ts#builds both Android artifacts in one Gradle run per ABI`
+
 - **The i18n audit measures component props too (E4.5):** the scanner moved to
   `scripts/lib/i18n-jsx.mjs` and counts a third section - component `label`
   values - next to text nodes and attributes, in baseline schema **v3**
@@ -251,6 +210,7 @@ release-train schedule is decided.
   `test:src/lib/i18n-jsx-audit.test.ts#ignores translated calls, variables and dynamic templates`
   `test:src/lib/i18n-jsx-audit.test.ts#refuses to raise a props count without --allow-raise, and raises it with the flag`
   `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+
 - **The prop scan covers `hint` and `subtitle` too (E4.5):** `PROPS` in
   `scripts/lib/i18n-jsx.mjs` now lists the names a component really declares -
   `label` and `hint` (`Field`, `SectionTitle`) and `subtitle` (`Screen`) - so
@@ -267,6 +227,7 @@ release-train schedule is decided.
   `test:src/lib/i18n-jsx-audit.test.ts#does not count a title twice when a component takes it as a prop`
   `test:src/lib/i18n-jsx-audit.test.ts#fails when a sibling prop grows above its baseline`
   `test:src/lib/i18n-jsx-audit.test.ts#keeps the baseline schema at v4 when the widened props are recorded`
+
 - **Object literals and `.ts` modules are measured too (E4.6):** interface text
   that never passes through a JSX literal - the KVKK template options
   (`{ value: "employee", label: "Çalışan" }`), the wizard toast titles, and the
@@ -285,6 +246,7 @@ release-train schedule is decided.
   `test:src/lib/i18n-jsx-audit.test.ts#honours an i18n-content pragma, and refuses one without a reason`
   `test:src/lib/i18n-jsx-audit.test.ts#fails when an object string grows above its baseline`
   `test:src/lib/i18n-jsx-audit.test.ts#asks for a re-record instead of passing when the baseline has no objects section`
+
 - **The document-health findings became translatable (E4.7):** a `.ts` module
   cannot translate anything - it has no language - so `analyzeDocumentHealth`
   stopped building Turkish sentences. A `HealthIssue` now carries
@@ -302,6 +264,7 @@ release-train schedule is decided.
   `test:src/lib/document-health-text.test.ts#keeps the Turkish wording exactly as the screen said it before`
   `test:src/lib/document-health-text.test.ts#gives every finding an English title and description, with no placeholder left`
   `test:src/lib/document-health-text.test.ts#keeps both tables in step for every finding key`
+
 - **The toast titles became translatable too (E4.8):** the last of the object
   strings - the copy a screen pushes when something finishes - moved out of the
   `push({ title: … })` calls: the petition validation and save notices, the KVKK
@@ -311,6 +274,7 @@ release-train schedule is decided.
   section at zero instead of a ceiling, so the next literal fails the build
   rather than fitting under a number.
   `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+
 - **The scanner has an end-to-end flow (E4.3):** `npm run e2e:scanner` hands two
   generated photos to the Scanner through the dev launch context and proves the
   on-device path: the detector finds the page on one photo and nothing on a blank
@@ -330,6 +294,7 @@ release-train schedule is decided.
   `test:src/screens/Scanner.test.tsx#reports the page count on the ready signal the driver waits for`
   `test:src/screens/Scanner.test.tsx#builds next to the first photo in a development auto-run, with no save dialog`
   `test:src/screens/scanner-dev.test.ts#keeps the Windows separator`
+
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`
@@ -341,6 +306,79 @@ release-train schedule is decided.
   examples (`tr, en, de`, `tax_id, iban, payment_due`), format lists
   (`pdf, docx, md`), units (`ms`) and the `Bates` stamp name.
   `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+
+## Implemented (v7.4.0 cycle) - E1 kalanları ve kalite altyapısı (E4/E5)
+
+- **Coverage floors raised to the measured suite (E4.1):** the vitest thresholds
+  move from 62/69/46/62 to 77/79/64/77 after re-measuring the full suite
+  (statements 78.4, branches 80.2, functions 65.9, lines 78.4 across 219 files /
+  2472 tests); each floor sits one point under its measurement so run-to-run
+  jitter cannot redden a green suite. The frontend job now uploads `coverage/` as
+  the `coverage-frontend` artifact, so a failing gate can be read instead of
+  guessed at. Rust coverage (`cargo llvm-cov`) is still unmeasured and is the
+  remaining half of E4.1.
+  `test:src/lib/ci-workflow.test.ts#publishes the coverage report from the frontend job`
+
+- **A coverage floor may only rise:** a workflow test reads `vite.config.ts` and
+  fails when any threshold drops below the 2026-11-01 measurement, so a red build
+  cannot be made green by relaxing the gate.
+  `test:src/lib/ci-workflow.test.ts#never lowers a vitest coverage floor`
+
+- **Linux runners pinned (E5):** every workflow asks for `ubuntu-24.04` instead
+  of `ubuntu-latest` (five jobs in `desktop.yml`, plus `auto-tag.yml` and
+  `fuzz-pr.yml`), so an image rollover cannot change a build between runs; a test
+  fails if a workflow brings the floating label back.
+  `test:src/lib/ci-workflow.test.ts#no workflow falls back to ubuntu-latest`
+
+- **Toolchain and runtime pinned (E5):** `rust-toolchain.toml` declares the
+  `stable` channel with clippy and rustfmt, so a contributor and CI install the
+  same tools. A toolchain file takes precedence over the installed default, so
+  the MSRV job sets `RUSTUP_TOOLCHAIN: "1.89.0"` explicitly - otherwise it would
+  silently test stable and the minimum would never be proven - and the fuzz jobs
+  set `RUSTUP_TOOLCHAIN: nightly`. Tests pin all three facts.
+  `test:src/lib/ci-workflow.test.ts#pins the toolchain without letting the file mask the MSRV job`
+  `test:src/lib/ci-workflow.test.ts#keeps the fuzz jobs on nightly despite the toolchain file`
+
+- **Node version declared (E5):** `.nvmrc` says 22 (what CI runs) and
+  `package.json` declares `engines.node >= 20` (what the toolchain actually
+  needs), so the README's "20+" and the CI version stop disagreeing.
+  `test:src/lib/ci-workflow.test.ts#declares the node version the suite is built and tested with`
+
+- **Engine downloads cached (E5):** the workspace-test and Windows E2E jobs cache
+  `src-tauri/resources/engines` under the `scripts/engines.lock.json` hash, so a
+  lock change invalidates the cache and a lock-identical build stops re-fetching
+  the pinned engines. The release, beta and nightly workflows still download
+  fresh and are the next step.
+  `test:src/lib/ci-workflow.test.ts#caches the engine downloads by lock hash`
+
+- **Plural forms come from `Intl.PluralRules` (E4.5):** `t.plural("key", n)`
+  picks `key.one` / `key.other` through the runtime's plural rules instead of the
+  `{count} file(s)` suffix that English readers saw in Turkish text. The 22
+  strings that spelled a plural as "(s)" now carry both variants (Turkish uses
+  the same sentence for both, because the noun is not pluralised after a
+  numeral), 15 literal call sites moved over, and the audit fails on a new
+  "(s)" value or on a `t.plural` key missing a variant. The proposal's "68 fake
+  plurals" counted both languages and every call site; the dictionary had 22
+  keys.
+  `test:src/lib/i18n.test.ts#picks the singular and plural English forms`
+  `test:src/lib/i18n.test.ts#keeps the Turkish sentence the same for every count`
+
+- **The three untested components now have tests (E4.2):** `LanSyncPlan`
+  (6 cases: one row per document, the three explicit conflict choices, and the
+  delete/restore pair for each side a file was removed from - nothing is ever
+  chosen by default), `ScannerPageList` (8 cases: page ids rather than photo
+  paths as row identity, the two halves of a book spread, auto vs hand-cropped
+  badges, filter/move/adjust/remove/clear callbacks, and the locked state while
+  the detector runs) and `CornerPicker` (6 cases: the preview comes from the
+  backend, the detector's "nothing found" path, arrow keys moving a handle by
+  1 % / 5 % with Shift, saving pixel corners, and `undefined` when the whole
+  photo is kept). `PdfStudio`, `Reader`, `Ai` and `Vault` already had coverage
+  through `pdf-screens.test.tsx`, `Ai.test.tsx` and `Vault.test.tsx`, so the
+  slice added the genuinely missing files instead of duplicating them.
+  `test:src/screens/lan-sync-plan.test.tsx#offers the three explicit choices on a conflict and nothing is chosen by default`
+  `test:src/screens/scanner-page-list.test.tsx#renders one row per page, with both halves of a spread`
+  `test:src/screens/scanner-corners.test.tsx#keeps the whole photo when the frame is the full page`
+
 - **The i18n audit grew teeth (E4.5):** the audit now fails on a `{placeholder}`
   set that differs between English and Turkish (a Turkish value missing
   `{count}` rendered the literal `{count}`) and on more user-visible JSX text
@@ -351,6 +389,7 @@ release-train schedule is decided.
   are printed as advisory, because both have legitimate cases.
   `test:src/lib/ci-workflow.test.ts#runs the audit with --check in the lint job`
   `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+
 - **Five screens speak both languages (E4.5):** `DocumentHealthScreen` (14 JSX
   text nodes), `PetitionWizard` (4), `Invoices` (23 of 42), `KvkkWizard` (9) and
   the thumbnail-size options in `Organize` (3) moved into the tables, with new
@@ -363,6 +402,7 @@ release-train schedule is decided.
   `Redact` that is the next step. `docs/i18n.md` documents the workflow.
   `test:src/screens/DocumentHealthScreen.test.tsx#renders health screen with high score on clean text`
   `test:src/screens/DocumentHealthScreen.tokens.test.tsx#picks through the Rust dialog and inspects a PDF token as a PDF`
+
 - **Static analysis and a reporting channel (E5):** `SECURITY.md` documents the
   private advisory channel, the supported versions and the deliberate limits
   (unsigned Windows installers, ACL scope, third-party engines). The `CodeQL`

@@ -1,0 +1,7 @@
+7.5.0 "Uçtan uca kanıt": yedi yeni uçtan uca akış gerçek arayüzü sürüyor —
+imza doğrulama, Calc formül motoru, gizli anahtar deposu (yeniden başlatma
+dahil), Impress, yerel mock sağlayıcıyla yapay zekâ görev paketi, tarayıcı ve
+Vault. Android derlemesi iki ABI'lik paralel matrise bölündü ve paketler
+yayından önce denetleniyor. i18n taraması bileşen prop'larına, nesne
+literallerine, .ts modüllerine ve şablon özniteliklerine indi; Türkçe arayüzdeki
+son İngilizce cümleler gitti ve KDV tutarları iki ondalık basıyor.
