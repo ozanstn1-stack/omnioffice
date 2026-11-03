@@ -339,8 +339,16 @@ indirdiği koşuda yok.
   pages; detector auto=true,false`. Scanner'ın pdfium istemediği doğrulandı →
   akış her PR'da Linux işinde koşuyor. `smoke.mjs` 148 → 142 (dört akış kendi
   launch context'ini taşıyor).
-- **Şimdiki kalem (2026-11-03 11:15 UTC):** Android ABI matrisi doğrulaması
-  (yukarıdaki plan). Baseline dispatch `41622851526` master üzerinde koşuyor.
+- **Kapandı (2026-11-03 12:58 UTC):** Android ABI matrisi doğrulaması —
+  **PR #597 → `0cbcbe6`**. Dispatch `41635920287` (success):
+  `ABI matrix OK: 4 artifacts, two ABIs, one signing identity`, iki APK da
+  `f17e1d97…` sertifikasıyla imzalı, artefakt **5 dosya** (4 paket +
+  `SHA256SUMS-android.txt`). Baseline artefaktında toplam listesi **yoktu** —
+  gerçek boşluk buydu.
+- **SIRADAKİ ADIM:** Android paralel iş bölünmesi (`build` matrisi + `assemble`)
+  — yayın hattını yeniden düzenler, kendi dispatch'i ile doğrulanmalı; ya da
+  etiketle tetiklenen emülatör koşusu (`pull_request: types: [labeled]`).
+  Alternatif küçük iş: `detail` alanlarını tarayıcıya katmak.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
   E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
