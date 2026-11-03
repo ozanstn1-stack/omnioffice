@@ -511,3 +511,95 @@ kararı, tarayıcı boşlukları (koşullu dallar, nesne içi `${…}`), fuzz ge
   (`release/v7.5.0` dalı). Sıradaki adım: yerel kapılar → PR → `android.yml`
   dispatch provası → kontrol yeşilse squash merge (merge = otomatik tag ve
   yayın) → 18 varlığı doğrula → #550'ye kapanış yorumu.
+
+---
+
+# KAPANDI — v7.5.0 yayınlandı (2026-11-03 22:00 UTC)
+
+**PR #606 → `e617e16`** (squash), 23/23 kontrol yeşil; `auto-tag.yml` tag'i
+kendisi attı (`v7.5.0` → `e617e16`), Release ve Android işleri yeşil.
+
+## Yayın kanıtı (Opus Adım 6'nın tamamı)
+- Üç koşu `success`: auto-tag `41719037473`, Release `41719074310` (3/3 iş),
+  Android `41719079469` (5/5 iş).
+- Release "OmniOffice v7.5.0": **18 varlık**, draft/prerelease değil — v7.4.0'ın
+  varlık kümesiyle birebir aynı adlar.
+- Checksum: `SHA256SUMS.txt` 8/8, `-windows` 3/3, `-linux` 2/2, `-android` 4/4
+  satırı GitHub asset digest'iyle eşleşti (17/17). İki Windows kurulum dosyası
+  aynı özet (`170a64e8…`).
+- `latest.json`: `version=7.5.0`, url `v7.5.0/OmniOffice_7.5.0_x64-setup.exe`,
+  `signature` dolu.
+- Release gövdesi `changelog-section.mjs 7.5.0` çıktısıyla birebir aynı (tek fark
+  sondaki satır sonu).
+- Android tag logu: `APK versionCode: 7005000`,
+  `Signing certificate matches the previous release (v7.4.0)`,
+  `ABI matrix OK: 4 artifacts, two ABIs, one signing identity`; iki ABI'de de
+  sertifika `f17e1d97…`.
+- Tag öncesi prova: dalda `android.yml` dispatch'i (`41711776118`) imzalı yolu
+  `--require-signature` ile sınadı ve 17 dakikada yeşil bitti.
+
+## Yol üstünde bulunan ve düzeltilen hata
+`fastlane-changelogs.mjs` "current version" olarak CHANGELOG'un **son** bölümünü
+(en eskisini) alıyordu → çevrilmiş yereller sonsuza kadar 6.6.0 ile
+karşılaştırılıyordu, `tr-TR/changelogs/7005000.txt` yokken `fastlane:check`
+yeşildi. Düzeltildi (en yüksek sürüm + `FASTLANE_ROOT` kancası + yazma modunda
+rapor et/düşme), 4 test eklendi, `RELEASE_READINESS`'te işaretli.
+
+## Ders
+Sürüm treni tek PR'da 3 saatte bitti çünkü: envanter (Adım 0) tag öncesi
+yapıldı, `release.yml` hattı v7.4.0'dan beri değişmemişti (yalnız `android.yml`
+değişmişti → sadece o dispatch edildi), ve merge kapısı öncesi Android prova
+koşusu yapıldı. Geri dönüşsüz adımın merge olduğunu bilmek planı basitleştirdi.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** v7.5.0 yayında ve doğrulandı; master
+  `e617e16`, ağaç temiz, `target/` yok. Sıradaki kalem **7.6.0'ın ilk dilimi**:
+  motor önbelleğini `release.yml`/`beta.yml`/nightly'e taşımak (dalda dispatch
+  ile sınanır). Onun için önce `subagent_claude_opus`'tan plan alınacak; ardından
+  OpenSSF Scorecard/Renovate kararı ve tarayıcı boşlukları.
+  Bekleyen dış adımlar: IzzyOnDroid başvurusu (#502), fiziksel cihaz turları.
+
+---
+
+# Seçilen iş kalemi: motor önbelleği sürüm hattına (7.6.0, ilk dilim) — Opus planı `e9f2a56d`
+
+Opus planı dört varsayımımı düzeltti, hepsi uygulandı:
+
+1. **`beta.yml` dalda dispatch edilirse YAYINLAR.** "Refresh the rolling beta
+   prerelease" adımı tag'e bağlı değil; daldan bir derleme beta kanalındaki
+   kullanıcılara güncelleme olarak gider. **Bu dilimde beta dispatch edilmedi.**
+2. **Önbellek izin gerektirmiyor** (`ACTIONS_RUNTIME_TOKEN`, GITHUB_TOKEN değil)
+   → `permissions:` değişmedi.
+3. **Önbellekten gelen dosyalar lock'a göre yeniden doğrulanmıyor** (betik
+   "already present" deyip `Assert-Artifact`'i atlıyor) → anahtar
+   `engines.lock.json` **+ `fetch-engines.ps1`** hash'i. Sürüm işinde bu, kurulum
+   paketine giren dosyalar demek; bedeli tek seferlik soğuk indirme.
+4. **Asıl kazanç dakika değil güvenilirlik:** mutable `main` URL'leri
+   (tessdata_fast, google/fonts, tesseract `pdf.ttf`) kritik yoldan çıkıyor.
+
+## Tasarım
+- **Yazma tek yerde:** motor önbelleğini yalnız `desktop.yml` yazar. Yayın
+  işleri `actions/cache/restore@0057852…` ile **yalnız okur** — yayın koşusu
+  kendi kapsamına kayıt yazıp başka koşuların güvendiği kaydı tohumlayamaz.
+- `release.yml` + `beta.yml`: restore-only adım, aynı yol/anahtar.
+- `nightly.yml`: **bilinçli önbelleksiz** — günlük upstream kayma kanaryası;
+  önbellek tam da yakalamak istediği kaymayı gizlerdi.
+- `actions/cache@0057852…` (v4) korunuyor: `bench` işinin v6.1.0'ı motor kaydıyla
+  uyumsuz olabilir (önbellek sürüm hash'i/sıkıştırma), o yüzden karıştırılmadı.
+
+## Testler (4 yeni + 1 güncellenen, hepsi `ci-workflow.test.ts`)
+`restores the engine cache before fetching them, everywhere but the nightly`,
+`publishing workflows only read the engine cache`,
+`pins one actions/cache commit for the engine cache`,
+`nightly stays the uncached upstream-drift canary`; mevcut
+`caches the engine downloads by lock hash` anahtarı yeni ifadeye güncellendi.
+
+## Doğrulama yolu
+Dalda `desktop.yml` dispatch'i yeni anahtarla kaydı yazar (auto-tag yalnız master
+push'unu dinler), sonra `release.yml` dispatch'i restore'u ve
+`(already present)` satırlarını kanıtlar. **`beta.yml` dispatch edilmez** (1. madde).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** 7.6.0 dilimi uygulandı, yerel kapılar
+  koşuyor; sıradaki adım PR + dalda `desktop.yml` dispatch (kayıt) + `release.yml`
+  dispatch (restore kanıtı), sonra kontrol yeşilse squash merge.
+  Scorecard ayrı ve sonraki dilim (yeni workflow + yeni check), Renovate
+  **yapılmayacak**: Dependabot zaten çalışıyor, karar notu bu dosyada.

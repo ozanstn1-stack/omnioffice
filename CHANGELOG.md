@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The release and beta trains stop re-downloading the engines (E5):** both
+  restored nothing while the pull-request jobs already cached the ~100 MB of
+  pinned third-party artifacts, so every publishing run fetched them again.
+  They now restore `src-tauri/resources/engines` from the entry the Desktop run
+  stored on the default branch and never write one themselves; the key covers
+  the lock file and the fetch script, since the script trusts files that are
+  already present. The nightly stays uncached: it is the canary for the mutable
+  `main` URLs in the lock, and a cached copy would hide exactly that drift.
+
 ## [7.5.0] - Uçtan uca kanıt (Phase E / E4 kalanları, E5)
 
 ### Added

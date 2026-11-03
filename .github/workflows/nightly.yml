@@ -29,6 +29,10 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
       - run: npm ci
+      # Deliberately uncached: this daily run is the canary for upstream drift,
+      # because several pins in scripts/engines.lock.json point at mutable
+      # `main` URLs. Serving a cached copy here would hide exactly the change
+      # the nightly exists to catch.
       - name: Fetch engines (pdfium, qpdf, tesseract, fonts)
         run: npm run engines:fetch
       # Best effort: the reference score is a bonus, the golden score is the

@@ -65,6 +65,26 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
+
+- **The release train writes no engine cache and reads the tested one (E5):**
+  `release.yml` and `beta.yml` downloaded the same ~100 MB of pinned
+  third-party artifacts on every run. Both now restore
+  `src-tauri/resources/engines` with `actions/cache/restore` only - the entry is
+  written by the Desktop run on the default branch and never by a publishing
+  job, so a release cannot seed a cache another run then trusts. The key carries
+  the hash of `scripts/engines.lock.json` **and** `scripts/fetch-engines.ps1`,
+  because the fetch script skips files that are already present and so the
+  cache is part of the trust chain: either file changing invalidates it. A tag
+  run restores the entry the same commit stored on the default branch; a miss
+  falls back to the full verified download. `nightly.yml` stays uncached on
+  purpose - several pins point at mutable `main` URLs and the daily run is the
+  canary for that drift.
+  `test:src/lib/ci-workflow.test.ts#restores the engine cache before fetching them, everywhere but the nightly`
+  `test:src/lib/ci-workflow.test.ts#publishing workflows only read the engine cache`
+  `test:src/lib/ci-workflow.test.ts#pins one actions/cache commit for the engine cache`
+  `test:src/lib/ci-workflow.test.ts#nightly stays the uncached upstream-drift canary`
+
 ## Implemented (this cycle, 7.5.0) - Kanıt akışları ve E4 kalanları (E4/E5)
 
 - **The store listing cannot fall behind a release (E5):** `scripts/fastlane-changelogs.mjs`

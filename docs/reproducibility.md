@@ -24,6 +24,14 @@ The gate fails if a lockfile disappears, a crate starts carrying its own
 version, an action loses its SHA pin, a workflow calls `npm install`, the
 packaging script stops sorting, or this page loses one of its sections.
 
+The engine binaries the release build bundles may come from a CI cache rather
+than the network: the entry is keyed by the SHA-256 of `engines.lock.json` and
+of `scripts/fetch-engines.ps1`, written only by the Desktop run on the default
+branch and restored read-only by the publishing workflows. A cache miss runs
+the same hash-verified download, so the pin - not the cache - is what a
+reviewer checks; `nightly.yml` deliberately skips the cache so upstream drift
+in the mutable `main` URLs still surfaces.
+
 ## What is not reproducible yet
 
 | Item | Why it differs | Impact |
