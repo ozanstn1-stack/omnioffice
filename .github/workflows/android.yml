@@ -164,7 +164,9 @@ jobs:
       # different keys; both only surface on a device or in a store review. The
       # check reads the files themselves, before anything is published.
       - name: Verify the ABI matrix (per-ABI libraries, ELF shape, one signer)
-        run: bash .github/scripts/verify-android-abis.sh release-artifacts
+        # A pull request has no keystore, so its package is unsigned by design;
+        # everywhere else a missing signature fails the build.
+        run: bash .github/scripts/verify-android-abis.sh release-artifacts ${{ github.event_name != 'pull_request' && '--require-signature' || '' }}
 
       # Catalogues and installed users key the identity on these two facts (#502):
       # a monotonic version code and an unchanged signing certificate.

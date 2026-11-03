@@ -257,6 +257,10 @@ describe("Rust coverage and Android build shape (E4.1, E5)", () => {
     expect(android).toContain("if: env.ANDROID_KEYSTORE_BASE64 != '' && github.event_name != 'pull_request'");
     // The tag-gated steps are untouched: their real test is the next release tag.
     expect(android.split("startsWith(github.ref, 'refs/tags/v')").length - 1).toBeGreaterThanOrEqual(3);
+    // A pull request builds unsigned, so the identity is only demanded elsewhere.
+    expect(android).toContain(
+      "verify-android-abis.sh release-artifacts ${{ github.event_name != 'pull_request' && '--require-signature' || '' }}",
+    );
   });
 
   it("checks the ABI matrix on the artifacts and publishes the checksum list", () => {

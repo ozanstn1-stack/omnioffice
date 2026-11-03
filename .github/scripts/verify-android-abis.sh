@@ -11,6 +11,10 @@
 set -euo pipefail
 
 dir="${1:-release-artifacts}"
+# A pull request builds without a keystore, so its package is unsigned by design;
+# every other run must be signed, and that is what protects a release.
+require_signature=0
+[ "${2:-}" = "--require-signature" ] && require_signature=1
 version=$(node -p "require('./src-tauri/tauri.conf.json').version")
 failures=0
 fail() {
@@ -69,11 +73,21 @@ done
 # than no check.
 script_dir=$(cd "$(dirname "$0")" && pwd)
 digests=()
+unsigned=0
 for abi in "${!machine[@]}"; do
   file="$dir/OmniOffice-Android-$version-$abi.apk"
   [ -f "$file" ] || continue
   if ! digest=$(python3 -I "$script_dir/apk-signer-digest.py" "$file" 2>&1); then
-    fail "$file: $digest"
+    case "$digest" in
+      *"no APK Signing Block and no META-INF signature file"*)
+        unsigned=$((unsigned + 1))
+        if [ "$require_signature" -eq 1 ]; then
+          fail "$file is unsigned, and this run was expected to produce a signed package"
+        fi
+        continue
+        ;;
+    esac
+    fail "${digest#"$file: "}"
     continue
   fi
   digest=${digest%% *}
@@ -82,6 +96,9 @@ for abi in "${!machine[@]}"; do
 done
 if [ "${#digests[@]}" -gt 1 ] && [ "$(printf '%s\n' "${digests[@]}" | sort -u | wc -l)" -ne 1 ]; then
   fail "the APKs are signed with different certificates"
+fi
+if [ "${#digests[@]}" -gt 0 ] && [ "$unsigned" -gt 0 ]; then
+  fail "one APK is signed and the other is not: the pair does not share an identity"
 fi
 
 # The checksum list the release attaches must match the files next to it.
@@ -96,4 +113,10 @@ if [ "$failures" -ne 0 ]; then
   echo "::error::$failures ABI matrix problem(s) found"
   exit 1
 fi
-echo "ABI matrix OK: $(ls "$dir"/*.apk "$dir"/*.aab | wc -l) artifacts, two ABIs, one signing identity."
+artifacts_count=$(ls "$dir"/*.apk "$dir"/*.aab | wc -l)
+if [ "$unsigned" -gt 0 ]; then
+  # Said out loud: a pull request has no keystore, so identity is not claimed.
+  echo "ABI matrix OK: $artifacts_count artifacts, two ABIs (unsigned build: the signing identity was not compared)."
+else
+  echo "ABI matrix OK: $artifacts_count artifacts, two ABIs, one signing identity."
+fi
