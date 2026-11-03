@@ -225,6 +225,40 @@ describe("Rust coverage and Android build shape (E4.1, E5)", () => {
     expect(android).toContain("sha256sum *.apk *.aab");
   });
 
+  it("runs the Android build on demand for a pull request, without touching the tag path", () => {
+    // Only `labeled`: `opened`/`synchronize` would add skipped Android checks to
+    // every PR and break the "19 checks" count.
+    expect(android).toMatch(/pull_request:\s*\n\s*types: \[labeled\]/);
+    // Comments may name the events that are deliberately absent; the triggers
+    // themselves may not carry them.
+    const triggers = android
+      .slice(android.indexOf("on:"), android.indexOf("\npermissions:"))
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+    for (const event of ["opened", "synchronize", "reopened"]) expect(triggers).not.toContain(event);
+    expect(android).not.toContain("pull_request_target");
+    // Both jobs stay dormant for any other label.
+    const guard = "github.event_name != 'pull_request' || github.event.label.name == 'android-ci'";
+    // jobBlocks() reads desktop.yml; the Android jobs are parsed here.
+    const text = android.slice(android.indexOf("\njobs:\n") + 1);
+    const matches = [...text.matchAll(/^ {2}([a-z0-9-]+):\n/gm)];
+    const jobs = matches.map((match, index) => ({
+      name: match[1],
+      body: text.slice(match.index ?? 0, index + 1 < matches.length ? matches[index + 1].index : text.length),
+    }));
+    for (const job of ["build", "version-consistency"]) {
+      const block = jobs.find((entry) => entry.name === job);
+      expect(block, `${job} job`).toBeDefined();
+      expect(block?.body).toContain(guard);
+    }
+    // The release keystore must never reach a pull request: it builds debug-signed.
+    expect(android).toContain("github.event_name != 'pull_request' && secrets.ANDROID_KEYSTORE_BASE64 || ''");
+    expect(android).toContain("if: env.ANDROID_KEYSTORE_BASE64 != '' && github.event_name != 'pull_request'");
+    // The tag-gated steps are untouched: their real test is the next release tag.
+    expect(android.split("startsWith(github.ref, 'refs/tags/v')").length - 1).toBeGreaterThanOrEqual(3);
+  });
+
   it("checks the ABI matrix on the artifacts and publishes the checksum list", () => {
     // The per-ABI libraries and the signing identity are in the files, not in
     // the build log: the workflow has to read them before publishing.
