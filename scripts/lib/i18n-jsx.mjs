@@ -10,8 +10,10 @@
 //     a braced string or a template without substitutions. A `t("…")` call, a
 //     variable or a conditional is not a hardcoded string and is skipped.
 //
-// A template with `${…}` is dynamic and stays out; so does a conditional's
-// branches (`label={flag ? "A" : "B"}`) - a known gap, documented in docs/i18n.md.
+// A template counts for its fixed words: `alt={`Page ${page}`}` is prose the user
+// reads, with the interpolation collapsed to `${…}`. A template made only of
+// placeholders is not prose. A conditional's branches (`label={flag ? "A" : "B"}`)
+// still stay out - a known gap, documented in docs/i18n.md.
 import ts from "typescript";
 
 /** Attributes the user reads or hears (aria, alt, tooltips, form hints). */
@@ -34,9 +36,18 @@ export function literalText(initializer, source) {
     const expression = initializer.expression;
     if (ts.isStringLiteral(expression)) return expression.text;
     if (ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+    // `alt={`Page ${page}`}` is a template, not a plain string, but its fixed
+    // words still reach the screen. The interpolation collapses to one
+    // placeholder, the same shape the object scan uses.
+    if (ts.isTemplateExpression(expression)) return templateText(expression);
   }
   void source;
   return null;
+}
+
+/** A template's fixed words with each interpolation collapsed to `${…}`. */
+export function templateText(node) {
+  return [node.head.text, ...node.templateSpans.map((span) => `\${…}${span.literal.text}`)].join("");
 }
 
 /**
@@ -153,10 +164,7 @@ function unwrap(node) {
 function valueTexts(initializer) {
   const node = unwrap(initializer);
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
-  if (ts.isTemplateExpression(node)) {
-    const text = [node.head.text, ...node.templateSpans.map((span) => `\${…}${span.literal.text}`)].join("");
-    return [text];
-  }
+  if (ts.isTemplateExpression(node)) return [templateText(node)];
   if (ts.isConditionalExpression(node)) {
     return [...valueTexts(node.whenTrue), ...valueTexts(node.whenFalse)];
   }

@@ -203,7 +203,9 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
     expect(baseline.version).toBe(4);
     const total = (section: Record<string, number>) => Object.values(section).reduce((sum, count) => sum + count, 0);
     expect(total(baseline.files)).toBeLessThanOrEqual(77);
-    expect(total(baseline.attributes)).toBeLessThanOrEqual(9);
+    // 2026-11-03: template attributes count now (`alt={`Page ${page}`}`), so the
+    // ceiling rose from 9 to 11 - the two shortcut hints are the addition.
+    expect(total(baseline.attributes)).toBeLessThanOrEqual(11);
     expect(total(baseline.props)).toBeLessThanOrEqual(6);
     expect(total(baseline.objects)).toBe(0);
   });

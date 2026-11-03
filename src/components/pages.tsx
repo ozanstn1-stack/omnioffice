@@ -221,7 +221,7 @@ export function ThumbGrid({
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded-md"
                   style={{ background: "rgb(0 0 0 / 0.4)", color: "white" }}
-                  title={`Source page ${page.sourcePage}`}
+                  title={t("organize.sourcePage", { page: page.sourcePage })}
                 >
                   ←{page.sourcePage}
                 </span>

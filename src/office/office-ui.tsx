@@ -320,6 +320,7 @@ export function useTablePicker(): {
   close: () => void;
   grid: ReactNode;
 } {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState<{ rows: number; cols: number }>({ rows: 1, cols: 1 });
   const rows = 8;
@@ -344,7 +345,7 @@ export function useTablePicker(): {
                   );
                   setOpen(false);
                 }}
-                aria-label={`${rowIndex + 1} by ${colIndex + 1}`}
+                aria-label={t("table.gridSize", { rows: rowIndex + 1, cols: colIndex + 1 })}
               />
             ))}
           </div>

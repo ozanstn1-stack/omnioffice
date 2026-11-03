@@ -3243,5 +3243,6 @@
   "redact.toast.certSaved": "The report was saved to a file.",
   "organize.sourcePage": "Source page {page}",
   "batch.fileCount.one": "{count} file",
-  "batch.fileCount.other": "{count} files"
+  "batch.fileCount.other": "{count} files",
+  "table.gridSize": "{rows} by {cols}"
 }

@@ -29,6 +29,7 @@
   },
   "attributes": {
     "components/ai-settings.tsx": 2,
+    "office/calc/ui/CalcRibbon.tsx": 2,
     "office/ImpressEditor.tsx": 1,
     "screens/Ai.tsx": 3,
     "screens/PageTools.tsx": 1,
