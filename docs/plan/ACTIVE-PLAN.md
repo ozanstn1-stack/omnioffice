@@ -244,14 +244,18 @@ listesi, `??`/birleştirme biçimleri.
   taban hiç oynamadı) ve PR #588 (`383639f`, E4.6 `objects` bölümü). Öncesinde
   bekleyen `0cbf9c4` plan commit'i ve `6735615` benzeri yerel commit yok; ağaç
   temiz, master `383639f`, disk %59 (40 GB boş), `target/` yok.
-- **SIRADAKİ ADIM (2026-11-02 23:02 UTC'de duruldu):** E4.7 — `objects` tabanını
-  düşürmek. Kapsam: (a) `src/lib/document-health.ts` cümle yerine
-  `{ code, params }` döndürsün, `src/screens/DocumentHealthScreen.tsx` ve
-  çağıranlar `t()` ile çizsin; (b) `KvkkWizard` `options` dizileri `labelKey`'e
-  geçsin; (c) sözlüğe yeni anahtarlar, `--update` ile `objects` 34 → daha aşağı.
-  **Bu kalem için önce `subagent_claude_opus` planı alınacak** (E4.6 planı bu
-  dilimi yalnız ana hatlarıyla tarif etti). Sonra Scanner E2E / Android ABI
-  hafta sonu uzun CI penceresinde.
+- **E4.7 birinci yarı (2026-11-03 04:10 UTC):** `objects` **34 → 13**. Dokuz
+  `document-health` bulgusu `titleKey`/`descriptionKey` + `params` taşıyor,
+  ekran `t(key, params)` ile çiziyor (dil değişince metin de değişiyor; eskiden
+  `useMemo` içinde Türkçe donuyordu). KVKK şablon seçenekleri `t()`'ye geçti.
+  Altın test dokuz çiftin Türkçesini eski cümlelerle birebir karşılaştırıyor.
+  Yol üstünde gerçek bir çizim hatası düzeldi: `KvkkWizard` `t("kvkk.lawBody")`
+  ve `t("kvkk.legalWarningBody")` metnini **çağrı olarak** basıyordu
+  (`hardcoded-jsx` 77 → 75).
+- **SIRADAKİ ADIM (E4.8):** kalan 13 `objects` dizesi — `push({ title: … })`
+  bildirimleri: `PetitionWizard` 4, `Invoices` 3, `KvkkWizard` 2 (`common.
+  documentSaved` yeniden kullanılabilir), `Redact` 2, `Vault` 1.
+  Sonra Scanner E2E / Android ABI hafta sonu uzun CI penceresinde.
 - **Neden burada duruldu:** sessiz saat Pzt-Cum UTC 01:00-04:00; E4.7 mimari bir
   refactor ve Opus planı gerektiriyor, sıfırdan başlatmak yerine temiz bir
   noktada bırakıldı. Başlamak için tek komut yeterli.

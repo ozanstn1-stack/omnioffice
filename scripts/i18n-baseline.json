@@ -20,7 +20,6 @@
     "screens/Batch.tsx": 3,
     "screens/Inspect.tsx": 2,
     "screens/Invoices.tsx": 19,
-    "screens/KvkkWizard.tsx": 2,
     "screens/Ocr.tsx": 2,
     "screens/Organize.tsx": 3,
     "screens/PageTools.tsx": 6,
@@ -42,10 +41,8 @@
     "office/calc/ui/CalcRibbon.tsx": 6
   },
   "objects": {
-    "lib/document-health.ts": 15,
-    "screens/DocumentHealthScreen.tsx": 2,
     "screens/Invoices.tsx": 3,
-    "screens/KvkkWizard.tsx": 7,
+    "screens/KvkkWizard.tsx": 3,
     "screens/PetitionWizard.tsx": 4,
     "screens/Redact.tsx": 2,
     "screens/Vault.tsx": 1

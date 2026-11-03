@@ -174,10 +174,10 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                 value={templateType}
                 onChange={setTemplateType}
                 options={[
-                  { value: "employee", label: "Çalışan" },
-                  { value: "customer", label: "Müşteri / Web" },
-                  { value: "visitor", label: "Ziyaretçi (Kamera)" },
-                  { value: "consent", label: "Açık Rıza" },
+                  { value: "employee", label: t("kvkk.option.employee") },
+                  { value: "customer", label: t("kvkk.option.customer") },
+                  { value: "visitor", label: t("kvkk.option.visitor") },
+                  { value: "consent", label: t("kvkk.option.consent") },
                 ]}
               />
             </OptionCard>
@@ -249,7 +249,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                 <Shield className="w-4 h-4 text-emerald-500" />
                 <span>{t("kvkk.lawTitle")}</span>
               </div>
-              <p className="text-xs muted leading-relaxed">t("kvkk.lawBody")</p>
+              <p className="text-xs muted leading-relaxed">{t("kvkk.lawBody")}</p>
             </Card>
 
             <Card className="p-4 flex flex-col gap-2 border-amber-500/40 bg-amber-500/5">
@@ -257,7 +257,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
                 <AlertTriangle className="w-4 h-4" />
                 <span>{t("kvkk.legalWarningTitle")}</span>
               </div>
-              <p className="text-xs muted leading-relaxed">t("kvkk.legalWarningBody")</p>
+              <p className="text-xs muted leading-relaxed">{t("kvkk.legalWarningBody")}</p>
             </Card>
           </div>
         }

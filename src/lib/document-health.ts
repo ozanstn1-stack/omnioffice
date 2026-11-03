@@ -17,8 +17,12 @@ export interface HealthIssue {
   id: string;
   category: HealthCategory;
   severity: HealthSeverity;
-  title: string;
-  description: string;
+  /** Dictionary key of the title; the screen renders `t(titleKey, params)`. A
+   * module here cannot translate anything itself - it has no language. */
+  titleKey: string;
+  /** Dictionary key of the description, with `{placeholders}` filled by `params`. */
+  descriptionKey: string;
+  params?: Record<string, string | number>;
   detectedCount?: number;
   fixable: boolean;
   fixAction?: "strip_metadata" | "redact_kvkk" | "set_title" | "set_language" | "flatten_annotations";
@@ -97,8 +101,9 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "kvkk-tckn",
       category: "kvkk",
       severity: "critical",
-      title: "T.C. Kimlik Numarası (TCKN) Tespit Edildi",
-      description: `Belgede ${validTckns.length} adet geçerli TCKN tespit edildi. KVKK kapsamında yüksek risk taşır.`,
+      titleKey: "health.issue.tcknTitle",
+      descriptionKey: "health.issue.tcknBody",
+      params: { count: validTckns.length },
       detectedCount: validTckns.length,
       fixable: true,
       fixAction: "redact_kvkk",
@@ -111,8 +116,9 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "kvkk-phone",
       category: "kvkk",
       severity: "warning",
-      title: "Telefon Numarası Tespit Edildi",
-      description: `Belgede ${phoneMatches.length} adet telefon numarası bulundu.`,
+      titleKey: "health.issue.phoneTitle",
+      descriptionKey: "health.issue.phoneBody",
+      params: { count: phoneMatches.length },
       detectedCount: phoneMatches.length,
       fixable: true,
       fixAction: "redact_kvkk",
@@ -125,8 +131,9 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "kvkk-email",
       category: "kvkk",
       severity: "warning",
-      title: "E-Posta Adresi Tespit Edildi",
-      description: `Belgede ${emailMatches.length} adet e-posta adresi bulundu.`,
+      titleKey: "health.issue.emailTitle",
+      descriptionKey: "health.issue.emailBody",
+      params: { count: emailMatches.length },
       detectedCount: emailMatches.length,
       fixable: true,
       fixAction: "redact_kvkk",
@@ -139,8 +146,9 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "kvkk-iban",
       category: "kvkk",
       severity: "critical",
-      title: "IBAN Numarası Tespit Edildi",
-      description: `Belgede ${ibanMatches.length} adet banka hesap (IBAN) numarası bulundu.`,
+      titleKey: "health.issue.ibanTitle",
+      descriptionKey: "health.issue.ibanBody",
+      params: { count: ibanMatches.length },
       detectedCount: ibanMatches.length,
       fixable: true,
       fixAction: "redact_kvkk",
@@ -156,8 +164,9 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "metadata-leaks",
       category: "metadata",
       severity: "warning",
-      title: "Gizli Belge Meta Verileri",
-      description: `Belgede yazar, yazılım veya kurum bilgisi ifşa edebilecek ${populatedMeta.length} meta veri alanı mevcut: ${populatedMeta.join(", ")}.`,
+      titleKey: "health.issue.metadataTitle",
+      descriptionKey: "health.issue.metadataBody",
+      params: { count: populatedMeta.length, fields: populatedMeta.join(", ") },
       detectedCount: populatedMeta.length,
       fixable: true,
       fixAction: "strip_metadata",
@@ -170,8 +179,8 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "a11y-missing-title",
       category: "accessibility",
       severity: "info",
-      title: "Belge Başlığı Eksik",
-      description: "Ekran okuyucular ve arama indeksleri için belge başlığı tanımlanmamış.",
+      titleKey: "health.issue.missingTitleTitle",
+      descriptionKey: "health.issue.missingTitleBody",
       fixable: true,
       fixAction: "set_title",
     });
@@ -182,8 +191,8 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "a11y-missing-language",
       category: "accessibility",
       severity: "info",
-      title: "Belge Dili Belirtilmemiş",
-      description: "Ekran okuyucu sentezleyicileri için dil kodu (tr-TR / en-US) atanmamış.",
+      titleKey: "health.issue.missingLanguageTitle",
+      descriptionKey: "health.issue.missingLanguageBody",
       fixable: true,
       fixAction: "set_language",
     });
@@ -195,8 +204,9 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "fonts-unembedded",
       category: "fonts",
       severity: "warning",
-      title: "Gömülü Olmayan / Bozuk Fontlar",
-      description: `Belgede ${input.fontIssuesCount} adet font tanımı eksik veya gömülmemiş. Farklı cihazlarda metin kayabilir.`,
+      titleKey: "health.issue.fontsTitle",
+      descriptionKey: "health.issue.fontsBody",
+      params: { count: input.fontIssuesCount },
       detectedCount: input.fontIssuesCount,
       fixable: false,
     });
@@ -208,8 +218,8 @@ export function analyzeDocumentHealth(input: DocumentScanInput): DocumentHealthR
       id: "sig-unsigned",
       category: "signature",
       severity: "info",
-      title: "Belge Dijital Olarak İmzalanmamış",
-      description: "Resmî geçerlilik veya değiştirilmezlik doğrulaması için PAdES / e-İmza bulunmuyor.",
+      titleKey: "health.issue.signatureTitle",
+      descriptionKey: "health.issue.signatureBody",
       fixable: false,
     });
   }
