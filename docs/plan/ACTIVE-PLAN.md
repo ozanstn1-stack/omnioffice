@@ -268,6 +268,36 @@ akışın Windows'ta koşması, RELEASE_READINESS iddiası.
 
 ---
 
+# Seçilen iş kalemi 5: Android ABI matrisi doğrulaması (E5)
+
+Plan `subagent_claude_opus` (`2e96b92a`, 2026-11-03 11:00 UTC). Üç bulgusu kalemi
+yeniden çerçeveledi: (1) **emülatör zaten var** — `android.yml` KVM'yi açıp API 34
+x86_64 imajında enstrümanlı testleri ve launch smoke'u koşuyor; eksik olan PR'da
+tetikleme, (2) macOS seçenek değil (iç içe sanallaştırma yok), (3)
+**`SHA256SUMS-android.txt` artefakta hiç yüklenmiyordu** — release'e ekleniyor ama
+indirdiği koşuda yok.
+
+## Bu dilimde yapılan
+- `.github/scripts/verify-android-abis.sh`: her APK/AAB yalnız kendi ABI'sinin
+  `lib/` dizinini taşıyor mu, üç yerel kütüphane (`libpdf_sak_lib.so`,
+  `libpdfium.so`, `libtesseract.so`) var mı, ELF şekli doğru mu (64-bit AArch64 /
+  32-bit ARM), iki APK aynı sertifikayla mı imzalı, `sha256sum -c` geçiyor mu.
+- Workflow: doğrulama **yüklemeden önce**; `android-apks` artefaktı artık
+  `SHA256SUMS-android.txt` dosyasını da içeriyor.
+- Pin: `ci-workflow.test.ts` hem adımı hem artefakt listesini hem de sırayı tutuyor.
+
+## Açık kalan (bilinçli)
+- **Paralel iş bölünmesi** (`build` matrisi + `assemble`): yayın hattını
+  yeniden düzenler ve yalnız dispatch ile doğrulanabilir; ayrı bir dilim.
+- Etiketle tetiklenen emülatör koşusu (`pull_request: types: [labeled]`),
+  ARM cihaz testi (Firebase Test Lab → kullanıcı kararı).
+
+## Kabul
+- `workflow_dispatch` koşusu yeşil ve kanıt run id'siyle raporlanır; artefakt
+  içinde 4 paket + toplam listesi; `lib/` denetimi geçer.
+
+---
+
 ## NEREDE KALDIM / SIRADAKI ADIM
 - **Tamamlandı (2026-11-02):** E4.5 prop taraması, iki dilim.
   PR #585 (`f7e90d1`): tarayıcı modülü + taban v3 + `PetitionWizard` etiketleri.
@@ -309,9 +339,8 @@ akışın Windows'ta koşması, RELEASE_READINESS iddiası.
   pages; detector auto=true,false`. Scanner'ın pdfium istemediği doğrulandı →
   akış her PR'da Linux işinde koşuyor. `smoke.mjs` 148 → 142 (dört akış kendi
   launch context'ini taşıyor).
-- **Sıradaki kalem:** Android ABI matrisi + etiketle tetiklenen emülatör koşusu
-  (tek `workflow_dispatch` oturumu). PR kapısı değil; bu pencerede doğrulanabilir.
-  Başlamadan `subagent_claude_opus` planı alınacak.
+- **Şimdiki kalem (2026-11-03 11:15 UTC):** Android ABI matrisi doğrulaması
+  (yukarıdaki plan). Baseline dispatch `41622851526` master üzerinde koşuyor.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
   E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
