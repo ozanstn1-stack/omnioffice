@@ -345,9 +345,17 @@ indirdiği koşuda yok.
   `f17e1d97…` sertifikasıyla imzalı, artefakt **5 dosya** (4 paket +
   `SHA256SUMS-android.txt`). Baseline artefaktında toplam listesi **yoktu** —
   gerçek boşluk buydu.
-- **SIRADAKİ ADIM:** Android paralel iş bölünmesi (`build` matrisi + `assemble`)
-  — yayın hattını yeniden düzenler, kendi dispatch'i ile doğrulanmalı; ya da
-  etiketle tetiklenen emülatör koşusu (`pull_request: types: [labeled]`).
+- **Kapandı (2026-11-03 16:25 UTC):** Android etiket CI — **PR #598 →
+  `971d454`**, 21/21 yeşil. `android-ci` etiketi PR'da tam Android işini koşuyor
+  (iki ABI + emülatör + launch smoke + ABI matrisi). R0 `41653425078` (başka
+  etiket → skipped), R1 `41662802381` (PR, imzasız, tag adımları skipped),
+  R2 `41653625266` (dispatch, `f17e1d97…`). Üç gerçek kusur çıktı ve düzeltildi:
+  v1 imza yedeği, `--require-signature` (PR imzasız doğuyor), macOS işi bir kez
+  dış nedenle iptal oldu→yeniden koştu.
+- **SIRADAKİ ADIM:** Android paralel iş bölünmesi (`build` matrisi + `assemble`).
+  Önce `universal` test görevinin **tüm ABI `.so`** bağımlılığı çözülecek; iş
+  artık kendi PR'ında `android-ci` etiketiyle ~35 dk'da doğrulanabilir (dispatch
+  gerekmiyor). Açık risk: tag yolunun gerçek sınavı bir sonraki `v*` etiketi.
   Alternatif küçük iş: `detail` alanlarını tarayıcıya katmak.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
