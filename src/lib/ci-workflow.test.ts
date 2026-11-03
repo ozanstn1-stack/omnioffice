@@ -14,6 +14,16 @@ const linux = read("linux-package.yml");
 const android = read("android.yml");
 const beta = read("beta.yml");
 
+/** The jobs of android.yml, in file order (jobBlocks() reads desktop.yml). */
+function androidJobs(): { name: string; body: string }[] {
+  const text = android.slice(android.indexOf("\njobs:\n") + 1);
+  const matches = [...text.matchAll(/^ {2}([a-z0-9-]+):\n/gm)];
+  return matches.map((match, index) => ({
+    name: match[1],
+    body: text.slice(match.index ?? 0, index + 1 < matches.length ? matches[index + 1].index : text.length),
+  }));
+}
+
 function jobBlocks(): { name: string; body: string }[] {
   const jobs: { name: string; body: string }[] = [];
   const start = desktop.indexOf("\njobs:\n");
@@ -212,17 +222,54 @@ describe("Rust coverage and Android build shape (E4.1, E5)", () => {
   });
 
   it("builds both Android artifacts in one Gradle run per ABI", () => {
-    // `--apk` and `--aab` are independent flags: four sequential builds were
-    // two Gradle runs that produce nothing extra.
+    // `--apk` and `--aab` are independent flags: one Gradle run per ABI produces
+    // both, and the two ABIs are separate matrix jobs.
     const calls = [...android.matchAll(/tauri android build -- ([^\n]+)/g)].map((match) => match[1].trim());
-    const armCalls = calls.filter((call) => /--target (aarch64|armv7)/.test(call));
-    expect(armCalls).toHaveLength(2);
-    for (const call of armCalls) {
-      expect(call).toContain("--apk");
-      expect(call).toContain("--aab");
-    }
-    expect(android).toContain("OmniOffice-Android-$version-arm64-v8a.aab");
+    const release = calls.filter((call) => call.includes("--aab"));
+    expect(release).toHaveLength(1);
+    expect(release[0]).toContain("--apk");
+    expect(release[0]).toContain("--target ${{ matrix.target }}");
+    expect(android).toContain("OmniOffice-Android-$version-${{ matrix.abi }}.aab");
     expect(android).toContain("sha256sum *.apk *.aab");
+  });
+
+  it("splits the Android build by ABI and publishes from one assemble job", () => {
+    const jobs = androidJobs();
+    const build = jobs.find((entry) => entry.name === "build");
+    const tests = jobs.find((entry) => entry.name === "tests");
+    const assemble = jobs.find((entry) => entry.name === "assemble");
+    expect(build && tests && assemble).toBeTruthy();
+
+    // Both arms run even when one fails: in a two-run budget, the second
+    // failure reason is worth more than a cancelled runner.
+    expect(build?.body).toContain("fail-fast: false");
+    expect(build?.body).toContain("abi: arm64-v8a");
+    expect(build?.body).toContain("abi: armeabi-v7a");
+    expect(build?.body).toContain("${{ matrix.abi }}");
+    expect(build?.body).toContain("Require the release keystore");
+    expect(build?.body).toContain("name: android-abi-${{ matrix.abi }}");
+
+    // The emulator is x86_64; only that library is built, and no secret is used.
+    expect(tests?.body).toContain("-PabiList=x86_64 -ParchList=x86_64 -PtargetList=x86_64");
+    expect(tests?.body).not.toContain("secrets.");
+    expect(tests?.body).not.toContain("ANDROID_KEYSTORE");
+    expect(android).not.toContain("--target i686");
+
+    // One place verifies and publishes, and only after the tests pass.
+    expect(assemble?.body).toContain("needs: [build, tests]");
+    expect(assemble?.body).toMatch(/actions\/download-artifact@[0-9a-f]{40}/);
+    expect(assemble?.body).toContain("pattern: android-abi-*");
+    expect(assemble?.body).toContain("merge-multiple: true");
+    const order = ["sha256sum *.apk *.aab", "verify-android-abis.sh", "name: android-apks", "gh release upload"];
+    const positions = order.map((needle) => assemble?.body.indexOf(needle) ?? -1);
+    for (const position of positions) expect(position).toBeGreaterThan(-1);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    // The tag-gated steps live only here now.
+    expect(assemble?.body).toContain("Verify release identity");
+    expect(assemble?.body).toContain("Attach Android assets to the release");
+    expect(build?.body).not.toContain("Attach Android assets");
+    // Writing is needed only where the release is attached.
+    expect(android).toContain("permissions:\n  contents: read");
   });
 
   it("runs the Android build on demand for a pull request, without touching the tag path", () => {
@@ -240,15 +287,8 @@ describe("Rust coverage and Android build shape (E4.1, E5)", () => {
     expect(android).not.toContain("pull_request_target");
     // Both jobs stay dormant for any other label.
     const guard = "github.event_name != 'pull_request' || github.event.label.name == 'android-ci'";
-    // jobBlocks() reads desktop.yml; the Android jobs are parsed here.
-    const text = android.slice(android.indexOf("\njobs:\n") + 1);
-    const matches = [...text.matchAll(/^ {2}([a-z0-9-]+):\n/gm)];
-    const jobs = matches.map((match, index) => ({
-      name: match[1],
-      body: text.slice(match.index ?? 0, index + 1 < matches.length ? matches[index + 1].index : text.length),
-    }));
-    for (const job of ["build", "version-consistency"]) {
-      const block = jobs.find((entry) => entry.name === job);
+    for (const job of ["build", "tests", "assemble", "version-consistency"]) {
+      const block = androidJobs().find((entry) => entry.name === job);
       expect(block, `${job} job`).toBeDefined();
       expect(block?.body).toContain(guard);
     }
