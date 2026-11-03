@@ -369,10 +369,18 @@ indirdiği koşuda yok.
   **75 → 56** (Invoices 19→3: yalnız Luca/Logo/Zirve; Vault listeden çıktı).
   KDV tutarları artık `money()` ile: **üç ondalık hatası da düzeldi**
   (`toLocaleString` varsayılanı 3'tü).
-- **SIRADAKİ ADIM:** i18n `detail` alanlarını tarayıcıya katmak (bilinçli
-  `--allow-raise` ölçüm PR'ı, ardından çeviri dilimi) **ya da** Vault E2E akışı
-  (`vault_configure` tohumlaması tasarım ister) **ya da** Rust kapsam tabanını
-  yükseltmek. Seçim Opus'a sorulacak. Açık pencere yarın 01:00 UTC'ye kadar.
+- **Kapandı (2026-11-03 18:22 UTC):** i18n `detail` taraması — **PR #602 →
+  `df81ef6`**, 19/19 yeşil. `OBJECT_KEYS`'e `detail` eklendi; ölçüm **0 dize**
+  (kalanların hepsi ya `t()` çağrısı ya hesaplanan değer ya sürüm/sayı). Boşluk
+  yine de kapandı: sıradaki elle yazılmış Türkçe detay denetimde takılır.
+  Belgelenen yan bulgu: `--update`, tabanda **hiç kaydı olmayan** dosyayı
+  `--allow-raise` olmadan kaydediyor (büyüme koruması yalnız kayıtlı dosyalar
+  için).
+- **SIRADAKİ ADIM:** kalan işler — (1) Rust kapsam tabanını ölçüme yaklaştırmak
+  (CI'da bir ölçüm koşusu), (2) Vault E2E (`vault_configure` tohumlaması),
+  (3) motor önbelleğini release/beta/nightly'a taşımak, (4) Scorecard/Renovate
+  kararı, (5) `Redact`'ta kalan 1 metin düğümü. Seçim Opus'a sorulacak.
+  Bekleyen risk: tag'e bağlı üç Android adımı ilk `v*` etiketinde sınanacak.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
   E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
