@@ -546,6 +546,12 @@ jobs:
       - name: Scanner (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:scanner
+      # The vault indexes a scratch folder, searches it and previews a hit; the
+      # hybrid search falls back to keyword without an embedding client, so no
+      # engine or provider is involved.
+      - name: Vault (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:vault
       # Engine-free real flows: Writer type -> save, PDF merge and Studio
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)

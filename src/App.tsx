@@ -756,7 +756,7 @@ export default function App() {
       planner: <PlannerScreen />,
       data: <DataScreen />,
       pdfForms: <PdfFormsScreen />,
-      vault: <Vault />,
+      vault: <Vault initialFiles={files} />,
       pdfStudio: <PdfStudio initialFiles={files} dragging={dragging} />,
       compat: <CompatibilityScreen />,
       jobs: <JobsScreen />,

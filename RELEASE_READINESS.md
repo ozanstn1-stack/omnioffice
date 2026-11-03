@@ -67,6 +67,19 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.4.0) - E1 kalanları ve kalite altyapısı (E4/E5)
 
+- **The vault has an end-to-end flow (E4.3):** `npm run e2e:vault` hands a text
+  file to the app through the dev launch context; the screen turns that file's
+  folder into a scan, the real backend indexes both files, a keyword search finds
+  the seeded one, the match is highlighted and the preview shows the document.
+  No engine and no provider is involved — `vault_search_hybrid` falls back to
+  keyword search without an embedding client — so the flow runs in the Linux
+  tauri-driver job with the other engine-free flows. Seeding is behind
+  `PDFSAK_DEV_RUN` and off on Android: a normal launch never indexes a folder on
+  its own, which a unit test pins.
+  `test:src/screens/Vault.test.tsx#indexes the handed-over file's folder in a development auto-run`
+  `test:src/screens/Vault.test.tsx#never indexes anything on a normal launch`
+  `test:src/screens/vault-dev.test.ts#deduplicates one folder, case-insensitively`
+
 - **The Android ABI matrix is checked on the artifacts (E5):** the APK and AAB
   are read as files before anything is published - each one carries only its own
   ABI's `lib/` directory with the three native libraries, the libraries are the
