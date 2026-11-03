@@ -3217,5 +3217,16 @@
   "kvkk.option.employee": "Employee",
   "kvkk.option.customer": "Customer / Web",
   "kvkk.option.visitor": "Visitor (CCTV)",
-  "kvkk.option.consent": "Explicit consent"
+  "kvkk.option.consent": "Explicit consent",
+  "common.documentSaved": "{format} document saved",
+  "petition.toast.requiredFields": "Please fill in the authority, subject, full name and description fields.",
+  "petition.toast.invalidTckn": "Invalid T.C. ID number.",
+  "invoices.toast.exportSaved": "{software} export file saved",
+  "invoices.toast.duplicatesTitle": "Duplicate invoices removed",
+  "invoices.toast.duplicatesDetail": "{count} duplicate invoices removed from the list.",
+  "redact.toast.certNeedsResult": "Apply the redaction first; the certificate is embedded in the redacted PDF.",
+  "redact.toast.certEmbedded": "Redaction certificate created and embedded in the PDF",
+  "vault.toast.indexUpdated": "Vector index updated ({embedded} new, {reused} cached)",
+  "kvkk.toast.copiedTitle": "Text copied to the clipboard",
+  "kvkk.toast.copiedDetail": "The KVKK text is on the clipboard; use it in Word/Writer or as a PDF output."
 }

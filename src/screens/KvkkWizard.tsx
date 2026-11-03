@@ -87,8 +87,8 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
     void navigator.clipboard?.writeText(generatedText);
     push({
       kind: "success",
-      title: "Metin Panoya Kopyalandı",
-      detail: "KVKK metni panoya aktarıldı, Word/Writer veya PDF çıktısı olarak kullanabilirsiniz.",
+      title: t("kvkk.toast.copiedTitle"),
+      detail: t("kvkk.toast.copiedDetail"),
     });
   };
 
@@ -122,7 +122,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
         } else {
           push({
             kind: "success",
-            title: `${format.toUpperCase()} belgesi başarıyla kaydedildi!`,
+            title: t("common.documentSaved", { format: format.toUpperCase() }),
             detail: target.name,
           });
         }
@@ -147,7 +147,7 @@ export function KvkkWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void
       }
       push({
         kind: "success",
-        title: `${format.toUpperCase()} belgesi başarıyla kaydedildi!`,
+        title: t("common.documentSaved", { format: format.toUpperCase() }),
       });
     } catch (error) {
       reportError(error, t);

@@ -252,10 +252,13 @@ listesi, `??`/birleştirme biçimleri.
   Yol üstünde gerçek bir çizim hatası düzeldi: `KvkkWizard` `t("kvkk.lawBody")`
   ve `t("kvkk.legalWarningBody")` metnini **çağrı olarak** basıyordu
   (`hardcoded-jsx` 77 → 75).
-- **SIRADAKİ ADIM (E4.8):** kalan 13 `objects` dizesi — `push({ title: … })`
-  bildirimleri: `PetitionWizard` 4, `Invoices` 3, `KvkkWizard` 2 (`common.
-  documentSaved` yeniden kullanılabilir), `Redact` 2, `Vault` 1.
-  Sonra Scanner E2E / Android ABI hafta sonu uzun CI penceresinde.
+- **E4.8 (2026-11-03 04:52 UTC, aynı pencerede):** kalan 13 toast dizesi de
+  taşındı — `objects` **13 → 0**, pin `toBe(0)` ile kilitlendi. Toplam bu turda
+  `objects` **34 → 0**, `files` **77 → 75**.
+- **SIRADAKİ ADIM:** Scanner E2E akışı (pdfium, yalnız Windows E2E işinde) ya da
+  Android ABI matrisi (`workflow_dispatch`) — ikisi de uzun CI penceresi ister,
+  hafta sonu ya da 10:00 UTC sonrası. Alternatif küçük iş: `detail` alanlarını
+  tarayıcıya katmak (bilinçli `--allow-raise` ölçüm PR'ı).
 - **Neden burada duruldu:** sessiz saat Pzt-Cum UTC 01:00-04:00; E4.7 mimari bir
   refactor ve Opus planı gerektiriyor, sıfırdan başlatmak yerine temiz bir
   noktada bırakıldı. Başlamak için tek komut yeterli.

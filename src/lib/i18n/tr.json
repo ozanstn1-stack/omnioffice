@@ -3217,5 +3217,16 @@
   "kvkk.option.employee": "Çalışan",
   "kvkk.option.customer": "Müşteri / Web",
   "kvkk.option.visitor": "Ziyaretçi (Kamera)",
-  "kvkk.option.consent": "Açık Rıza"
+  "kvkk.option.consent": "Açık Rıza",
+  "common.documentSaved": "{format} belgesi başarıyla kaydedildi!",
+  "petition.toast.requiredFields": "Lütfen makam, konu, ad soyad ve açıklama alanlarını doldurun.",
+  "petition.toast.invalidTckn": "Geçersiz T.C. Kimlik Numarası!",
+  "invoices.toast.exportSaved": "{software} Aktarım Dosyası Kaydedildi",
+  "invoices.toast.duplicatesTitle": "Mükerrer Faturalar Temizlendi",
+  "invoices.toast.duplicatesDetail": "{count} adet mükerrer fatura listeden çıkarıldı.",
+  "redact.toast.certNeedsResult": "Önce karartmayı uygulayın; sertifika karartılmış PDF'e gömülür.",
+  "redact.toast.certEmbedded": "Karartma sertifikası üretildi ve PDF'e gömüldü",
+  "vault.toast.indexUpdated": "Vektör İndeksi Güncellendi ({embedded} yeni, {reused} önbellek)",
+  "kvkk.toast.copiedTitle": "Metin Panoya Kopyalandı",
+  "kvkk.toast.copiedDetail": "KVKK metni panoya aktarıldı, Word/Writer veya PDF çıktısı olarak kullanabilirsiniz."
 }

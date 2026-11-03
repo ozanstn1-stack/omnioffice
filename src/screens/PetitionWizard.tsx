@@ -43,7 +43,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
     if (!data.recipientAuthority.trim() || !data.subject.trim() || !data.fullName.trim() || !data.bodyText.trim()) {
       useToasts.getState().push({
         kind: "info",
-        title: "Lütfen makam, konu, ad soyad ve açıklama alanlarını doldurun.",
+        title: t("petition.toast.requiredFields"),
       });
       return false;
     }
@@ -51,7 +51,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
     if (data.tckn.trim() && !validateTCKN(data.tckn)) {
       useToasts.getState().push({
         kind: "error",
-        title: "Geçersiz T.C. Kimlik Numarası!",
+        title: t("petition.toast.invalidTckn"),
       });
       return false;
     }
@@ -92,7 +92,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
         } else {
           useToasts.getState().push({
             kind: "success",
-            title: `${format.toUpperCase()} belgesi başarıyla kaydedildi!`,
+            title: t("common.documentSaved", { format: format.toUpperCase() }),
             detail: target.name,
           });
         }
@@ -117,7 +117,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
       }
       useToasts.getState().push({
         kind: "success",
-        title: `${format.toUpperCase()} belgesi başarıyla kaydedildi!`,
+        title: t("common.documentSaved", { format: format.toUpperCase() }),
       });
     } catch (error) {
       reportError(error, t);
