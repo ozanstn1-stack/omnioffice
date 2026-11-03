@@ -381,9 +381,13 @@ indirdiği koşuda yok.
   seeded one by keyword (50 chars previewed)`. Rust değişikliği gerekmedi:
   `vault_scan` klasörleri birleştiriyor, tohumlama `PDFSAK_DEV_RUN` + Android
   dışı koşuluna bağlı. Akış her PR'da Linux işinde (~1 dk).
-- **SIRADAKİ ADIM:** (1) Rust kapsam tabanı (bu PR'ın `rust-coverage` ölçümü
-  ikinci veri noktası oldu — 55/56/56'ya çıkarmadan önce iki ölçümün düşüğüne
-  bakılacak), (2) motor önbelleğini release/beta/nightly'a taşımak,
+- **Rust kapsam ölçümü (2. veri noktası, PR #603 koşusu):** TOTAL
+  **55.23 / 56.37 / 56.30** — ilk ölçümle **birebir aynı** (108710 bölge, 5771
+  fonksiyon, 53769 satır). Rust'a iki ölçüm arasında dokunulmadığı için llvm-cov
+  deterministik görünüyor. 55/56/56'ya çıkarma ölçütü "düşük ölçüm yeni tabanı
+  ≥0,5 puan aşmalı" idi; 55.23−55 = **0.23** → **taban yükseltilmedi** (mevcut
+  ~1 puanlık pay korunuyor).
+- **SIRADAKİ ADIM:** (1) Rust kapsam tabanı **ertelendi** (yukarıdaki ölçüt), (2) motor önbelleğini release/beta/nightly'a taşımak,
   (3) Scorecard/Renovate kararı, (4) `Redact` kalan 1 metin düğümü + `Vault`
   kalan 1 attribute. Seçim Opus'a sorulacak.
   Bekleyen risk: tag'e bağlı üç Android adımı ilk `v*` etiketinde sınanacak.
