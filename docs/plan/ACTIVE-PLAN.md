@@ -255,10 +255,16 @@ listesi, `??`/birleştirme biçimleri.
 - **E4.8 (2026-11-03 04:52 UTC, aynı pencerede):** kalan 13 toast dizesi de
   taşındı — `objects` **13 → 0**, pin `toBe(0)` ile kilitlendi. Toplam bu turda
   `objects` **34 → 0**, `files` **77 → 75**.
-- **SIRADAKİ ADIM:** Scanner E2E akışı (pdfium, yalnız Windows E2E işinde) ya da
-  Android ABI matrisi (`workflow_dispatch`) — ikisi de uzun CI penceresi ister,
-  hafta sonu ya da 10:00 UTC sonrası. Alternatif küçük iş: `detail` alanlarını
-  tarayıcıya katmak (bilinçli `--allow-raise` ölçüm PR'ı).
+- **E4.8 kapandı (2026-11-03 05:05 UTC):** **PR #590 → `8b5a425`**, 19/19 yeşil.
+  Kalan 13 toast dizesi taşındı, `ci-workflow.test.ts` pini **0**'a çekildi.
+  Bu pencerenin toplamı: `objects` **34 → 0**, `files` **77 → 75**, üç PR
+  (#588, #589, #590).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
+  disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
+  E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
+  uzun CI penceresi ister → hafta sonu ya da 10:00 UTC sonrası. Küçük alternatif:
+  `detail` alanlarını tarayıcıya katmak (bilinçli `--allow-raise` ölçüm PR'ı).
+  Başlamadan önce `subagent_claude_opus`'tan plan alınacak.
 - **Neden burada duruldu:** sessiz saat Pzt-Cum UTC 01:00-04:00; E4.7 mimari bir
   refactor ve Opus planı gerektiriyor, sıfırdan başlatmak yerine temiz bir
   noktada bırakıldı. Başlamak için tek komut yeterli.
