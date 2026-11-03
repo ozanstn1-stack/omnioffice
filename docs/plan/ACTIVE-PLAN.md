@@ -376,10 +376,20 @@ indirdiği koşuda yok.
   Belgelenen yan bulgu: `--update`, tabanda **hiç kaydı olmayan** dosyayı
   `--allow-raise` olmadan kaydediyor (büyüme koruması yalnız kayıtlı dosyalar
   için).
-- **SIRADAKİ ADIM:** kalan işler — (1) Rust kapsam tabanını ölçüme yaklaştırmak
-  (CI'da bir ölçüm koşusu), (2) Vault E2E (`vault_configure` tohumlaması),
-  (3) motor önbelleğini release/beta/nightly'a taşımak, (4) Scorecard/Renovate
-  kararı, (5) `Redact`'ta kalan 1 metin düğümü. Seçim Opus'a sorulacak.
+- **Kapandı (2026-11-03 19:02 UTC):** Vault E2E — **PR #603 → `68f1dfc`**,
+  19/19 yeşil. CI kanıtı: `PASS: the vault indexed 2 documents and found the
+  seeded one by keyword (50 chars previewed)`. Rust değişikliği gerekmedi:
+  `vault_scan` klasörleri birleştiriyor, tohumlama `PDFSAK_DEV_RUN` + Android
+  dışı koşuluna bağlı. Akış her PR'da Linux işinde (~1 dk).
+- **Rust kapsam ölçümü (2. veri noktası, PR #603 koşusu):** TOTAL
+  **55.23 / 56.37 / 56.30** — ilk ölçümle **birebir aynı** (108710 bölge, 5771
+  fonksiyon, 53769 satır). Rust'a iki ölçüm arasında dokunulmadığı için llvm-cov
+  deterministik görünüyor. 55/56/56'ya çıkarma ölçütü "düşük ölçüm yeni tabanı
+  ≥0,5 puan aşmalı" idi; 55.23−55 = **0.23** → **taban yükseltilmedi** (mevcut
+  ~1 puanlık pay korunuyor).
+- **SIRADAKİ ADIM:** (1) Rust kapsam tabanı **ertelendi** (yukarıdaki ölçüt), (2) motor önbelleğini release/beta/nightly'a taşımak,
+  (3) Scorecard/Renovate kararı, (4) `Redact` kalan 1 metin düğümü + `Vault`
+  kalan 1 attribute. Seçim Opus'a sorulacak.
   Bekleyen risk: tag'e bağlı üç Android adımı ilk `v*` etiketinde sınanacak.
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows

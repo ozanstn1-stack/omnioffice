@@ -35,6 +35,7 @@ import { normalizePageSize, rectToUserSpace, userSpaceToRect } from "../lib/reda
 import { renderCertificateMarkdown, type RedactedItemRecord } from "../lib/redact-cert";
 import type * as specta from "../lib/generated/specta";
 import type { ImageRedactionMode, RedactionArea, RedactionOptions } from "../lib/types";
+import { certificateToastDetail } from "../lib/redact-rows";
 import { kindLabel, matchBox, matchRow, splitKeywords, type DrawnBox, type MatchRow } from "../lib/redact-rows";
 import { useScreenReady } from "../lib/screen-ready";
 
@@ -317,9 +318,12 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
       pushToast({
         kind: verification.contentMatches ? "success" : "error",
         title: t("redact.toast.certEmbedded"),
-        detail: `Sertifika (${certificate.id}) ${
-          verification.contentMatches ? "doğrulandı" : "DOĞRULANAMADI"
-        } — ${certificate.items.length} madde${saveToFile ? ", rapor dosyaya kaydedildi" : ""}.`,
+        detail: certificateToastDetail(t, {
+          id: certificate.id,
+          verified: verification.contentMatches,
+          count: certificate.items.length,
+          saved: saveToFile,
+        }),
       });
     } catch (error) {
       reportError(error, t);

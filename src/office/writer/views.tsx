@@ -270,6 +270,7 @@ export const StaticBlocks = memo(function StaticBlocks({
   fieldValues,
   onOpen,
 }: StaticBlocksProps) {
+  const t = useT();
   return (
     <>
       {blocks.map((block, index) => {
@@ -306,7 +307,7 @@ export const StaticBlocks = memo(function StaticBlocks({
             ) : null}
             {block.type === "pageBreak" ? (
               <div className="writer-page-break">
-                <span>— page break —</span>
+                <span>{t("writer.pageBreak")}</span>
               </div>
             ) : null}
             {block.type === "toc" ? <TocView entries={block.entries} onOpen={onOpen} /> : null}
@@ -711,6 +712,7 @@ export function BlockView({
   onStructure: (action: StructureAction) => void;
   onOpenBlock: (index: number) => void;
 }) {
+  const t = useT();
   // Live size while an image handle is dragged. The model is only written on
   // pointerup, so the whole drag is one undo step.
   const [imagePreview, setImagePreview] = useState<{ widthPt: number; heightPt: number } | null>(null);
@@ -790,7 +792,7 @@ export function BlockView({
   if (block.type === "pageBreak") {
     return (
       <div className="writer-page-break" contentEditable={false}>
-        <span>— page break —</span>
+        <span>{t("writer.pageBreak")}</span>
       </div>
     );
   }

@@ -51,6 +51,7 @@ function PageThumb({
   password?: string;
   refreshedAt: number;
 }) {
+  const t = useT();
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -93,7 +94,7 @@ function PageThumb({
       style={{ background: "var(--surface-2)" }}
     >
       {src ? (
-        <img src={src} alt={`Page ${page}`} className="w-full h-full object-contain" draggable={false} />
+        <img src={src} alt={t("common.pageAlt", { page })} className="w-full h-full object-contain" draggable={false} />
       ) : failed ? (
         <span className="text-xs muted">—</span>
       ) : (
@@ -255,7 +256,7 @@ function OrganizeGrid({
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded-md"
                   style={{ background: "rgb(0 0 0 / 0.4)", color: "white" }}
-                  title={`Source page ${page.sourcePage}`}
+                  title={t("organize.sourcePage", { page: page.sourcePage })}
                 >
                   ←{page.sourcePage}
                 </span>

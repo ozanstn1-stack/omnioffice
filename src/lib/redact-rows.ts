@@ -3,6 +3,7 @@
  * between detector matches and the boxes drawn on the page. They live apart
  * from the screen so the JSX file stays under its line budget.
  */
+import type { Translate } from "./i18n";
 import type { RedactionArea, RedactionMatch } from "./types";
 
 /** A box the user drew, in page space, with a stable id for removal. */
@@ -53,4 +54,21 @@ export function kindLabel(t: (key: string) => string, kind?: string): string {
   const key = `redact.kind.${kind}`;
   const label = t(key);
   return label === key ? kind : label;
+}
+
+/**
+ * The second line of the certificate toast.
+ *
+ * The sentence used to be written in the screen with the verdict inside a
+ * template expression, which is why the i18n scan never saw it: the literal
+ * pieces ("Sertifika", "madde") carry no Turkish-specific letter.
+ */
+export function certificateToastDetail(
+  t: Translate,
+  certificate: { id: string; verified: boolean; count: number; saved: boolean },
+): string {
+  const base = certificate.verified
+    ? t.plural("redact.toast.certVerified", certificate.count, { id: certificate.id })
+    : t.plural("redact.toast.certUnverified", certificate.count, { id: certificate.id });
+  return certificate.saved ? `${base} ${t("redact.toast.certSaved")}` : base;
 }
