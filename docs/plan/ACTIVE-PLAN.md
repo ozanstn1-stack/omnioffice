@@ -393,11 +393,17 @@ indirdiği koşuda yok.
   bildirimi** (cümle `${…}` içinde olduğu için tarayıcı hiç görmemişti),
   Organize `alt`/`title` şablonları ve Batch'te `… total` + dosya sayısı başlığı
   ("N sayfa" → "N dosya"). `hardcoded-jsx` **56 → 50**; kalanlar bilinçli literal.
-- **SIRADAKİ ADIM:** tarayıcının iki boşluğu (sonraki doğal dilim): (a) `${…}`
-  içeren şablon **attribute**'ları (`alt`, `title`, `aria-label`) hiç sayılmıyor,
-  (b) `valueTexts` şablon parçalarının içindeki dize literallerine inmiyor.
-  İkisi de tabanı bir kez `--allow-raise` ile yükseltir → ayrı ölçüm PR'ı.
-  Ardından: motor önbelleği (tag/nightly), Scorecard/Renovate.
+- **Kapandı (2026-11-03 19:58 UTC):** i18n şablon boşlukları — **PR #605 →
+  `82a69be`**, 19/19 yeşil. `literalText()` artık `${…}` içeren şablon
+  attribute/prop'larını **düz kelimeleriyle** sayıyor (her enterpolasyon tek
+  `${…}`); hemen iki gerçek sızıntı çıktı ve çevrildi: `Source page ${n}` ve
+  `${rows} by ${cols}` (TR: `{rows} × {cols}`). Taban `attributes` 9 → **11**
+  (kalan ikisi kısayol ipucu: `${…} (Ctrl+K)`). Ölçüldü: nesne tarafındaki
+  `${…}` içi dizeler **0** — o boşluk boş çıktı, kapatılmadı.
+- **SIRADAKİ ADIM:** motor önbelleğini release/beta/nightly'a taşımak
+  (tag/nightly'de sınanır), Scorecard/Renovate kararı, ya da kalan
+  `${…}`-içi/koşullu dal boşlukları (sayım çok satıra geçer). Seçim Opus'a
+  sorulacak.
 - **Ertelendi:** (1) Rust kapsam tabanı (yukarıdaki ölçüt), (2) motor önbelleğini release/beta/nightly'a taşımak,
   (3) Scorecard/Renovate kararı, (4) `Redact` kalan 1 metin düğümü + `Vault`
   kalan 1 attribute. Seçim Opus'a sorulacak.
