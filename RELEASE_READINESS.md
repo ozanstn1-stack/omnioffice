@@ -278,6 +278,15 @@ release-train schedule is decided.
   `test:src/lib/document-health-text.test.ts#keeps the Turkish wording exactly as the screen said it before`
   `test:src/lib/document-health-text.test.ts#gives every finding an English title and description, with no placeholder left`
   `test:src/lib/document-health-text.test.ts#keeps both tables in step for every finding key`
+- **The toast titles became translatable too (E4.8):** the last of the object
+  strings - the copy a screen pushes when something finishes - moved out of the
+  `push({ title: … })` calls: the petition validation and save notices, the KVKK
+  copy and save notices (sharing one `{format}` key), the invoice export and
+  duplicate-cleanup notices, the redaction certificate pair and the vault index
+  report. `hardcoded-objects` **13 -> 0**, and `ci-workflow.test.ts` now pins the
+  section at zero instead of a ceiling, so the next literal fails the build
+  rather than fitting under a number.
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`

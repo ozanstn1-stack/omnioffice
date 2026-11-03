@@ -272,7 +272,7 @@ export function Vault() {
       const report = await unwrap(commands.vaultIndexBuild(embeddingConsent));
       pushToast({
         kind: "success",
-        title: `Vektör İndeksi Güncellendi (${report.embedded} yeni, ${report.reused} önbellek)`,
+        title: t("vault.toast.indexUpdated", { embedded: report.embedded, reused: report.reused }),
       });
     } catch (err) {
       setScanError(errorMessage(err, t));

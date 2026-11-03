@@ -195,7 +195,7 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
     expect(total(baseline.files)).toBeLessThanOrEqual(77);
     expect(total(baseline.attributes)).toBeLessThanOrEqual(9);
     expect(total(baseline.props)).toBeLessThanOrEqual(6);
-    expect(total(baseline.objects)).toBeLessThanOrEqual(34);
+    expect(total(baseline.objects)).toBe(0);
   });
 });
 

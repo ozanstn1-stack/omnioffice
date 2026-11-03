@@ -276,7 +276,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
 
   const generateCertificate = async (saveToFile = false) => {
     if (!session.primary || !session.result?.path) {
-      pushToast({ kind: "info", title: "Önce karartmayı uygulayın; sertifika karartılmış PDF'e gömülür." });
+      pushToast({ kind: "info", title: t("redact.toast.certNeedsResult") });
       return;
     }
     setCertBusy(true);
@@ -316,7 +316,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
 
       pushToast({
         kind: verification.contentMatches ? "success" : "error",
-        title: "Karartma sertifikası üretildi ve PDF'e gömüldü",
+        title: t("redact.toast.certEmbedded"),
         detail: `Sertifika (${certificate.id}) ${
           verification.contentMatches ? "doğrulandı" : "DOĞRULANAMADI"
         } — ${certificate.items.length} madde${saveToFile ? ", rapor dosyaya kaydedildi" : ""}.`,

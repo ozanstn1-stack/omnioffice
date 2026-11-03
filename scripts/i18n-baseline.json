@@ -40,11 +40,5 @@
   "props": {
     "office/calc/ui/CalcRibbon.tsx": 6
   },
-  "objects": {
-    "screens/Invoices.tsx": 3,
-    "screens/KvkkWizard.tsx": 3,
-    "screens/PetitionWizard.tsx": 4,
-    "screens/Redact.tsx": 2,
-    "screens/Vault.tsx": 1
-  }
+  "objects": {}
 }

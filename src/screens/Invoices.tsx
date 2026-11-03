@@ -258,7 +258,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
         if (ok) {
           useToasts.getState().push({
             kind: "success",
-            title: `${software.toUpperCase()} Aktarım Dosyası Kaydedildi`,
+            title: t("invoices.toast.exportSaved", { software: software.toUpperCase() }),
             detail: defaultName,
           });
         }
@@ -273,7 +273,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
       await aiSaveOutput(target.token, content, "overwrite");
       useToasts.getState().push({
         kind: "success",
-        title: `${software.toUpperCase()} Aktarım Dosyası Kaydedildi`,
+        title: t("invoices.toast.exportSaved", { software: software.toUpperCase() }),
         detail: target.path ?? target.name,
       });
     } catch (error) {
@@ -315,8 +315,8 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
 
     useToasts.getState().push({
       kind: "success",
-      title: "Mükerrer Faturalar Temizlendi",
-      detail: `${duplicateResult.totalDuplicates} adet mükerrer fatura listeden çıkarıldı.`,
+      title: t("invoices.toast.duplicatesTitle"),
+      detail: t("invoices.toast.duplicatesDetail", { count: duplicateResult.totalDuplicates }),
     });
   };
 
