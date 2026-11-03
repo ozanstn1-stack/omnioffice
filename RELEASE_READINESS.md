@@ -67,6 +67,17 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.4.0) - E1 kalanları ve kalite altyapısı (E4/E5)
 
+- **The Android ABI matrix is checked on the artifacts (E5):** the APK and AAB
+  are read as files before anything is published - each one carries only its own
+  ABI's `lib/` directory with the three native libraries, the libraries are the
+  right ELF shape (64-bit AArch64 / 32-bit ARM), both APKs share one signing
+  certificate, and `SHA256SUMS-android.txt` matches the files next to it. That
+  list is now part of the uploaded `android-apks` artifact too: the release
+  attached it while the run artifact omitted it, so nobody downloading a run
+  could verify a build. The check runs in the same job, before the upload, so a
+  wrong or mixed-ABI package fails the build instead of reaching a device.
+  `test:src/lib/ci-workflow.test.ts#checks the ABI matrix on the artifacts and publishes the checksum list`
+
 - **Coverage floors raised to the measured suite (E4.1):** the vitest thresholds
   move from 62/69/46/62 to 77/79/64/77 after re-measuring the full suite
   (statements 78.4, branches 80.2, functions 65.9, lines 78.4 across 219 files /
