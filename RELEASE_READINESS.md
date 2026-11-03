@@ -287,6 +287,25 @@ release-train schedule is decided.
   section at zero instead of a ceiling, so the next literal fails the build
   rather than fitting under a number.
   `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+- **The scanner has an end-to-end flow (E4.3):** `npm run e2e:scanner` hands two
+  generated photos to the Scanner through the dev launch context and proves the
+  on-device path: the detector finds the page on one photo and nothing on a blank
+  wall (`data-auto` = `true,false`), the grey filter sticks (`aria-pressed`), and
+  the build writes a real two-page PDF next to the first photo - read from disk,
+  not from the toast. It is engine-free (pdfcore's page detector and lopdf, no
+  pdfium), so it runs in the Linux job with the other engine-free flows and adds
+  about a minute to every PR. The screen gained the hooks that made it drivable:
+  an `initialFiles` hand-over (open-with and drag-and-drop use it too), a ready
+  signal carrying the page count, `data-testid` buttons and rows, and a
+  development auto-run that writes next to the source instead of opening a save
+  dialog the driver could never answer. The entry point stayed a flag table: the
+  four single-context flows now own their launch context (`impressScenario`,
+  `calcScenario`, `verifyScenario`, `scannerScenario`), so `e2e/smoke.mjs` is
+  shorter than before despite the new flow.
+  `test:src/screens/Scanner.test.tsx#takes the handed-over images once and ignores a document`
+  `test:src/screens/Scanner.test.tsx#reports the page count on the ready signal the driver waits for`
+  `test:src/screens/Scanner.test.tsx#builds next to the first photo in a development auto-run, with no save dialog`
+  `test:src/screens/scanner-dev.test.ts#keeps the Windows separator`
 - **The audit also measures JSX attributes, and Redact speaks both languages
   (E4.5):** the scanner now counts `alt`, `aria-label`, `title` and `placeholder`
   strings that hold prose, with its own section in `scripts/i18n-baseline.json`

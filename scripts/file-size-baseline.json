@@ -308,7 +308,7 @@
     "src/screens/Recipes.tsx": 286,
     "src/screens/Redact.tsx": 582,
     "src/screens/scanner-corners.tsx": 233,
-    "src/screens/Scanner.tsx": 243,
+    "src/screens/Scanner.tsx": 301,
     "src/screens/Security.tsx": 262,
     "src/screens/Settings.tsx": 557,
     "src/screens/Split.tsx": 220,

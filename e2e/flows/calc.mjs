@@ -7,8 +7,8 @@
  * `samples/test-spreadsheet.xlsx`, and D is `B*C` per row, so a non-zero total
  * means the real engine ran rather than the cached 0 stored in the file.
  */
-import { clickElement, findElement, screenshot, waitForScript } from "../lib/driver.mjs";
-import { elementKey } from "../lib/files.mjs";
+import { clickElement, findElement, screenshot, waitForScript, withSession } from "../lib/driver.mjs";
+import { elementKey, prepareWorkFile } from "../lib/files.mjs";
 
 const cellText = (row, col) =>
   `const el=document.querySelector('[data-cell="${row}:${col}"]'); return el ? (el.textContent||'').trim() : '';`;
@@ -61,4 +61,10 @@ export async function calcFlow(session) {
 
   await screenshot(session, "calc");
   console.log(`PASS: calc evaluated SUM(D2:D101) = ${total} and showed "${formula}" in the formula bar`);
+}
+
+/** The launch context for this flow: the workbook arrives through the dev context. */
+export async function calcScenario() {
+  const book = prepareWorkFile("test-spreadsheet.xlsx");
+  await withSession("calc", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: book }, calcFlow);
 }

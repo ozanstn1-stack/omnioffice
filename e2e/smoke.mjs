@@ -21,15 +21,16 @@ import { resolve } from "node:path";
 
 import { aclGate } from "./flows/acl.mjs";
 import { aiPackFlow } from "./flows/ai-pack.mjs";
-import { calcFlow } from "./flows/calc.mjs";
+import { calcScenario } from "./flows/calc.mjs";
 import { homeAndSettings } from "./flows/home.mjs";
-import { impressFlow } from "./flows/impress.mjs";
+import { impressScenario } from "./flows/impress.mjs";
 import { officeRoundtrip } from "./flows/office.mjs";
 import { mergeFlow, sanitizeFlow } from "./flows/pdf.mjs";
 import { accountantPersona, lawyerPersona, publicPersona, studentPersona } from "./flows/personas.mjs";
 import { reader } from "./flows/reader.mjs";
+import { scannerScenario } from "./flows/scanner.mjs";
 import { secretStoreFlow } from "./flows/secrets.mjs";
-import { verifyFlow } from "./flows/verify.mjs";
+import { verifyScenario } from "./flows/verify.mjs";
 import { artifacts, argv, pdf, requireAppBinary, valueOf, withSession, withSessionRetry } from "./lib/driver.mjs";
 import { prepareWorkFile } from "./lib/files.mjs";
 
@@ -48,31 +49,24 @@ async function main() {
     await aiPackFlow();
     return;
   }
-  // Impress: the dev launch opens the deck in the office editor, where the
-  // flow navigates, adds a slide and saves through the shared Ctrl+S handler.
-  if (argv.includes("--impress")) {
-    const deck = prepareWorkFile("test-presentation.pptx");
-    await withSession("impress", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: deck }, impressFlow);
-    return;
+  // Flows that only need one launch context keep it in their own module, so
+  // this entry point stays a flag table instead of growing with every flow.
+  const simple = [
+    ["--impress", impressScenario],
+    ["--calc", calcScenario],
+    ["--verify", verifyScenario],
+    ["--scanner", scannerScenario],
+  ];
+  for (const [flag, run] of simple) {
+    if (argv.includes(flag)) {
+      await run();
+      return;
+    }
   }
   // The secret store runs its own two sessions (save, restart, clear) and
   // checks the file the store wrote.
   if (argv.includes("--secrets")) {
     await secretStoreFlow();
-    return;
-  }
-  // Calc: the dev launch opens the workbook in the office editor, where the
-  // flow reads a computed cell and the formula bar.
-  if (argv.includes("--calc")) {
-    const book = prepareWorkFile("test-spreadsheet.xlsx");
-    await withSession("calc", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: book }, calcFlow);
-    return;
-  }
-  // Signature verification: the dev launch opens the file on the Verify screen
-  // and that screen runs the offline check itself.
-  if (argv.includes("--verify")) {
-    const sample = prepareWorkFile("sample-1.pdf");
-    await withSession("verify", { PDFSAK_START_SCREEN: "verify", PDFSAK_DEV_FILES: sample }, verifyFlow);
     return;
   }
   if (pdf) {

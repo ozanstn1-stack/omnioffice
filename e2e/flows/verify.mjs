@@ -7,7 +7,8 @@
  * panel. The verdict is read from a data attribute rather than a translated
  * sentence, so the assertion survives a language change.
  */
-import { screenshot, waitForScreenReady, waitForScript } from "../lib/driver.mjs";
+import { screenshot, waitForScreenReady, waitForScript, withSession } from "../lib/driver.mjs";
+import { prepareWorkFile } from "../lib/files.mjs";
 
 export async function verifyFlow(session) {
   await waitForScreenReady(session, "verify", 45000);
@@ -32,4 +33,10 @@ export async function verifyFlow(session) {
   if (!listed) throw new Error("the verified file is not listed on the screen");
   await screenshot(session, "verify");
   console.log(`PASS: verify reported an unsigned document (${text.slice(0, 60)})`);
+}
+
+/** The launch context for this flow: the sample arrives through the dev context. */
+export async function verifyScenario() {
+  const sample = prepareWorkFile("sample-1.pdf");
+  await withSession("verify", { PDFSAK_START_SCREEN: "verify", PDFSAK_DEV_FILES: sample }, verifyFlow);
 }

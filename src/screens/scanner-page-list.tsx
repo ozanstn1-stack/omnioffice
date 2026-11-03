@@ -57,7 +57,7 @@ export function ScannerPageList({
   const halfLabel = (page: ScannerPage) =>
     page.half === 0 ? t("scanner.spreadLeft") : page.half === 1 ? t("scanner.spreadRight") : null;
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-testid="scanner-pages" data-count={pages.length}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs muted">{t("scanner.filter")}</span>
@@ -65,6 +65,8 @@ export function ScannerPageList({
             <Button
               key={item.value}
               size="sm"
+              data-testid={`scanner-filter-${item.value}`}
+              aria-pressed={filter === item.value}
               variant={filter === item.value ? "primary" : "ghost"}
               disabled={busy || detecting || !pages.length}
               onClick={() => onFilter(item.value)}
@@ -88,6 +90,10 @@ export function ScannerPageList({
           {pages.map((page, index) => (
             <li
               key={page.id}
+              data-testid="scanner-page"
+              data-auto={page.auto ? "true" : "false"}
+              data-cropped={page.corners ? "true" : "false"}
+              data-half={page.half === undefined ? "" : String(page.half)}
               className="flex items-center justify-between gap-2 p-1.5 rounded bg-surface/50 border border-border/40"
             >
               <div className="flex items-center gap-2 min-w-0">

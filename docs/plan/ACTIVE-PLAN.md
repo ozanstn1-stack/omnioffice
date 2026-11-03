@@ -223,6 +223,51 @@ listesi, `??`/birleştirme biçimleri.
 
 ---
 
+# Seçilen iş kalemi 4: Scanner E2E akışı (motorsuz, her PR'da)
+
+Plan `subagent_claude_opus` (`44997596`, 2026-11-03 10:05 UTC). **Önemli düzeltme:**
+Scanner pdfium istemiyor — `src-tauri/src/scanner.rs` köşe bulmayı
+`pdfcore::page_detect`, PDF yazımını `pdfcore::images` ile yapıyor. Yani akış
+Linux tauri-driver işinde koşabilir; yavaş Windows turu gerekmez.
+
+## Neden bu, Android ABI değil
+`android.yml` PR'da koşmuyor; ABI matrisi PR'ı yeşil geçse bile bir şey kanıtlamaz
+ve her deneme 30–40 dk'lık dispatch ister. Scanner ise kalıcı bir PR kapısı ekliyor;
+ekran "experimental" rozetli ve hiç E2E kapsamı yok.
+
+## Adımlar
+0. Okuyarak doğrula: PDF yazıcısı object stream kullanıyor mu (`/Type /Page`
+   sayımı güvenilir mi), gri JPEG `/DeviceGray` mi, `data-testid` değerleri i18n
+   `attributes` sayımına giriyor mu, dosya boyutu bütçeleri.
+1. `src/screens/scanner-dev.ts`: `devScanOutputPath(firstPath)` → `<kök>_scan.pdf`.
+2. `Scanner.tsx`: `initialFiles` prop'u (tek seferlik `addPaths`, `isImage` süzgeci),
+   `useScreenReady("scanner", pages.length > 0 && !detecting, String(pages.length))`,
+   `build()` içinde `useDev.getState().autoRun` iken diyalog yerine dev çıktı yolu,
+   `lastResult` + `data-testid="scanner-result"` (`data-pages`, `data-corrected`),
+   butonlara `scanner-pick`/`scanner-build`/`scanner-send-ocr`.
+3. `scanner-page-list.tsx`: satırlara `data-testid="scanner-page"` + `data-auto`,
+   `data-cropped`, `data-half`; köke `data-count`; filtrelere `aria-pressed`.
+4. `App.tsx`: Scanner'a `initialFiles={files}`.
+5. `e2e/lib/scan-fixtures.mjs`: bağımlılıksız PNG yazıcı (`zlib.deflateSync` + CRC32);
+   `scan-photo.png` (Rust testi `scan_detects_the_page_corners` geometrisi) ve
+   `scan-blank.png` (düz gri). İkili dosya repoya girmez.
+6. `e2e/flows/scanner.mjs`: dev launch → 2 sayfa → dedektör `[true,false]` →
+   gri filtre → build → PDF diske → `scanner-result` `2 sayfa / 1 düzeltme` →
+   Node'da PDF doğrulama → OCR butonu görünür.
+7. `smoke.mjs --scanner`, `package.json` `e2e:scanner`, Linux `e2e` işine adım.
+
+## Kabul
+- jsdom testleri önce: `initialFiles` süzgeci, `screenReady`, `data-auto`,
+  filtre `aria-pressed`, dev autoRun'da `file_token_save` çağrılmaması.
+- Yerel: lint, tsc, tam test, i18n:check, files:check (format sonrası), claims, docs:stats.
+- CI: 19/19, beklenen **1 tur**.
+
+## Kapsam dışı
+Kamera girdisi, köşe sürükleme, OCR'a gönderme (tesseract), çift sayfa yayılımı,
+akışın Windows'ta koşması, RELEASE_READINESS iddiası.
+
+---
+
 ## NEREDE KALDIM / SIRADAKI ADIM
 - **Tamamlandı (2026-11-02):** E4.5 prop taraması, iki dilim.
   PR #585 (`f7e90d1`): tarayıcı modülü + taban v3 + `PetitionWizard` etiketleri.
@@ -259,6 +304,7 @@ listesi, `??`/birleştirme biçimleri.
   Kalan 13 toast dizesi taşındı, `ci-workflow.test.ts` pini **0**'a çekildi.
   Bu pencerenin toplamı: `objects` **34 → 0**, `files` **77 → 75**, üç PR
   (#588, #589, #590).
+- **Şimdiki kalem (2026-11-03 10:15 UTC):** Scanner E2E akışı (yukarıdaki plan).
 - **NEREDE KALDIM / SIRADAKİ ADIM:** master `8b5a425`, ağaç temiz, `target/` yok,
   disk %59. Sıradaki iş kalemi **Scanner E2E akışı** (pdfium → yalnız Windows
   E2E işi) ya da **Android ABI matrisi** (`workflow_dispatch`, 30-40 dk); ikisi de
