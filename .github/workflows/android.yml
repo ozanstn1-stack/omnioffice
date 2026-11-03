@@ -149,6 +149,13 @@ jobs:
           (cd release-artifacts && sha256sum *.apk *.aab > SHA256SUMS-android.txt)
           ls -lh release-artifacts
 
+      # An APK can quietly carry another ABI's libraries (the Tauri plugin
+      # copies every directory under jniLibs) and the two APKs can end up with
+      # different keys; both only surface on a device or in a store review. The
+      # check reads the files themselves, before anything is published.
+      - name: Verify the ABI matrix (per-ABI libraries, ELF shape, one signer)
+        run: bash .github/scripts/verify-android-abis.sh release-artifacts
+
       # Catalogues and installed users key the identity on these two facts (#502):
       # a monotonic version code and an unchanged signing certificate.
       - name: Verify release identity (versionCode + signing key continuity)
@@ -214,6 +221,7 @@ jobs:
           path: |
             release-artifacts/*.apk
             release-artifacts/*.aab
+            release-artifacts/SHA256SUMS-android.txt
           if-no-files-found: error
 
       # The Windows release job creates the GitHub release; wait for it briefly

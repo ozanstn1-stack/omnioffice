@@ -224,4 +224,16 @@ describe("Rust coverage and Android build shape (E4.1, E5)", () => {
     expect(android).toContain("OmniOffice-Android-$version-arm64-v8a.aab");
     expect(android).toContain("sha256sum *.apk *.aab");
   });
+
+  it("checks the ABI matrix on the artifacts and publishes the checksum list", () => {
+    // The per-ABI libraries and the signing identity are in the files, not in
+    // the build log: the workflow has to read them before publishing.
+    expect(android).toContain("bash .github/scripts/verify-android-abis.sh release-artifacts");
+    // A checksum list the release attaches but the artifact omits cannot be
+    // verified by anyone downloading the run.
+    const upload = android.slice(android.indexOf("name: android-apks"));
+    expect(upload.slice(0, 400)).toContain("release-artifacts/SHA256SUMS-android.txt");
+    // The verification has to run before the artifacts are uploaded.
+    expect(android.indexOf("verify-android-abis.sh")).toBeLessThan(android.indexOf("name: android-apks"));
+  });
 });
