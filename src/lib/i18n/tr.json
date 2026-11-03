@@ -3228,5 +3228,8 @@
   "redact.toast.certEmbedded": "Karartma sertifikası üretildi ve PDF'e gömüldü",
   "vault.toast.indexUpdated": "Vektör İndeksi Güncellendi ({embedded} yeni, {reused} önbellek)",
   "kvkk.toast.copiedTitle": "Metin Panoya Kopyalandı",
-  "kvkk.toast.copiedDetail": "KVKK metni panoya aktarıldı, Word/Writer veya PDF çıktısı olarak kullanabilirsiniz."
+  "kvkk.toast.copiedDetail": "KVKK metni panoya aktarıldı, Word/Writer veya PDF çıktısı olarak kullanabilirsiniz.",
+  "vault.pagePrevious": "Önceki",
+  "vault.pageNext": "Sonraki",
+  "vault.buildSemanticIndex": "Semantik Vektör İndeksi Oluştur"
 }

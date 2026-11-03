@@ -19,15 +19,14 @@
     "screens/Ai.tsx": 2,
     "screens/Batch.tsx": 3,
     "screens/Inspect.tsx": 2,
-    "screens/Invoices.tsx": 19,
+    "screens/Invoices.tsx": 3,
     "screens/Ocr.tsx": 2,
     "screens/Organize.tsx": 3,
     "screens/PageTools.tsx": 6,
     "screens/PdfStudio.tsx": 4,
     "screens/Redact.tsx": 1,
     "screens/Security.tsx": 1,
-    "screens/Settings.tsx": 2,
-    "screens/Vault.tsx": 3
+    "screens/Settings.tsx": 2
   },
   "attributes": {
     "components/ai-settings.tsx": 2,
