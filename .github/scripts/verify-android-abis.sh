@@ -18,9 +18,12 @@ fail() {
   failures=$((failures + 1))
 }
 
-# ABI -> the ELF machine `file` must report for its libraries.
-declare -A machine=( [arm64-v8a]="AArch64" [armeabi-v7a]="ARM" )
-declare -A bits=( [arm64-v8a]="ELF 64-bit" [armeabi-v7a]="ELF 32-bit" )
+# ABI -> the ELF shape `file` must report for its libraries. `file` spells the
+# 64-bit machine both "AArch64" and "ARM aarch64" depending on its magic table,
+# so the match is on a lowercased string and the bit width tells the two ABIs
+# apart.
+declare -A machine=( [arm64-v8a]="aarch64" [armeabi-v7a]="arm" )
+declare -A bits=( [arm64-v8a]="elf 64-bit" [armeabi-v7a]="elf 32-bit" )
 libraries=(libpdf_sak_lib.so libpdfium.so libtesseract.so)
 
 for abi in "${!machine[@]}"; do
@@ -50,10 +53,10 @@ for abi in "${!machine[@]}"; do
     python3 -I -m zipfile -e "$file" "$scratch" >/dev/null
     sample="$scratch/${prefix}${abi}/${libraries[0]}"
     if [ -f "$sample" ]; then
-      described=$(file -b "$sample")
+      described=$(file -b "$sample" | tr '[:upper:]' '[:lower:]')
       case "$described" in
         *"${bits[$abi]}"*"${machine[$abi]}"*) : ;;
-        *) fail "$file: ${libraries[0]} is not a ${machine[$abi]} ${bits[$abi]} object ($described)" ;;
+        *) fail "$file: ${libraries[0]} is not a ${bits[$abi]} ${machine[$abi]} object ($described)" ;;
       esac
     fi
     rm -rf "$scratch"
