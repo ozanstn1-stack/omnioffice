@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
 import { Camera, FileText, Save, ScanText } from "lucide-react";
@@ -6,7 +6,8 @@ import { Badge, Button, Card } from "../components/ui";
 import { Screen } from "../components/layout";
 import { pickDocumentTokens } from "../lib/file-tokens";
 import { useT } from "../lib/i18n";
-import { reportError, useToasts } from "../lib/store";
+import { reportError, useDev, useToasts } from "../lib/store";
+import { useScreenReady } from "../lib/screen-ready";
 import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
 import { scanDetectBatch, scanPages, type ScanBatchPage, type ScanFilter } from "../lib/scan-detect";
 import type { ScreenId } from "../lib/nav";
@@ -14,10 +15,16 @@ import { CornerPicker } from "./scanner-corners";
 import { ScannerPageList, type ScannerPage } from "./scanner-page-list";
 import { mergeScanDetection, pendingScanPages } from "./scanner-batch";
 import { stageCameraFiles } from "./scanner-capture";
+import { devScanOutputPath } from "./scanner-dev";
 
 interface ScannerProps {
   onNavigate?: (screen: ScreenId, options?: { files?: string[] }) => void;
+  /** Pages handed over by open-with, drag and drop or a dev launch. */
+  initialFiles?: string[];
 }
+
+/** The page extensions the scanner accepts; a handed-over document is ignored. */
+const IMAGE_PATTERN = /\.(jpe?g|png|webp|bmp|tiff?)$/i;
 
 /**
  * Document scanner.
@@ -33,15 +40,18 @@ interface ScannerProps {
  * (`office_scan_pages`), which can go straight to OCR. No Google Play services
  * are involved: ML Kit's scanner would bring its usage logging along.
  */
-export function Scanner({ onNavigate }: ScannerProps = {}) {
+export function Scanner({ onNavigate, initialFiles }: ScannerProps = {}) {
   const t = useT();
-  const [pages, setPages] = useState<ScannerPage[]>([]);
+  const initialImages = useMemo(() => (initialFiles ?? []).filter((path) => IMAGE_PATTERN.test(path)), [initialFiles]);
+  const [pages, setPages] = useState<ScannerPage[]>(() => pendingScanPages(initialImages));
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [detecting, setDetecting] = useState(false);
+  const [detecting, setDetecting] = useState(initialImages.length > 0);
   const [filter, setFilter] = useState<ScanFilter>("colour");
   const [lastOutput, setLastOutput] = useState<string | null>(null);
+  const [lastResult, setLastResult] = useState<{ pages: number; corrected: number } | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const initialAdded = useRef(false);
 
   /** Adds pages and runs the on-device batch detector for the new photos. */
   const addPaths = async (paths: string[]) => {
@@ -60,6 +70,25 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
       setDetecting(false);
     }
   };
+
+  // The handed-over photos are already queued above; only the detector is still
+  // to run. It runs once, and its state updates land after the await.
+  useEffect(() => {
+    if (initialAdded.current || !initialImages.length) return;
+    initialAdded.current = true;
+    void (async () => {
+      try {
+        const found = await scanDetectBatch(initialImages).catch(() => [] as ScanBatchPage[]);
+        setPages((current) => mergeScanDetection(current, found));
+      } finally {
+        setDetecting(false);
+      }
+    })();
+  }, [initialImages]);
+
+  // The E2E driver waits on this signal, so it never has to guess a screen by
+  // translated text.
+  useScreenReady("scanner", pages.length > 0 && !detecting, String(pages.length));
 
   const pick = async () => {
     let paths: string[] = [];
@@ -122,6 +151,10 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
       if (!androidTarget) return;
       const cache = await appCacheDir();
       outputPath = await join(cache, androidTarget.name || "Tarama.pdf");
+    } else if (useDev.getState().autoRun) {
+      // Development auto-run: no native dialog can be answered by the driver,
+      // so the PDF lands next to the first page. A normal run still asks.
+      outputPath = devScanOutputPath(pages[0].path);
     } else {
       const target = await pickSaveToken("Tarama.pdf", ["pdf"]).catch(() => null);
       if (!target) return;
@@ -140,6 +173,7 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
         await publishOutputs([outputPath], { file: androidTarget });
       }
       setLastOutput(outputPath);
+      setLastResult({ pages: result.pages, corrected: result.corrected });
       useToasts.getState().push({
         kind: "success",
         title: t("scanner.done", { pages: result.pages }),
@@ -200,14 +234,24 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
 
         <Card className="p-5 flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="primary" disabled={busy} onClick={() => void pick()}>
+            <Button variant="primary" data-testid="scanner-pick" disabled={busy} onClick={() => void pick()}>
               <FileText size={16} /> {t("scanner.pick")}
             </Button>
-            <Button variant="ghost" disabled={busy || detecting || !pages.length} onClick={() => void build()}>
+            <Button
+              variant="ghost"
+              data-testid="scanner-build"
+              disabled={busy || detecting || !pages.length}
+              onClick={() => void build()}
+            >
               <Save size={16} /> {t("scanner.build")}
             </Button>
             {lastOutput && onNavigate && (
-              <Button variant="ghost" disabled={busy} onClick={() => onNavigate("ocr", { files: [lastOutput] })}>
+              <Button
+                variant="ghost"
+                data-testid="scanner-send-ocr"
+                disabled={busy}
+                onClick={() => onNavigate("ocr", { files: [lastOutput] })}
+              >
                 <ScanText size={16} /> {t("scanner.sendToOcr")}
               </Button>
             )}
@@ -224,6 +268,17 @@ export function Scanner({ onNavigate }: ScannerProps = {}) {
             onAdjust={setEditing}
             onClear={() => setPages([])}
           />
+          {lastResult ? (
+            <p
+              className="text-xs muted"
+              data-testid="scanner-result"
+              data-pages={lastResult.pages}
+              data-corrected={lastResult.corrected}
+              role="status"
+            >
+              {t("scanner.done", { pages: lastResult.pages })}
+            </p>
+          ) : null}
           <p className="text-xs muted">{t("scanner.autoNote")}</p>
           <p className="text-xs muted">{t("scanner.ocrNote")}</p>
         </Card>

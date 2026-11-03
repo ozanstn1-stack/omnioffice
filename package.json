@@ -31,6 +31,7 @@
     "e2e:secrets": "node e2e/smoke.mjs --secrets",
     "e2e:calc": "node e2e/smoke.mjs --calc",
     "e2e:verify": "node e2e/smoke.mjs --verify",
+    "e2e:scanner": "node e2e/smoke.mjs --scanner",
     "test:watch": "vitest",
     "test:rust": "cargo test --workspace",
     "bench:check": "node scripts/check-bench-regression.mjs",

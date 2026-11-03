@@ -35,6 +35,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(async () => "C:/out.pdf"),
 }));
 
+import { useDev } from "../lib/store";
 import { Scanner } from "./Scanner";
 
 const detectedPage: Detection = {
@@ -253,5 +254,82 @@ describe("document scanner scaffold", () => {
     await user.click(await screen.findByRole("button", { name: /Whole photo/i }));
     await user.click(screen.getByRole("button", { name: /^Save$/ }));
     expect(screen.queryByText(/cropped/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("scanner end-to-end hooks", () => {
+  beforeEach(() => {
+    invoke.mockClear();
+    detection = { detected: false, corners: [], score: 0 };
+    batch = null;
+    useDev.getState().set({ autoRun: false, startScreen: null, files: [] });
+    delete document.documentElement.dataset.screenReady;
+    delete document.documentElement.dataset.screenReadyDetail;
+  });
+
+  it("takes the handed-over images once and ignores a document", async () => {
+    render(<Scanner initialFiles={["C:/pages/a.png", "C:/pages/b.png", "C:/docs/letter.pdf"]} />);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("office_scan_detect_batch", { paths: ["C:/pages/a.png", "C:/pages/b.png"] }),
+    );
+    expect(document.querySelectorAll('[data-testid="scanner-page"]')).toHaveLength(2);
+    // A re-render must not append the same pages again.
+    const calls = invoke.mock.calls.filter(([command]) => command === "office_scan_detect_batch");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reports the page count on the ready signal the driver waits for", async () => {
+    render(<Scanner initialFiles={["C:/pages/a.png", "C:/pages/b.png"]} />);
+    await waitFor(() => expect(document.documentElement.dataset.screenReady).toBe("scanner"));
+    expect(document.documentElement.dataset.screenReadyDetail).toBe("2");
+  });
+
+  it("marks which pages the detector found", async () => {
+    const detected = { path: "C:/pages/a.png", detected: true, score: 0.8, pages: [detectedPage.corners] };
+    const missed = { path: "C:/pages/b.png", detected: false, score: 0, pages: [] };
+    batch = [detected, missed];
+    render(<Scanner initialFiles={["C:/pages/a.png", "C:/pages/b.png"]} />);
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="scanner-page"]')).toHaveLength(2));
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="scanner-page"]')];
+    expect(rows.map((row) => row.dataset.auto)).toEqual(["true", "false"]);
+  });
+
+  it("keeps the filter choice on aria-pressed", async () => {
+    const user = userEvent.setup();
+    detection = detectedPage;
+    render(<Scanner initialFiles={["C:/pages/a.png"]} />);
+    const grey = await screen.findByTestId("scanner-filter-greyscale");
+    await user.click(grey);
+    expect(grey.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("scanner-filter-colour").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("builds next to the first photo in a development auto-run, with no save dialog", async () => {
+    const user = userEvent.setup();
+    detection = detectedPage;
+    useDev.getState().set({ autoRun: true, startScreen: "scanner", files: [] });
+    render(<Scanner initialFiles={["C:/pages/a.png"]} />);
+    await screen.findByText("a.png");
+    await user.click(screen.getByTestId("scanner-build"));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "office_scan_pages",
+        expect.objectContaining({ request: expect.objectContaining({ output: "C:/pages/a_scan.pdf" }) }),
+      ),
+    );
+    // No native dialog is opened: the driver could never answer one.
+    expect(invoke.mock.calls.filter(([command]) => command === "file_token_save")).toHaveLength(0);
+    const result = await screen.findByTestId("scanner-result");
+    expect(result.dataset.pages).toBe("2");
+    expect(result.dataset.corrected).toBe("0");
+  });
+
+  it("still asks for a target when the app runs normally", async () => {
+    const user = userEvent.setup();
+    detection = detectedPage;
+    render(<Scanner initialFiles={["C:/pages/a.png"]} />);
+    await screen.findByText("a.png");
+    await user.click(screen.getByTestId("scanner-build"));
+    await waitFor(() => expect(invoke.mock.calls.some(([command]) => command === "file_token_save")).toBe(true));
   });
 });

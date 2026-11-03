@@ -21,9 +21,11 @@ const EXPORTS: Record<string, string[]> = {
   "flows/impress.mjs": ["impressFlow"],
   "flows/ai-pack.mjs": ["aiPackFlow", "configureProviderFlow", "packFlow"],
   "flows/secrets.mjs": ["saveSecretsFlow", "reloadSecretsFlow", "checkSecretFile"],
+  "flows/scanner.mjs": ["scannerFlow", "scannerScenario"],
   "flows/personas.mjs": ["accountantPersona", "studentPersona", "publicPersona", "lawyerPersona"],
   "lib/driver.mjs": ["withSession", "withSessionRetry", "requireAppBinary", "waitForScript"],
   "lib/files.mjs": ["prepareWorkFile", "elementKey"],
+  "lib/scan-fixtures.mjs": ["prepareScanPages"],
 };
 
 describe("end-to-end scenarios are modules, not one file (E4.3)", () => {

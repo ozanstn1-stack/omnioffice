@@ -538,6 +538,14 @@ jobs:
       - name: Secret store (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:secrets
+      # The Scanner is engine-free too: pdfcore's page detector (Canny/Hough)
+      # finds the sheet on the device and lopdf writes the PDF, so the flow runs
+      # here and not only in the Windows job. It proves the hand-over, the
+      # detector's verdict on a page and on a blank wall, the filter state and a
+      # real two-page PDF next to the source photo.
+      - name: Scanner (Xvfb)
+        timeout-minutes: 10
+        run: xvfb-run -a npm run e2e:scanner
       # Engine-free real flows: Writer type -> save, PDF merge and Studio
       # sanitize all run through the same WebDriver session harness.
       - name: Deep flows (Xvfb)

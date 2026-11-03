@@ -10,8 +10,17 @@
  */
 import { statSync } from "node:fs";
 import { join } from "node:path";
-import { clickElement, execute, findElement, screenshot, sleep, waitForScript, work } from "../lib/driver.mjs";
-import { elementKey } from "../lib/files.mjs";
+import {
+  clickElement,
+  execute,
+  findElement,
+  screenshot,
+  sleep,
+  waitForScript,
+  withSession,
+  work,
+} from "../lib/driver.mjs";
+import { elementKey, prepareWorkFile } from "../lib/files.mjs";
 
 const RAIL = `const thumbs=[...document.querySelectorAll('.slide-thumb')];
   const active=thumbs.findIndex((el)=>el.classList.contains('is-active'));
@@ -74,4 +83,10 @@ export async function impressFlow(session) {
   console.log(
     `PASS: impress navigated to slide 2, added a slide (${initialCount} -> ${after.split("|")[0]}) and saved ${deck}`,
   );
+}
+
+/** The launch context for this flow: the deck arrives through the dev context. */
+export async function impressScenario() {
+  const deck = prepareWorkFile("test-presentation.pptx");
+  await withSession("impress", { PDFSAK_START_SCREEN: "office", PDFSAK_DEV_FILES: deck }, impressFlow);
 }
