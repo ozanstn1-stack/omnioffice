@@ -1081,3 +1081,26 @@ yalnız kartlar `auto` (tam genişlik toast arkadaki dokunuşu yutmasın).
   girdi taşıyor (PasswordField, literal işareti, son dört çeviri, toast) →
   **7.7.0 sürüm treni** için yeterli. Sonraki adım: #628 merge → sürüm treni
   (Opus planıyla). Kullanıcı adımı: private vulnerability reporting.
+
+---
+
+# Kapandı — PR #629 `44a3c56`: v7.7.0 sürüm treni (2026-11-04 21:30 UTC)
+
+Opus `ca01e29b` "gece hazırla, yarın 10:00'da yayınla" dedi; istisna olarak
+"kapı 22:30'a kadar tamamen yeşilse gece birleştirilebilir" dedi. **Kapı tamamen
+yeşil olduğu için birleştirildi.**
+
+Gate kanıtı (hepsi merge öncesi):
+- Sürüm PR'ı **27 kontrol, 0 hata** — Desktop (macOS dahil) **success**.
+- **`android-ci` prova: success** → versionCode **7007000** ile APK/AAB derlendi,
+  ABI matrisi denetlendi.
+- **`release.yml` dalda dispatch provası: success** (3/3 iş: version-consistency,
+  Windows, Linux) → tag'de koşacak hattın aynısı 7.7.0 ile çalıştı.
+- `7.6.0` / `7006000` için stale referans taraması **boş**.
+- macOS kapasitesi geri döndü (macOS işi hızlı runner aldı).
+
+Sürüm dosyaları 7.7.0 / versionCode 7007000; sürüm tutarlılık kapısı ve
+`cargo metadata --locked` yeşil; `target/` oluşmadı.
+
+`[Unreleased]` dört dilim taşıyordu → `[7.7.0]` bölümü `Fixed` → `Changed` →
+`Developer notes` sırasıyla yazıldı (mağaza listesi toast düzeltmesiyle başlıyor).
