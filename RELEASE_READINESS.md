@@ -67,6 +67,25 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **The repository's security posture is graded, not claimed (E5):** an
+  OpenSSF Scorecard workflow runs weekly, on every push to master, when a
+  branch-protection rule changes and on dispatch, uploads the SARIF report to
+  code scanning and publishes the score. A `pull_request` trigger filtered to
+  this one file exists because the action rejects every other event off the
+  default branch: it is the only way to exercise the action, the permissions
+  and the SARIF upload before a merge, and publishing is off by itself on a
+  pull-request event. The path filter keeps an ordinary PR from growing a
+  check. Top-level permissions stay read-only and the job asks for
+  `security-events: write`, `id-token: write`, `contents: read` and
+  `actions: read`; there is no `run:` step, no top-level `env`/`defaults`, the
+  checkout keeps `persist-credentials: false`, and all four actions are pinned
+  to commits.
+  `test:src/lib/ci-workflow.test.ts#grades the repository on a schedule, on master and on a protection change`
+  `test:src/lib/ci-workflow.test.ts#only runs on a pull request when this workflow itself changes`
+  `test:src/lib/ci-workflow.test.ts#keeps the analysis least-privilege and pinned`
+  `test:src/lib/ci-workflow.test.ts#publishes the score and uploads the report`
+  `test:src/lib/ci-workflow.test.ts#uses one codeql-action commit across code scanning and scorecard`
+
 - **The release train writes no engine cache and reads the tested one (E5):**
   `release.yml` and `beta.yml` downloaded the same ~100 MB of pinned
   third-party artifacts on every run. Both now restore

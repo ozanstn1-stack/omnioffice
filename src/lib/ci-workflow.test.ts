@@ -381,3 +381,66 @@ describe("Rust coverage and Android build shape (E4.1, E5)", () => {
     expect(android.indexOf("verify-android-abis.sh")).toBeLessThan(android.indexOf("name: android-apks"));
   });
 });
+
+describe("OpenSSF Scorecard (E5)", () => {
+  const scorecard = read("scorecard.yml");
+
+  it("grades the repository on a schedule, on master and on a protection change", () => {
+    // A score nobody refreshes is a claim, not a measurement: the schedule and
+    // the push to master keep it current, and a branch-protection change is
+    // exactly when one of the graded checks moves.
+    expect(scorecard).toMatch(/\n {2}branch_protection_rule:\n/);
+    expect(scorecard).toMatch(/\n {2}schedule:\n {4}- cron: "[0-9 ]+ \* \* [0-9]"\n/);
+    expect(scorecard).toMatch(/\n {2}push:\n {4}branches: \["master"\]\n/);
+    expect(scorecard).toMatch(/\n {2}workflow_dispatch:\n/);
+  });
+
+  it("only runs on a pull request when this workflow itself changes", () => {
+    // The action rejects any other event off the default branch, so a filtered
+    // pull_request trigger is the only way to exercise it before a merge. The
+    // path filter is what keeps that from adding a check to every PR.
+    expect(scorecard).toMatch(/\n {2}pull_request:\n {4}paths: \["\.github\/workflows\/scorecard\.yml"\]\n/);
+  });
+
+  it("keeps the analysis least-privilege and pinned", () => {
+    // The publisher validates the workflow: top-level permissions read-only,
+    // no `run:` step, no top-level `env`/`defaults`, allowed actions only.
+    expect(scorecard).toMatch(/\npermissions:\n {2}contents: read\n/);
+    expect(scorecard).not.toMatch(/^env:/m);
+    expect(scorecard).not.toMatch(/^defaults:/m);
+    expect(scorecard).not.toMatch(/^\s+-? ?run:/m);
+    for (const permission of ["security-events: write", "id-token: write", "contents: read", "actions: read"]) {
+      expect(scorecard, permission).toContain(permission);
+    }
+    expect(scorecard).toContain("runs-on: ubuntu-24.04");
+    expect(scorecard).toMatch(/\n {4}timeout-minutes: \d+/);
+    // A checkout that leaves the token in .git/config hands the analysis a
+    // credential it does not need.
+    expect(scorecard).toContain("persist-credentials: false");
+    for (const line of scorecard.split("\n").filter((entry) => entry.includes("uses:"))) {
+      // A 40-character commit SHA, never a tag: hex digests start with digits,
+      // so only the length of the whole ref tells a pin from `@v3`.
+      expect(line, line).toMatch(/@[0-9a-f]{40}(\s|$)/);
+    }
+  });
+
+  it("publishes the score and uploads the report", () => {
+    expect(scorecard).toContain("publish_results: true");
+    expect(scorecard).toContain("results_format: sarif");
+    expect(scorecard).toContain("results_file: results.sarif");
+    expect(scorecard).toContain("github/codeql-action/upload-sarif@");
+    expect(scorecard).toContain("sarif_file: results.sarif");
+  });
+
+  it("uses one codeql-action commit across code scanning and scorecard", () => {
+    // Dependabot updates one file at a time; a split would leave the two SARIF
+    // uploads on different versions of the same action.
+    const shas = new Set<string>();
+    for (const text of [read("codeql.yml"), scorecard]) {
+      for (const match of text.matchAll(/github\/codeql-action\/[\w-]+@([0-9a-f]{40})/g)) {
+        shas.add(match[1]);
+      }
+    }
+    expect([...shas]).toHaveLength(1);
+  });
+});
