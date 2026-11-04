@@ -18,6 +18,31 @@ function rule(block: string, selector: string): string {
   return match ? match[1] : "";
 }
 
+describe("toast placement (6.5.1 defect)", () => {
+  const host = /\n\.toast-host \{([^}]*)\}/.exec(css)?.[1] ?? "";
+  const narrow = /\(max-width: 720px\)\s*\{\s*(?:\/\*[\s\S]*?\*\/\s*)?\.toast-host \{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+  it("clears the home indicator at the foot of the screen", () => {
+    expect(host).toContain("position: fixed");
+    expect(host).toContain("env(safe-area-inset-bottom)");
+  });
+
+  it("sits above the bottom bar on a phone", () => {
+    // A toast at bottom: 16px covered the navigation and reached into the
+    // gesture area; on a narrow screen the host clears both.
+    expect(narrow).toContain("56px");
+    expect(narrow).toContain("env(safe-area-inset-bottom)");
+    expect(narrow).toContain("left: 12px");
+    expect(narrow).toContain("right: 12px");
+  });
+
+  it("stops a full-width toast from swallowing taps behind it", () => {
+    // The stack is click-through; only the cards themselves take the pointer.
+    expect(host).toContain("pointer-events: none");
+    expect(css).toMatch(/\.toast-host > \* \{\s*pointer-events: auto;/);
+  });
+});
+
 describe("touch ergonomics (C11)", () => {
   it("gives buttons and icon buttons a 44 px touch target on a touch screen", () => {
     const block = touchBlock();
