@@ -16,7 +16,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  # Read-only at the workflow level; the jobs below ask for what they write.
+  contents: read
 
 concurrency:
   group: beta
@@ -25,6 +26,9 @@ concurrency:
 jobs:
   beta:
     name: Signed beta installer and rolling prerelease
+    permissions:
+      # Refreshing the rolling `beta` prerelease with --clobber.
+      contents: write
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -8,9 +8,8 @@ on:
     types: [opened, synchronize, reopened, edited]
 
 permissions:
+  # Read-only at the workflow level; the jobs below ask for what they write.
   contents: read
-  issues: write
-  pull-requests: write
 
 concurrency:
   group: pr-size-${{ github.event.pull_request.number }}
@@ -19,6 +18,10 @@ concurrency:
 jobs:
   size:
     name: Size (advisory)
+    permissions:
+      # Writing the label and the comment on the pull request.
+      issues: write
+      pull-requests: write
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

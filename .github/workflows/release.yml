@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  # Read-only at the workflow level; the jobs that upload declare their own.
+  contents: read
 
 # One release build per tag: a second dispatch for the same tag must not run in
 # parallel with the first, and it must never be cancelled midway (a half

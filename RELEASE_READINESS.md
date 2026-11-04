@@ -67,6 +67,22 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **The token is read-only unless a job writes (E5):** the OpenSSF Scorecard
+  run scored Token-Permissions at 0 because five workflows granted the write
+  scopes at the workflow level. `auto-tag`, `beta`, `linux-package`, `pr-size`
+  and `release` now declare `contents: read` at the top and hand the write
+  scopes to the one job that uses them; a job `permissions:` block replaces the
+  workflow one rather than adding to it, so the effective scopes are unchanged
+  everywhere except `release/version-consistency`, which only checks out and
+  compares versions and therefore loses its inherited `contents: write`.
+  `actions: write` stays with the auto-tag job because the dispatch endpoint is
+  an Actions permission; `release/linux` keeps `contents: write` since it is
+  the ceiling the reusable `linux-package.yml` runs under.
+  `test:src/lib/ci-workflow.test.ts#never grants a write permission at the workflow level`
+  `test:src/lib/ci-workflow.test.ts#grants each job the permission its steps actually call`
+  `test:src/lib/ci-workflow.test.ts#keeps the called workflow inside its caller's ceiling`
+  `test:src/lib/ci-workflow.test.ts#keeps the write permissions the publishing jobs need`
+
 - **The repository's security posture is graded, not claimed (E5):** an
   OpenSSF Scorecard workflow runs weekly, on every push to master, when a
   branch-protection rule changes and on dispatch, uploads the SARIF report to

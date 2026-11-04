@@ -633,3 +633,68 @@ push'unu dinler), sonra `release.yml` dispatch'i restore'u ve
   ve Opus planıyla). Ondan sonra: tarayıcı boşlukları (koşullu JSX dalları,
   nesne içi `${…}`). **Renovate yapılmayacak** — Dependabot zaten pinleri
   güncelliyor (karar).
+
+---
+
+# Seçilen iş kalemi: OpenSSF Scorecard (7.6.0, ikinci dilim) — Opus planı `dbca9faf`
+
+Opus, `scorecard-action`'ın `options/options.go` dosyasını okuyup kritik kısıtı
+verdi: **varsayılan dal dışındaki her olay reddediliyor** (satır 121-126,
+`errOnlyDefaultBranchSupported`) — yani daldan `workflow_dispatch` **kırmızı
+olur** ve `publish_results` değeri kurtarmaz. Merge öncesi tek kanıt yolu
+**pull-request koşusu**; PR olayında action yayını kendisi kapatıyor.
+
+**Opus'tan bilinçli sapma (tek nokta):** Opus `pull_request` tetikleyicisini
+yalnız geçici olarak ekleyip ikinci commit'te silmeyi önerdi. Bunun yerine
+tetikleyici **kalıcı ama path filtreli**:
+`pull_request: paths: [".github/workflows/scorecard.yml"]`. Gerekçe: (a) path
+filtresi eşleşmeyen PR'da koşu hiç oluşturmuyor → "her PR'a yeni check"
+itirazı ortadan kalkıyor, (b) bu dosyaya dokunan her gelecek PR otomatik olarak
+aynı kanıtı üretiyor, (c) ikinci 40 dakikalık Desktop turu gerekmiyor — pencere
+06:00 UTC'de kapanıyordu.
+
+## Kapandı (2026-11-04 04:30 UTC) — PR #609 → `e40e3ba`
+Kanıt iki aşamada:
+- **A (PR):** `Scorecard analysis` yeşil; log `Event name: pull_request`,
+  `Publication enabled: false`, `Successfully uploaded results`.
+- **B (master push):** koşu yeşil; log `Event name: push`, `Default branch:
+  master`, `publish_results: true`, `Retrieving signed certificate...`,
+  `Successfully verified SCT...`.
+- **Dış kanıt:** `api.securityscorecards.dev/.../omnioffice` → **score 4.6**,
+  `commit: e40e3ba6a01e` (merge commit'iyle birebir); code scanning'de
+  `Scorecard | refs/heads/master | e40e3ba`.
+
+## Scorecard'ın bulduğu gerçek boşluklar
+1. **Token-Permissions:** beş workflow üst düzeyde yazma izni veriyordu → skor 0.
+2. **Security-Policy (kısmi puan, yanlış negatif DEĞİL):** `SECURITY.md` var ama
+   içinde **hiç URL/e-posta yok**; ayrıca GitHub'da **özel güvenlik açığı
+   raporlama KAPALI** (`private-vulnerability-reporting: enabled=false`).
+   Skorun düşük kalmasının sebebi bu; ancak raporlama kapalıyken link eklemek
+   kırık link olur → bu dilimde yapılmadı, kullanıcı adımı olarak not edildi.
+3. **Signed-Releases:** D10 (imzasız Windows) → bilinçli.
+4. **Packaging / CII / Fuzzing:** kapsam dışı.
+
+---
+
+# Seçilen iş kalemi: Token-Permissions temizliği (7.6.0, üçüncü dilim) — Opus planı `16d64dc3`
+
+Opus'un doğruladığı üç teknik gerçek:
+1. **İş düzeyindeki `permissions:` üst düzeyin yerini alır** (eklenmez) — bu
+   yüzden `release/version-consistency` tek gerçek değişiklik: `contents: write`
+   → `read` (o iş yalnız checkout + `node -e` yapıyor).
+2. **`actions: write` gerçekten gerekli:** `gh workflow run` = dispatch API =
+   Actions izni; `contents: write` buna yetmez. `auto-tag` işinde kaldı.
+3. **`linux-package.yml` yeniden kullanılabilir workflow** (`workflow_call`);
+   tavanı `release.yml`'deki `linux` işi koyuyor → oradaki `contents: write`
+   olduğu gibi korundu.
+
+**Doğrulama yolu:** her işin "Set up job" logunda basılan `GITHUB_TOKEN
+Permissions` listesi (tag yolu çalıştırmadan). Ayrıca dalda `release.yml`
+dispatch'i (yayınlama adımları tag'e kilitli) nested linux tavanını canlı
+sınar. **`beta.yml` ve `auto-tag.yml` dispatch EDİLMEZ:** beta yayınlar
+(rolling prerelease), auto-tag ise tag yoksa dallanmamış koddan sürüm çıkarır.
+
+**Kırmızı→yeşil kanıtı:** testler önce yazıldı; workflow'lar değişmeden
+`never grants a write permission at the workflow level` **kırmızı** düştü
+(`auto-tag.yml grants [contents: write, actions: write]`), değişiklikten sonra
+yeşil.
