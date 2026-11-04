@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- **The tag job reads the release metadata instead of checking it out (E5):**
+  `auto-tag.yml` checked out the triggering run's commit to read four version
+  files, which OpenSSF Scorecard flags as a dangerous workflow pattern and which
+  put a write-scoped token in a working tree for no reason. It now fetches those
+  four files from the very commit it tags and runs with no checkout at all.
+
 ### Changed
 
 - **Workflow write permissions moved to the job that uses them (E5):** the

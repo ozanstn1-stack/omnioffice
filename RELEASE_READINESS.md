@@ -67,6 +67,21 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **The tag job no longer checks code out (E5):** OpenSSF Scorecard scored
+  Dangerous-Workflow at 0 because `auto-tag.yml` checked out
+  `github.event.workflow_run.head_sha` - the shape of a fork-code-with-secrets
+  attack, even though the job's gate only ever admits a push-to-master run that
+  passed. The job reads four files (`package.json`, `tauri.conf.json`,
+  `Cargo.toml`, `tauri.properties`), so it now fetches exactly those from the
+  commit it is about to tag through the Contents API and has no working tree at
+  all; the version gate and the tag therefore describe one commit, and the
+  write-scoped token no longer sits in a `.git/config`. The gate also states the
+  repository comparison in the file, so a fork's run cannot reach the tag step
+  even if the event filter changed.
+  `test:src/lib/ci-workflow.test.ts#never checks out the triggering run's commit`
+  `test:src/lib/ci-workflow.test.ts#reads each version file from the commit it is about to tag`
+  `test:src/lib/ci-workflow.test.ts#keeps the gate on a push from this repository`
+
 - **The token is read-only unless a job writes (E5):** the OpenSSF Scorecard
   run scored Token-Permissions at 0 because five workflows granted the write
   scopes at the workflow level. `auto-tag`, `beta`, `linux-package`, `pr-size`
