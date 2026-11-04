@@ -67,6 +67,17 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **The last four English strings the expression scan could see are gone
+  (E4.7):** `SlideObjectView` told the Turkish Impress UI "Double-click to add an
+  image", the autosave buttons wrote `30 s` / `5 min` with English units, the
+  signature panel's default checklist read "Yes / Off", and the page-numbering
+  example said "Page 1". All four come from the dictionary now (the page example
+  reuses `common.pageAlt`), which took the baseline to **58/12/6**, with three
+  declared literals: the Calc structured-reference placeholder, the link
+  dialog's sample address and a filename example's extensions.
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+  `test:src/lib/ci-workflow.test.ts#caps the deliberate literals a marker may silence`
+
 - **A deliberate literal can be declared, not just counted (E4.7):** the object
   scan has had an `i18n-content:` pragma for data that must not be translated;
   the JSX side had nothing, so a unit or a formula example either inflated the

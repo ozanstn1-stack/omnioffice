@@ -1687,7 +1687,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                           setFieldChecks((previous) => ({ ...previous, [field.name]: event.target.checked }))
                         }
                       />
-                      {field.options.length ? field.options.map((option) => option.value).join(", ") : "Yes / Off"}
+                      {field.options.length
+                        ? field.options.map((option) => option.value).join(", ")
+                        : t("studio.fieldYesOff")}
                     </label>
                   ) : null}
                   {field.fieldType === "radio" ? (

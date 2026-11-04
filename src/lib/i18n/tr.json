@@ -3253,5 +3253,9 @@
   "compress.estimateExact": "tam",
   "petition.subtitle": "Resmî makamlara sunulmak üzere standartlara uygun DOCX ve PDF dilekçe oluşturun.",
   "petition.subtitleUdf": "Resmî makamlara sunulmak üzere standartlara uygun UDF, DOCX ve PDF dilekçe oluşturun.",
-  "writer.pageBreakMarker": "— sayfa sonu —"
+  "writer.pageBreakMarker": "— sayfa sonu —",
+  "impress.emptyImage": "Görsel eklemek için çift tıklayın",
+  "settings.autosaveSecondsShort": "{seconds} sn",
+  "settings.autosaveMinutes": "{minutes} dk",
+  "studio.fieldYesOff": "Evet / Kapalı"
 }
