@@ -1,0 +1,5 @@
+7.7.0: Bildirimler artık alt çubuğu kapatmıyor — telefonda gezinme çubuğunun
+üstünde duruyor ve sistem hareket alanına girmiyor. Arayüzde kalan dört metin
+Türkçeleştirildi (Impress görsel ipucu, otomatik kaydetme süreleri, imza paneli
+varsayılanı, sayfa numarası örneği). Şifre alanları tek bileşende birleşti;
+böylece iki ekran aynı davranıyor.
