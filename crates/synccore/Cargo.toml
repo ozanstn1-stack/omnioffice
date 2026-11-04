@@ -37,7 +37,7 @@ thiserror = "2"
 # SHA-256, so rustls/rcgen are the only TLS pieces needed. `ring` is the
 # provider both crates already use; HMAC-SHA256 authenticates each request with
 # the key established at pairing.
-getrandom = "0.2"
+getrandom = "0.4"
 hmac = "0.12"
 # Code-authenticated LAN pairing (E1/3): SPAKE2 over the six-digit code, so the
 # code never crosses the wire and a relayed handshake cannot be turned into a
