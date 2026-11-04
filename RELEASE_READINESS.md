@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.6.0
+# Release Readiness — OmniOffice 7.7.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,30 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.7.0) - Son kusurlar ve arayüz temizliği
+
+- **The toast stack clears the bottom bar (6.5.1):** `.toast-host` offsets by
+  `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
+  plus its inset; the stack is `pointer-events: none` with only the cards taking
+  the pointer.
+  `test:src/components/touch-css.test.ts#clears the home indicator at the foot of the screen`
+  `test:src/components/touch-css.test.ts#sits above the bottom bar on a phone`
+  `test:src/components/touch-css.test.ts#stops a full-width toast from swallowing taps behind it`
+
+- **One password field instead of two:** `src/components/password-field.tsx`,
+  with `focusOnMount` naming the autofocus behaviour (the a11y rule flags an
+  `autoFocus` prop even on a custom component). Security 263 -> 241 lines,
+  converter 296 -> 262.
+  `test:src/components/password-field.test.tsx#toggles the input type between hidden and visible`
+  `test:src/components/password-field.test.tsx#never submits the form around it`
+  `test:src/components/password-field.test.tsx#labels the toggle from the dictionary, following the language`
+
+- **The i18n baseline stands at 58/12/6/0 with three declared literals:** the
+  expression scan's last four leaks are translated and the marker has its own
+  rules (a real reason, one finding per marker, no stale markers, hard cap 5).
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+  `test:src/lib/ci-workflow.test.ts#caps the deliberate literals a marker may silence`
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 

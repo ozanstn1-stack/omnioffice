@@ -4,30 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [7.7.0] - 2026-11-04
 
 ### Fixed
 
+- **A toast no longer covers the bottom bar (6.5.1):** the stack sat 16 px from
+  the viewport edge, so on a phone it covered the navigation bar and reached
+  into the system gesture area - the last open layout defect of the 6.5.1 device
+  check. It clears both now, and the stack is click-through, so a full-width
+  toast cannot swallow a tap meant for the screen behind it.
 - **The last four strings the expression scan found are translated (E4.7):** the
   Impress empty-image hint, the autosave durations (`30 s` / `5 min`), the
   signature panel's "Yes / Off" default and the "Page 1" page-number example.
-  The baseline drops to 58/12/6 with three declared literals.
-
-### Added
-
-- **Deliberate literals can be declared on the JSX side too (E4.7):** a
-  `// i18n-literal: reason` comment silences one finding that must not be
-  translated (a unit, a shortcut, a formula example), with the same discipline
-  as the object scan's `i18n-content:`: the reason must be real, a stale or
-  ambiguous marker fails the run, and the total is ratcheted plus hard-capped at
-  five. The baseline schema moves to v5 for the count.
-
-### Fixed
-
-- **A toast no longer covers the bottom bar on a phone (6.5.1):** the stack sat
-  16 px from the viewport edge, so on a phone it covered the navigation bar and
-  reached into the system gesture area. It clears both now, and the stack is
-  click-through so a full-width toast cannot swallow taps behind it.
 
 ### Changed
 
@@ -35,7 +23,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   converter carried their own copies of the same component and had already
   drifted on `autoComplete`. They share one implementation now; the behaviour
   both copies relied on - the toggle never submits the form, and it is labelled
-  in the interface language - is pinned by a test file of its own.
+  in the interface language - is pinned by a test file of its own. The two
+  screens lost 22 and 34 lines.
+
+### Developer notes
+
+- **Deliberate literals can be declared on the JSX side too (E4.7):** a
+  `// i18n-literal: reason` comment silences one finding that must not be
+  translated (a unit, a shortcut, a formula example), with the same discipline
+  as the object scan's `i18n-content:`. The reason must be real, a stale or
+  ambiguous marker fails the run, and the total is ratcheted plus hard-capped at
+  five. The baseline schema is v5 and stands at 58 text / 12 attributes / 6
+  props / 0 object strings / 3 declared literals.
 
 ## [7.6.0] - Ölçülen güvenlik (Phase E / E5 ve E4 kalanları)
 
