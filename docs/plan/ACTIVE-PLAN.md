@@ -764,3 +764,55 @@ Uygulama:
 **Ön doğrulama:** dört dosya da aynı curl/`Accept: raw` biçimiyle `3db1519`
 üzerinden HTTP 200 döndü (5758 / 3602 / 3236 / 132 bayt) — CI'ı beklemeden
 API yolunun doğru olduğu teyit edildi.
+
+## Kapandı (2026-11-04 13:10 UTC) — PR #611 → `7d9cd8f`
+
+19 kontrol fail 0 / pending 0. Merge sonrası iki kanıt da geldi:
+
+1. **auto-tag checkout'suz koştu** (`41827816676`, success): logda
+   `v7.5.0 already exists; nothing to do.` — yani dört dosya Contents API ile
+   `TARGET_SHA`'dan indi, üç sürüm kontrolü (package.json / tauri.conf.json /
+   Cargo.toml + Android metadata) geçti ve tag yolu beklendiği gibi kısa devre
+   yaptı. Tag oluşturma kısmı çalışmadı (sürüm değişmedi), o yol 7.6.0'da
+   sınanacak.
+2. **Scorecard:** `Dangerous-Workflow 0 → 10` ("no dangerous workflow patterns
+   detected"); **toplam skor 5.3 → 6.5**.
+
+### Skor yolculuğu
+| Sürüm | commit | skor |
+| --- | --- | --- |
+| Scorecard eklendiğinde | `e40e3ba` | 4.6 |
+| Token-Permissions sonrası | `3db1519` | 5.3 |
+| checkout'suz auto-tag sonrası | `7d9cd8f` | **6.5** |
+
+Kalan iki düşük kontrol: **Security-Policy 4** (kullanıcı adımı: private
+vulnerability reporting açılınca link eklenecek) ve **Signed-Releases 8**
+(D10, bilinçli).
+
+---
+
+# Seçilen iş kalemi: i18n tarayıcısında koşullu dallar ve `${…}` içi (E4.7) — Opus planı `4d5a0069`
+
+Opus, `docs/i18n.md`'de yazan eski boşlukları da okuyup kapsamı netleştirdi:
+- Nesne taraması koşullu dalları **zaten** sayıyor (`valueTexts` → test var);
+  açık olan JSX tarafı: koşullu attribute/prop değeri, JSX çocuğu olarak yazılan
+  ifade, ve çocuk olarak yazılan düz dize/şablon.
+- `${…}` içi **iki yerde** açık: nesne taraması ve JSX attribute'u.
+- `ci-workflow` tavanları gevşek (`files ≤ 77` ama gerçek 50).
+
+Tasarım: tek özyinelemeli `expressionTexts()` yardımcısı iki boşluğu da kapatır
+(koşullu dallar, `??`/`||`/`&&` sağ tarafı, `${…}` içi). Koşul kısmı hiç
+okunmaz (`mode === "edit"` sayılmaz), `+` birleştirme bilinçli olarak dışarıda.
+Şema **v4'te kalır**, yeni bölüm açılmaz; `--expressions-report` bayrağı hangi
+dizenin yeni kuraldan geldiğini satır satır gösterir.
+
+**Durak A (Opus):** ölçüm yapıldıktan sonra üç yol — ≤12 dize ise ölçüm+çeviri
+aynı PR'da; daha fazlaysa yalnız ölçüm (`--allow-raise`, tavanlar yeni sayıya);
+bir bölümde 0 ise "kapattık, bulgu yok" yazılır. `objects` pini `0` kalır; orada
+bulgu çıkarsa çevrilir.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dört 7.6.0 dilimi master'da
+  (`a4be68f`, `e40e3ba`, `3db1519`, `7d9cd8f`); skor 6.5. Yerelde `b9ee5bf`
+  (plan) commit'i sıradaki PR'a girecek. Sıradaki kalem **i18n koşullu dal +
+  `${…}` taraması** (Opus planı yukarıda, uygulama hazır). Sonra: 7.6.0 sürüm
+  treni (auto-tag'in tag oluşturma yolu ilk kez orada sınanacak).
