@@ -60,6 +60,12 @@ updates:
       extension:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # vite 8 runs on rolldown: `rollupOptions` becomes `rolldownOptions`, the
+      # output file names change and the manifest paths have to be re-checked
+      # by loading the built extension. Tracked in #619.
+      - dependency-name: vite
+        versions: [">=7.0.0"]
 
   - package-ecosystem: cargo
     directory: /
@@ -98,6 +104,17 @@ updates:
       # would only fork the version.
       - dependency-name: hmac
         versions: [">=0.13.0"]
+      # sha2 0.11 rides `digest` 0.11 (hybrid-array): the output type changes
+      # and hmac/pbkdf2 are still on digest 0.10, so the RustCrypto family has
+      # to move in one reviewed step, with our hex formatting and the signing
+      # test vectors re-checked. Tracked in #617.
+      - dependency-name: sha2
+        versions: [">=0.11.0"]
+      # getrandom 0.3 replaced `getrandom()` with `fill()` and 0.4 continues
+      # from there; `rand` 0.8 still pulls 0.2, so a root bump forks the crate
+      # unless the RNG call sites move too. Tracked in #618.
+      - dependency-name: getrandom
+        versions: [">=0.3.0"]
 
   - package-ecosystem: cargo
     directory: /fuzz

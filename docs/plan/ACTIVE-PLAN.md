@@ -875,3 +875,121 @@ için `converter.tsx` 295→296, `Security.tsx` 262→263; gerekçeli, aynı PR'
   yolu (checkout'suz hali) ilk kez orada uçtan uca sınanacak; ayrıca 10+ dilim
   birikti. Ondan sonra: `PasswordField` tekrarını ortak bileşene almak, JSX
   tarafına `i18n-content:` benzeri yoksayma işareti.
+
+---
+
+# Seçilen iş kalemi: v7.6.0 sürüm treni — Opus planı `4e33dae7`
+
+Opus brifingdeki iki noktayı düzeltti: (1) çalışma ağacında sürüm artışı
+"yarım" görünüyordu — o benim devam eden işimdi, uzakta `v7.6.0` tag'i **yok**
+(404) ve master `0fd9408`; (2) `release.yml` v7.5.0'dan beri **değişti** (motor
+önbelleği + izin taşıma), yani değişmeyen tek hat `android.yml`.
+
+Aldığım önlemler:
+- **auto-tag okuma provası** yerelde: dört dosya dal SHA'sından (8154a7d)
+  Contents API ile indi, üç sürüm kontrolü + Android metadata geçti
+  (`version=7.6.0`, `androidCode=7006000`). POST'a gidilmedi.
+- **ruleset kontrolü:** 0 ruleset → tag POST'u engellenmeyecek.
+- **statik izin kontrolü:** `release/windows` işi `contents: write`,
+  `actions: read`, `id-token: write`, `attestations: write` taşıyor;
+  `release/linux` → `linux-package.yml` tavanı.
+- **Dalda `release.yml` dispatch'i** (yayın yapmaz, yükleme adımları tag'e
+  kilitli) — hat v7.5.0'dan beri değiştiği için gerçekten gerekli.
+- **`android-ci` etiketi** — PR derlemesi ucuz sigorta (imzalı yolu sınamaz).
+
+**Kritik kabul:** tag oluşturma yolu (POST `git/refs` + iki dispatch) merge
+sonrası **ilk kez** koşacak. Geri dönüş yolu: okuma hatasında tag oluşmaz,
+düzeltip `gh workflow run auto-tag.yml --ref master`; POST başarılı + dispatch
+başarısızsa auto-tag'i tekrar koşturma, eksik workflow'u elle başlat.
+
+## KAPANDI — v7.6.0 yayınlandı ve doğrulandı (2026-11-04 16:45 UTC)
+
+**PR #614 → `153b768`.** Tag `v7.6.0` → `153b768` (merge commit).
+
+### Yeni auto-tag yolu ilk kez uçtan uca koştu
+Log (`Auto release tag`, `workflow_dispatch`, success):
+```
+created v7.6.0 at 153b768836a4650cdb357ded4d836deb41a0ad3d
+dispatched release.yml and android.yml on v7.6.0
+```
+Yani Contents API ile dört dosya indirme + üç sürüm kontrolü + `git/refs` POST
++ iki dispatch **çalışıyor**. `::error` satırı yok, "already exists" yok.
+
+### Volta: master Desktop iki kez `cancelled`
+Merge sonrası master Desktop **kırmızı** bitti: tek sebep
+`Rust (macos-latest)` işinin **runner sağlanamadığı için** iptal edilmesi
+(15 dk, **hiç adım koşmadı**, `runner_name` boş). `rerun-failed-jobs` iki kez
+denendi; ikisi de aynı şekilde iptal, üçüncü deneme kuyrukta kaldı.
+Aynı ağaçtaki `Rust (macos-latest)` **PR koşusunda 21 adımla geçmişti**.
+Bu yüzden `auto-tag`'in **belgelenmiş manuel yolu** kullanıldı
+("Manual dispatch skips the gate on purpose (a human decided the commit is
+good)"). Kod hatası yok; hosting kapasitesi sorunu.
+
+### Yayın kanıtı
+- `Release` `41863872326` success (3/3 iş), `Android` `41863875733` success.
+- Release "OmniOffice v7.6.0": **18 varlık**, draft/prerelease değil; ad kümesi
+  v7.5.0'ınkiyle **birebir aynı** (7.6.0'a yeniden adlandırılmış).
+- Checksum: `SHA256SUMS.txt` 8/8, `-windows` 3/3, `-linux` 2/2, `-android` 4/4
+  → **17/17** GitHub digest'iyle eşleşti.
+- `latest.json`: `version=7.6.0`, url `v7.6.0/OmniOffice_7.6.0_x64-setup.exe`,
+  imza dolu.
+- Release gövdesi `changelog-section.mjs 7.6.0` çıktısıyla **birebir aynı** (4699 karakter).
+- Android tag logu: `APK versionCode: 7006000`,
+  `Signing certificate matches the previous release (v7.5.0)`,
+  `ABI matrix OK: 4 artifacts, two ABIs, one signing identity`
+  (iki ABI'de de `f17e1d97…`).
+
+### Ders
+Sürüm treninin tek gerçek riski (tag oluşturma yolu) sorunsuz çalıştı; asıl
+aksilik **CI altyapısıydı** (macOS runner kapasitesi). Bir sonraki sürümde:
+merge'den sonra master Desktop'ın macOS işini bekle, `cancelled` ise
+auto-tag'i manuel dispatch etmek meşru — ama önce aynı ağacın PR'da geçtiğini
+kanıtla (bu turda öyle yapıldı).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** v7.6.0 yayında ve doğrulandı; master
+  `153b768`, tag `v7.6.0`. Yerelde bu plan commit'i sıradaki PR'a girecek.
+  Sıradaki adaylar: (a) `PasswordField` tekrarını ortak bileşene almak,
+  (b) JSX tarafına `i18n-content:` benzeri yoksayma işareti (TablesUi gibi
+  bilinçli literaller için), (c) Scorecard'ın kalan düşük kontrolleri.
+  Kullanıcı adımı: GitHub'da private vulnerability reporting'i açmak
+  (Security-Policy 4 → yükselir).
+
+---
+
+# Seçilen iş kalemi: Dependabot birikimini ayıklamak (Opus kararı `3f5c2943`)
+
+Opus: bu pencerenin en değerli işi bağımlılık birikimi (7 açık PR); (a)/(b)/(c)
+adayları sonraki dilime. macOS iptalleri tek başına iş değil, ön koşul.
+
+## macOS teşhisi (Faz 0, yapıldı)
+`Rust (macos-latest)` işi master'da **4 denemede de** iptal edildi. Karşılaştırma:
+- push (master): `runner_name` **boş**, **0 adım**, created → cancelled 15 dk.
+- PR (aynı ağaç): runner `GitHub Actions 1000017468`, **21 adım**, success.
+- `rust` işi matrisi push/PR için **birebir aynı** (`macos-latest`, timeout 45).
+
+Yani sebep kod değil, **macOS runner kapasitesi** (hiç atanmadı). Opus'un karar
+tablosuna göre koda dokunulmadı; `continue-on-error` **yapılmadı** (tek macOS
+derleme korumasını sustururdu). Deneme 4 kuyrukta bırakıldı; master Desktop bu
+yüzden kırmızı kalıyor ve bir sonraki sürüm yine elle tag'lenmek zorunda.
+
+## Birleşenler
+- **#593** Cargo rust grubu → `8886330`.
+- **#591** chrome-extension npm grubu → `f79a92e`.
+
+## #608 → #616 (actions grubu)
+İlk PR (#608) scorecard.yml eklenmeden açılmıştı: `github/codeql-action` pini
+`codeql.yml`'de güncellenip `scorecard.yml`'de eski kalacaktı, yani benim
+"tek codeql-action commit'i" testim merge sonrası kırılacaktı.
+`@dependabot rebase` istendi → Dependabot **#616** olarak yeniden açtı; yeni dal
+9 dosyayı (scorecard.yml dahil) kapsıyor ve iki dosyada da aynı yeni SHA
+(`9b325408…`) var. #608 kapandı.
+
+## Kırıcı üç bump: kapatıldı + ignore + tracking issue
+| PR | Ne | Issue |
+| --- | --- | --- |
+| #595 | `sha2 0.11` (digest 0.11 / hybrid-array; hmac/pbkdf2 ailesi 0.10'da) | **#617** |
+| #594 | `getrandom 0.4` (`getrandom()` → `fill()`, `rand` 0.8 hâlâ 0.2 çekiyor) | **#618** |
+| #470 | chrome-extension `vite 8` (rolldown, manifest yolları) | **#619** |
+
+`.github/dependabot.yml`'ye gerekçeli `ignore` kuralları eklendi (mevcut
+`eslint`/`typescript`/`vitest`/`der`/`hmac` kalıbıyla aynı biçim).
