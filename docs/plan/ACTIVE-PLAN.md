@@ -816,3 +816,31 @@ bulgu çıkarsa çevrilir.
   (plan) commit'i sıradaki PR'a girecek. Sıradaki kalem **i18n koşullu dal +
   `${…}` taraması** (Opus planı yukarıda, uygulama hazır). Sonra: 7.6.0 sürüm
   treni (auto-tag'in tag oluşturma yolu ilk kez orada sınanacak).
+
+## Uygulandı (2026-11-04 12:45 UTC) — PR #612 (i18n ifadeler)
+
+Opus planı birebir uygulandı: `expressionTexts()` + `attributeTexts()` tek
+özyinelemeli kural; koşul okunmuyor, `+` birleştirme dışarıda; `--expressions-report`
+bayrağı eklendi. İki eski "bilinen boşluk" testi gerçek kelimelerle güncellendi
+(adları korundu — claims işaretleri).
+
+**Ölçüm:** `files` 50 → **73**, `attributes` 11 → **20**, `props` 6 → **8**,
+`objects` 0 → **0**. Şema **v4**'te kaldı. `--update` bayraksız reddetti ve
+büyüme listesini bastı (ratchet çalışıyor).
+
+**34 dizenin ~14'ü gerçek sızıntı** (çeviri diliminin listesi):
+- `Merge.tsx:86`, `Ocr.tsx:118`, `Compress.tsx:210` — elle yazılmış
+  `language === "tr" ? … : …` üçlüleri (sözlüğü atlıyorlar).
+- `PetitionWizard.tsx:134` — iki Türkçe `subtitle` dalı; birinde "UDF, DOCX ve
+  PDF" (muhtemelen "ODT" — çeviride doğrulanacak).
+- `Security.tsx:77` + `converter.tsx:49` `Hide`/`Show`; `History.tsx:236`
+  `Date` ×2; `PdfStudio.tsx:1413` `- no private key`; `Ai.tsx:1306`
+  `Jump to page ${…}`; `TablesUi.tsx:231` `Column`.
+- Kalan ~20'si meşru literal (PDF, jpg, (CA), `${…} min`, `https://`,
+  `C:\Documents`, `English (1,234.56)`).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR #612 CI'da. Merge sonrası sıradaki kalem
+  **çeviri dilimi**: yukarıdaki ~14 gerçek sızıntıyı sözlüğe taşımak (koşullu
+  üçlüler `t()` + dil değişimi), `PetitionWizard` "UDF" yazımını doğrulamak ve
+  tabanı düşürmek (`--update`, bayraksız). Ondan sonra 7.6.0 sürüm treni
+  (auto-tag'in tag oluşturma yolu ilk kez orada sınanacak).
