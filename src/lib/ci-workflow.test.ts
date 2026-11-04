@@ -444,3 +444,116 @@ describe("OpenSSF Scorecard (E5)", () => {
     expect([...shas]).toHaveLength(1);
   });
 });
+
+describe("GitHub token permissions (E5)", () => {
+  const workflows = readdirSync(path.join(root, ".github", "workflows")).filter((name) => name.endsWith(".yml"));
+
+  type JobPermissions = Record<string, { permissions?: Record<string, string> }>;
+
+  function parsed(name: string): { permissions: Record<string, string>; jobs: JobPermissions } {
+    // The workflows are simple enough for a YAML-free read: the two blocks that
+    // matter are the top-level `permissions:` mapping and each job's.
+    const text = read(name);
+    // Comment lines inside the block are skipped: they explain the narrowing.
+    const top = text.match(/\npermissions:\n((?:(?: {2}#.*| {2}[\w-]+: \w+)\n)+)/);
+    const permissions: Record<string, string> = {};
+    for (const line of (top?.[1] ?? "").split("\n")) {
+      const match = line.match(/^ {2}([\w-]+): (\w+)$/);
+      if (match) permissions[match[1]] = match[2];
+    }
+    const jobs: JobPermissions = {};
+    for (const block of text.split(/\n(?= {2}[\w-]+:\n)/)) {
+      const name = block.match(/^ {2}([\w-]+):\n/)?.[1];
+      if (!name) continue;
+      const jobPerms: Record<string, string> = {};
+      for (const line of block.split("\n")) {
+        const match = line.match(/^ {6}([\w-]+): (\w+)$/);
+        if (match) jobPerms[match[1]] = match[2];
+      }
+      if (block.includes("permissions:")) jobs[name] = { permissions: jobPerms };
+    }
+    return { permissions, jobs };
+  }
+
+  it("never grants a write permission at the workflow level", () => {
+    // Scorecard's Token-Permissions check, and the reason it matters: a
+    // workflow-level `contents: write` hands every job the repository token's
+    // write scope, including the ones that only read files.
+    for (const name of workflows) {
+      const { permissions } = parsed(name);
+      expect(Object.keys(permissions).length, name).toBeGreaterThan(0);
+      const writes = Object.entries(permissions).filter(([, level]) => level === "write");
+      expect(writes, `${name} grants ${JSON.stringify(writes)} at the workflow level`).toHaveLength(0);
+    }
+  });
+
+  it("grants each job the permission its steps actually call", () => {
+    // "Resource not accessible by integration" only appears at tag time, when
+    // the publishing steps run. This reads the steps instead: a marker in a
+    // job body means the effective permissions of that job must cover it.
+    // [marker, permission, level]: SignPath only reads the artifact back, so
+    // its need is `actions: read`, while a dispatch call is a write.
+    const markers: [RegExp, string, string][] = [
+      [/gh release (create|upload|edit|delete)/, "contents", "write"],
+      [/gh workflow run/, "actions", "write"],
+      [/git\/refs/, "contents", "write"],
+      [/actions\/attest-build-provenance@/, "id-token", "write"],
+      [/actions\/attest-build-provenance@/, "attestations", "write"],
+      [/SignPath\/github-action-submit-signing-request@/, "actions", "read"],
+      [/scripts\/pr-size\.mjs/, "issues", "write"],
+      [/scripts\/pr-size\.mjs/, "pull-requests", "write"],
+      [/codeql-action\/(analyze|upload-sarif)@/, "security-events", "write"],
+    ];
+    for (const name of workflows) {
+      const text = read(name);
+      const { permissions } = parsed(name);
+      for (const block of text.split(/\n(?= {2}[\w-]+:\n)/)) {
+        const job = block.match(/^ {2}([\w-]+):\n/)?.[1];
+        if (!job) continue;
+        // The job body minus its comment lines: a comment that names a command
+        // must not demand a permission.
+        const body = block
+          .split("\n")
+          .filter((line) => !line.trim().startsWith("#"))
+          .join("\n");
+        const own = block.includes("\n    permissions:") ? parsed(name).jobs[job]?.permissions : undefined;
+        const effective = own ?? permissions;
+        for (const [marker, permission, level] of markers) {
+          if (!marker.test(body)) continue;
+          expect(effective?.[permission], `${name} ${job} needs ${permission}: ${level}`).toBe(level);
+        }
+      }
+    }
+  });
+
+  it("keeps the called workflow inside its caller's ceiling", () => {
+    // A reusable workflow may keep or lower the caller's scopes, never raise
+    // them; a violation is a startup failure on the release tag.
+    const caller = parsed("release.yml").jobs?.linux?.permissions ?? {};
+    const callee = parsed("linux-package.yml").jobs?.linux?.permissions ?? {};
+    for (const [permission, level] of Object.entries(callee)) {
+      if (level !== "write") continue;
+      expect(caller[permission], `linux-package wants ${permission}: write`).toBe("write");
+    }
+  });
+
+  it("keeps the write permissions the publishing jobs need", () => {
+    // Narrowing the workflow level must not silently take a permission away
+    // from the one job that publishes; that failure only shows at tag time.
+    const needs: [string, string, Record<string, string>][] = [
+      ["auto-tag.yml", "tag", { contents: "write", actions: "write" }],
+      ["beta.yml", "beta", { contents: "write" }],
+      ["linux-package.yml", "linux", { contents: "write" }],
+      ["pr-size.yml", "size", { issues: "write", "pull-requests": "write" }],
+      ["release.yml", "windows", { contents: "write", "id-token": "write", attestations: "write" }],
+      ["release.yml", "linux", { contents: "write" }],
+    ];
+    for (const [name, job, permissions] of needs) {
+      const { jobs } = parsed(name);
+      expect(jobs[job], `${name} ${job}`).toBeDefined();
+      for (const [permission, level] of Object.entries(permissions)) {
+        expect(jobs[job]?.permissions?.[permission], `${name} ${job} ${permission}`).toBe(level);
+      }
+    }
+  });
+});

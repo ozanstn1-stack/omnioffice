@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Workflow write permissions moved to the job that uses them (E5):** the
+  OpenSSF Scorecard run scored Token-Permissions at 0, because `auto-tag`,
+  `beta`, `linux-package`, `pr-size` and `release` granted write scopes at the
+  workflow level to every job. They now default to `contents: read` and the
+  publishing job asks for what it writes; the effective scopes are unchanged
+  except `release/version-consistency`, which never wrote anything.
+
 ### Added
 
 - **OpenSSF Scorecard grades the repository (E5):** a weekly run, a run on
