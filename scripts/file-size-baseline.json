@@ -247,7 +247,7 @@
     "src/office/calc/ui/CalcRibbon.tsx": 421,
     "src/office/calc/ui/ChartPanel.tsx": 399,
     "src/office/calc/ui/ConditionalDialog.tsx": 385,
-    "src/office/calc/ui/TablesUi.tsx": 254,
+    "src/office/calc/ui/TablesUi.tsx": 255,
     "src/office/calc/ui/useCellAnnotations.tsx": 288,
     "src/office/calc/ui/useFindReplace.ts": 209,
     "src/office/calc/ui/useGridGestures.ts": 440,

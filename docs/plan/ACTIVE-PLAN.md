@@ -1016,3 +1016,32 @@ gerekçeyle kapatıldı.
   iptaliydi; yeniden koşu istendi. macOS kuyruğu düzelince birleştirilecek.
   **master Desktop** de aynı sebeple kırmızı kaldı; kuyruk normale dönünce
   yeşile gelecek ve `auto-tag` "already exists" diyecek.
+
+---
+
+# Kapandı (2026-11-04 18:20 UTC) — PR #625: ortak `PasswordField`
+
+Opus `342a2fb4` **(a)** dedi; (b) i18n yoksayma işareti sonraki dilime,
+(c) Scorecard'ın kalanı kullanıcı/hesap adımı.
+
+**Keşif (DUR-1 geçildi):** iki kopya arasındaki tek davranış farkı
+`autoComplete` (`new-password` vs `off`) ve `autoFocus` prop'u — ikisi de prop
+oldu.
+
+**Beklenmedik engel:** `jsx-a11y/no-autofocus` kuralı özel bileşende de
+`autoFocus` prop'unu işaretliyor ve JSX attribute listesinin içine disable
+yorumu konamıyor → prop **`focusOnMount`** olarak adlandırıldı.
+
+**Sonuç:** Security 263 → **241**, converter 296 → **262**; bütçeler de indi.
+Yeni `password-field.tsx` 52 satır (200 satır eşiğinin altında, bütçe kaydı
+gerekmiyor). i18n tabanı **değişmedi** (64/15/6/0) — çünkü iki kopyadaki
+`aria-label` literalı geçen dilimde `t()`'ye dönmüştü.
+
+7 yeni test; mevcut ekran testlerinin assertion'ları **değişmedi**.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR #625 CI'da. Sıradaki kalem: **(b) JSX
+  tarafına `i18n-content:` benzeri yoksayma işareti** (TablesUi'deki `"Column"`
+  gibi bilinçli literaller için; işaret başına gerekçe zorunlu, işaret sayısına
+  tavan testi). Ondan sonra kullanıcı adımı: GitHub'da private vulnerability
+  reporting'i açmak → `SECURITY.md` linki (Security-Policy 4 → yükselir).
+  Açık: #615 (frontend grubu; macOS iptali yüzünden bekliyor).

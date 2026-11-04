@@ -67,6 +67,25 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **A deliberate literal can be declared, not just counted (E4.7):** the object
+  scan has had an `i18n-content:` pragma for data that must not be translated;
+  the JSX side had nothing, so a unit or a formula example either inflated the
+  baseline forever or was "fixed" by translating something that must not be.
+  A `// i18n-literal: reason` comment (or `{/* … */}` above a child) now
+  silences exactly one finding, and the rules make it hard to abuse: the reason
+  must be real (12+ characters, not `todo`), a marker that binds to nothing or
+  to two attributes fails the run, a `//` line inside JSX text is reported
+  rather than obeyed, and the total is both ratcheted in the baseline and hard
+  capped at five. `--literals-report` prints each one with its reason. The
+  schema moves to v5 for the count; one marker exists today, on the Calc
+  table dialog's structured-reference placeholder.
+  `test:src/lib/i18n-jsx-audit.test.ts#excludes an attribute marked by a comment on the line above`
+  `test:src/lib/i18n-jsx-audit.test.ts#rejects a marker without a reason and keeps counting the text`
+  `test:src/lib/i18n-jsx-audit.test.ts#reports a marker that binds to no finding`
+  `test:src/lib/i18n-jsx-audit.test.ts#reports a marker whose line holds two different attributes`
+  `test:src/lib/i18n-jsx-audit.test.ts#treats a // line inside JSX children as text, not as a marker`
+  `test:src/lib/ci-workflow.test.ts#caps the deliberate literals a marker may silence`
+
 - **One password field instead of two (E4.7 follow-up):** the Protect/Unlock
   panels and the converter each carried their own copy of the same component,
   and they had already drifted: one set `autoComplete="new-password"`, the other
@@ -350,7 +369,7 @@ release-train schedule is decided.
   `test:src/lib/i18n-jsx-audit.test.ts#counts the sibling props the components really declare`
   `test:src/lib/i18n-jsx-audit.test.ts#does not count a title twice when a component takes it as a prop`
   `test:src/lib/i18n-jsx-audit.test.ts#fails when a sibling prop grows above its baseline`
-  `test:src/lib/i18n-jsx-audit.test.ts#keeps the baseline schema at v4 when the widened props are recorded`
+  `test:src/lib/i18n-jsx-audit.test.ts#keeps the baseline schema at v5 when the widened props are recorded`
 
 - **Object literals and `.ts` modules are measured too (E4.6):** interface text
   that never passes through a JSX literal - the KVKK template options
