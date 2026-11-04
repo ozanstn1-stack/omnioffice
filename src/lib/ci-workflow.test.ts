@@ -445,6 +445,40 @@ describe("OpenSSF Scorecard (E5)", () => {
   });
 });
 
+describe("auto-tag reads the tagged commit without checking it out (E5)", () => {
+  const autoTag = read("auto-tag.yml");
+
+  it("never checks out the triggering run's commit", () => {
+    // A `workflow_run` checkout is the shape of the fork-code-with-secrets
+    // attack and OpenSSF Scorecard flags it (Dangerous-Workflow). The job only
+    // needs four files, so it must not have a working tree at all.
+    expect(autoTag).not.toContain("actions/checkout@");
+    expect(autoTag).toContain("Dangerous-Workflow");
+  });
+
+  it("reads each version file from the commit it is about to tag", () => {
+    // The version gate and the tag have to describe one commit: fetching the
+    // files at TARGET_SHA is what keeps them from drifting apart.
+    expect(autoTag).toContain("Accept: application/vnd.github.raw");
+    expect(autoTag).toContain("repos/$REPO/contents/$1?ref=$TARGET_SHA");
+    for (const file of [
+      "package.json",
+      "src-tauri/tauri.conf.json",
+      "Cargo.toml",
+      "src-tauri/gen/android/app/tauri.properties",
+    ]) {
+      expect(autoTag, file).toContain(file);
+    }
+  });
+
+  it("keeps the gate on a push from this repository", () => {
+    // A fork's pull-request run reports `pull_request`, and the repository
+    // comparison states the boundary even if that changed.
+    expect(autoTag).toContain("github.event.workflow_run.event == 'push'");
+    expect(autoTag).toContain("github.event.workflow_run.head_repository.full_name == github.repository");
+  });
+});
+
 describe("GitHub token permissions (E5)", () => {
   const workflows = readdirSync(path.join(root, ".github", "workflows")).filter((name) => name.endsWith(".yml"));
 

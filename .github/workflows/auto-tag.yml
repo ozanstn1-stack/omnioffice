@@ -35,15 +35,23 @@ jobs:
       # Dispatching release.yml and android.yml on it.
       actions: write
     # The gate: a push-to-master Desktop run that passed. Manual dispatch skips
-    # the gate on purpose (a human decided the commit is good).
+    # the gate on purpose (a human decided the commit is good). The repository
+    # comparison keeps the trust boundary in the file itself: a `workflow_run`
+    # raised by a fork can never reach the tag step.
     if: >
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # No checkout: this job only reads four files, and it reads them from the
+      # exact commit it is about to tag, through the Contents API. Checking the
+      # triggering run's SHA out was flagged as a dangerous workflow pattern
+      # (OpenSSF Scorecard, Dangerous-Workflow) because a `workflow_run`
+      # checkout is the shape of a fork-code-with-secrets attack; dropping it
+      # also keeps the write-scoped token out of a working tree. Adding a
+      # checkout back reintroduces the finding - fetch what you need instead.
       - name: Tag and dispatch
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,6 +59,17 @@ jobs:
           TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
+          # Read the files the version gate compares from the same commit the
+          # tag will point at, so the check and the tag can never disagree.
+          fetch() {
+            mkdir -p "$(dirname "$1")"
+            gh api -H "Accept: application/vnd.github.raw" \
+              "repos/$REPO/contents/$1?ref=$TARGET_SHA" > "$1"
+          }
+          for file in package.json src-tauri/tauri.conf.json Cargo.toml \
+                      src-tauri/gen/android/app/tauri.properties; do
+            fetch "$file"
+          done
           version=$(node -p "require('./package.json').version")
           tauri=$(node -p "require('./src-tauri/tauri.conf.json').version")
           cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)

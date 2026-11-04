@@ -698,3 +698,41 @@ sınar. **`beta.yml` ve `auto-tag.yml` dispatch EDİLMEZ:** beta yayınlar
 `never grants a write permission at the workflow level` **kırmızı** düştü
 (`auto-tag.yml grants [contents: write, actions: write]`), değişiklikten sonra
 yeşil.
+
+## Kapandı (2026-11-04 11:05 UTC) — PR #610 → `3db1519`
+
+Testler önce yazıldı: workflow'lar değişmeden `never grants a write permission
+at the workflow level` **kırmızı** düştü, değişiklikten sonra yeşil.
+22 kontrol fail 0 / pending 0.
+
+**Canlı kanıt (dalda `release.yml` dispatch `41813409104`, success):**
+```
+Version consistency        Contents: read   Metadata: read
+Linux packages (nested)    Contents: write  Metadata: read
+Windows installer          Actions: read  Attestations: write  Contents: write  Metadata: read
+```
+`version-consistency` gerçekten yalnız okumaya indi; nested reusable workflow
+tavanı tuttu (startup failure yok). `pr-size` PR'da koştu: `Issues: write`,
+`PullRequests: write`, log satırı normal (`skipped (403` yok).
+**`beta.yml` ve `auto-tag.yml` dispatch edilmedi** (ikisi de yayın/tag üretir).
+
+**Skor: 4.6 → 5.3.** Kontrol bazında:
+- **Token-Permissions 0 → 10** ("follow principle of least privilege").
+- **Security-Policy 4** — dosya **bulunuyor** ("security policy file detected"),
+  yani yanlış negatif değildi; puan kısmi çünkü dosyada bağlantı yok ve özel
+  raporlama kapalı.
+- **Signed-Releases 8** — updater imzası (`_x64-setup.exe.sig`) sayılıyor.
+- **Dangerous-Workflow 0** — sebep: `auto-tag.yml`'de
+  `checkout '${{ github.event.workflow_run.head_sha || github.sha }}'`
+  (Scorecard `workflow_run`'dan kod checkout'unu tehlikeli sayıyor; bizim
+  koşulumuz yalnız master push'u ve Desktop success ile sınırlı, ama statik
+  analiz bunu görmüyor).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** üç 7.6.0 dilimi master'da
+  (`a4be68f`, `e40e3ba`, `3db1519`). Sıradaki kalem **Dangerous-Workflow
+  bulgusu**: `auto-tag.yml`'ın `workflow_run` checkout'unu ya daraltmak
+  (`github.sha` ile master tipi) ya da gerekçeli "bilinen yanlış pozitif"
+  olarak belgelemek — Opus'a sorulacak. Ondan sonra tarayıcı boşlukları
+  (koşullu JSX dalları, nesne içi `${…}`) ve kullanıcı adımı: GitHub'da özel
+  güvenlik açığı raporlamasını açmak + `SECURITY.md`'ye advisories linki
+  (Security-Policy puanını yükseltir).
