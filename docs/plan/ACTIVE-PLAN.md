@@ -736,3 +736,31 @@ tavanı tuttu (startup failure yok). `pr-size` PR'da koştu: `Issues: write`,
   (koşullu JSX dalları, nesne içi `${…}`) ve kullanıcı adımı: GitHub'da özel
   güvenlik açığı raporlamasını açmak + `SECURITY.md`'ye advisories linki
   (Security-Policy puanını yükseltir).
+
+---
+
+# Seçilen iş kalemi: Dangerous-Workflow bulgusu (7.6.0, dördüncü dilim) — Opus kararı `770f327a`
+
+Opus **D** dedi ama benim önerdiğim biçimde değil (checkout'tan önce doğrulama
+adımı Scorecard'ı susturmaz, çünkü statik analiz yalnız `ref:` ifadesine bakar).
+Onun yerine: **`actions/checkout` tamamen kaldırılsın**, gereken dört dosya
+Contents API ile `TARGET_SHA`'dan okunsun.
+
+Gerekçe (Opus): gerçek risk yoktu — kapı yalnız master push + Desktop success
+kabul ediyor, çekilen ağaçtan kod çalıştırılmıyor (`node -p` JSON okuyor) — ama
+checkout'a da gerek yoktu. Kaldırma bulguyu **gerçekten** kapatıyor (yanlış
+pozitif olarak belgelemek yerine), doğruluğu koruyor (dosyalar tag'lenecek
+commit'ten) ve yazma yetkili tokenı çalışma ağacından çıkarıyor.
+
+Uygulama:
+- checkout adımı silindi, yerine "neden checkout yok" yorumu (geri eklenirse
+  bulgu da geri gelir).
+- `fetch()` yardımcısı + dört dosya `?ref=$TARGET_SHA`, raw medya tipi.
+  İndirme başarısızsa `set -euo pipefail` işi durdurur ve **tag oluşmaz**.
+- Kapıya `head_repository.full_name == github.repository` eklendi: güven sınırı
+  kodda yazılı, yalnız olay filtresine bağlı değil.
+- 3 test: checkout yok, dört dosya aynı ref'ten, kapı repository karşılaştırmalı.
+
+**Ön doğrulama:** dört dosya da aynı curl/`Accept: raw` biçimiyle `3db1519`
+üzerinden HTTP 200 döndü (5758 / 3602 / 3236 / 132 bayt) — CI'ı beklemeden
+API yolunun doğru olduğu teyit edildi.
