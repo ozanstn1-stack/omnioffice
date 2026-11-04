@@ -875,3 +875,29 @@ için `converter.tsx` 295→296, `Security.tsx` 262→263; gerekçeli, aynı PR'
   yolu (checkout'suz hali) ilk kez orada uçtan uca sınanacak; ayrıca 10+ dilim
   birikti. Ondan sonra: `PasswordField` tekrarını ortak bileşene almak, JSX
   tarafına `i18n-content:` benzeri yoksayma işareti.
+
+---
+
+# Seçilen iş kalemi: v7.6.0 sürüm treni — Opus planı `4e33dae7`
+
+Opus brifingdeki iki noktayı düzeltti: (1) çalışma ağacında sürüm artışı
+"yarım" görünüyordu — o benim devam eden işimdi, uzakta `v7.6.0` tag'i **yok**
+(404) ve master `0fd9408`; (2) `release.yml` v7.5.0'dan beri **değişti** (motor
+önbelleği + izin taşıma), yani değişmeyen tek hat `android.yml`.
+
+Aldığım önlemler:
+- **auto-tag okuma provası** yerelde: dört dosya dal SHA'sından (8154a7d)
+  Contents API ile indi, üç sürüm kontrolü + Android metadata geçti
+  (`version=7.6.0`, `androidCode=7006000`). POST'a gidilmedi.
+- **ruleset kontrolü:** 0 ruleset → tag POST'u engellenmeyecek.
+- **statik izin kontrolü:** `release/windows` işi `contents: write`,
+  `actions: read`, `id-token: write`, `attestations: write` taşıyor;
+  `release/linux` → `linux-package.yml` tavanı.
+- **Dalda `release.yml` dispatch'i** (yayın yapmaz, yükleme adımları tag'e
+  kilitli) — hat v7.5.0'dan beri değiştiği için gerçekten gerekli.
+- **`android-ci` etiketi** — PR derlemesi ucuz sigorta (imzalı yolu sınamaz).
+
+**Kritik kabul:** tag oluşturma yolu (POST `git/refs` + iki dispatch) merge
+sonrası **ilk kez** koşacak. Geri dönüş yolu: okuma hatasında tag oluşmaz,
+düzeltip `gh workflow run auto-tag.yml --ref master`; POST başarılı + dispatch
+başarısızsa auto-tag'i tekrar koşturma, eksik workflow'u elle başlat.
