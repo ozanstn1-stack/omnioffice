@@ -13,7 +13,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  # Read-only at the workflow level; the jobs below ask for what they write.
+  contents: read
 
 # One build per ref: a release must never be cancelled midway, and a second
 # dispatch for the same branch should wait rather than race the artifact names.
@@ -24,6 +25,9 @@ concurrency:
 jobs:
   linux:
     name: Debian package and AppImage
+    permissions:
+      # Attaching the .deb and the AppImage to the release.
+      contents: write
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
