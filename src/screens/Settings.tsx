@@ -362,7 +362,11 @@ export function Settings() {
                   data-active={(settings.autosaveSeconds ?? 30) === seconds}
                   onClick={() => void update({ autosaveSeconds: seconds })}
                 >
-                  {seconds === 0 ? t("settings.autosaveOff") : seconds < 60 ? `${seconds} s` : `${seconds / 60} min`}
+                  {seconds === 0
+                    ? t("settings.autosaveOff")
+                    : seconds < 60
+                      ? t("settings.autosaveSecondsShort", { seconds })
+                      : t("settings.autosaveMinutes", { minutes: seconds / 60 })}
                 </button>
               ))}
             </div>

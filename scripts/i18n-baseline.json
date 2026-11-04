@@ -8,7 +8,6 @@
     "office/calc/ui/PrintLayoutDialog.tsx": 2,
     "office/calc/ui/TablesUi.tsx": 1,
     "office/CalcEditor.tsx": 1,
-    "office/impress/slide-view.tsx": 1,
     "office/office-ui.tsx": 1,
     "office/tools/cleaner.tsx": 3,
     "office/tools/data.tsx": 2,
@@ -18,24 +17,22 @@
     "office/version-history-dialog.tsx": 1,
     "screens/Ai.tsx": 3,
     "screens/Batch.tsx": 2,
-    "screens/Convert.tsx": 2,
     "screens/Info.tsx": 2,
     "screens/Inspect.tsx": 2,
     "screens/Invoices.tsx": 3,
     "screens/Ocr.tsx": 2,
     "screens/Organize.tsx": 3,
-    "screens/PageTools.tsx": 5,
-    "screens/PdfStudio.tsx": 6,
+    "screens/PageTools.tsx": 4,
+    "screens/PdfStudio.tsx": 5,
     "screens/Redact.tsx": 1,
     "screens/Security.tsx": 1,
-    "screens/Settings.tsx": 5,
+    "screens/Settings.tsx": 4,
     "screens/Split.tsx": 1,
     "screens/Verify.tsx": 1
   },
   "attributes": {
     "components/ai-settings.tsx": 2,
     "office/calc/ui/CalcRibbon.tsx": 2,
-    "office/calc/ui/LinkDialog.tsx": 2,
     "office/ImpressEditor.tsx": 1,
     "screens/Ai.tsx": 3,
     "screens/PageTools.tsx": 1,
@@ -46,5 +43,5 @@
     "office/calc/ui/CalcRibbon.tsx": 6
   },
   "objects": {},
-  "literal": 1
+  "literal": 3
 }

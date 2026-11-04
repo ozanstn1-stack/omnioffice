@@ -530,10 +530,11 @@ function SlideObjectView({
   onTextSelection?: (info: TextSelectionInfo | null) => void;
   textEditRef?: React.Ref<TextEditHandle>;
 }) {
+  const t = useT();
   if (object.kind === "group") return null;
   if (object.kind === "image") {
     if (!object.image || object.image.dataBase64 === "")
-      return <div className="slide-image-placeholder">{object.placeholder ?? "Double-click to add an image"}</div>;
+      return <div className="slide-image-placeholder">{object.placeholder ?? t("impress.emptyImage")}</div>;
     const crop = object.image.crop ?? null;
     const preview = cropPreview(crop);
     if (isFullCrop(crop)) {

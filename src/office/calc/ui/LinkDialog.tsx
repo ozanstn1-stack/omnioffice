@@ -142,6 +142,7 @@ export function LinkDialog({
             <input
               inputMode={kind === "mail" ? "email" : "url"}
               value={address}
+              // i18n-literal: sample address; the shape, not wording to translate
               placeholder={kind === "mail" ? "name@example.com" : "https://"}
               // eslint-disable-next-line jsx-a11y/no-autofocus -- the dialog opens to type the address
               autoFocus

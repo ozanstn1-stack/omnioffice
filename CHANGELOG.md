@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The last four strings the expression scan found are translated (E4.7):** the
+  Impress empty-image hint, the autosave durations (`30 s` / `5 min`), the
+  signature panel's "Yes / Off" default and the "Page 1" page-number example.
+  The baseline drops to 58/12/6 with three declared literals.
+
 ### Added
 
 - **Deliberate literals can be declared on the JSX side too (E4.7):** a

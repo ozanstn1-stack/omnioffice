@@ -153,6 +153,7 @@ const expressionRows = [];
 // `literalRows` is what a marker silenced, `invalidMarkers` the markers that
 // cannot be used - a stale one, an ambiguous one, or one without a reason.
 const literalRows = [];
+const literalMarkers = new Set();
 const invalidMarkers = [];
 for (const file of walk(srcRoot)) {
   if (!file.endsWith(".tsx")) continue;
@@ -168,6 +169,7 @@ for (const file of walk(srcRoot)) {
     );
   for (const row of found.props) propRows.push(`${relative}:${row.line}\t${row.name}\t${row.text}`);
   for (const row of found.ignored ?? []) {
+    literalMarkers.add(`${relative}:${row.markerLine}`);
     literalRows.push(
       `${relative}:${row.line}\t${row.kind}\t${row.name ?? ""}\t${row.text}\t${row.reason}`,
     );
@@ -229,7 +231,7 @@ if (process.argv.includes("--expressions-report")) {
 
 if (process.argv.includes("--literals-report")) {
   for (const line of literalRows.sort()) console.log(line);
-  console.log(`i18n:literals-report: ${literalRows.length} deliberate literal(s), cap ${LITERAL_HARD_CAP}`);
+  console.log(`i18n:literals-report: ${literalMarkers.size} deliberate literal(s) silencing ${literalRows.length} string(s), cap ${LITERAL_HARD_CAP}`);
   for (const line of invalidMarkers.sort()) console.log(`invalid: ${line}`);
   process.exit(invalidMarkers.length ? 1 : 0);
 }
@@ -278,9 +280,9 @@ if (invalidMarkers.length) {
   );
   process.exit(1);
 }
-if (literalRows.length > LITERAL_HARD_CAP) {
+if (literalMarkers.size > LITERAL_HARD_CAP) {
   console.error(
-    `i18n: ${literalRows.length} deliberate literals is above the hard cap of ${LITERAL_HARD_CAP}; translate them or raise the cap in code with a reason.`,
+    `i18n: ${literalMarkers.size} deliberate literals is above the hard cap of ${LITERAL_HARD_CAP}; translate them or raise the cap in code with a reason.`,
   );
   process.exit(1);
 }
@@ -297,27 +299,27 @@ if (process.argv.includes("--update")) {
     process.exit(1);
   }
   const sort = (counts) => Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
-  if (baseline.literal !== undefined && literalRows.length > baseline.literal && !process.argv.includes("--allow-raise")) {
+  if (baseline.literal !== undefined && literalMarkers.size > baseline.literal && !process.argv.includes("--allow-raise")) {
     console.error(
-      `i18n:update: deliberate literals would grow ${baseline.literal} -> ${literalRows.length}; pass --allow-raise to move it on purpose.`,
+      `i18n:update: deliberate literals would grow ${baseline.literal} -> ${literalMarkers.size}; pass --allow-raise to move it on purpose.`,
     );
     process.exit(1);
   }
   const next = { version: 5 };
   for (const section of Object.keys(scan)) next[section] = sort(scan[section]);
-  next.literal = literalRows.length;
+  next.literal = literalMarkers.size;
   writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
   const totals = Object.keys(scan).map(
     (section) => `${Object.values(scan[section]).reduce((sum, n) => sum + n, 0)} ${section}`,
   );
-  totals.push(`${literalRows.length} literal`);
+  totals.push(`${literalMarkers.size} literal`);
   console.log(`i18n:update: recorded ${totals.join(", ")}`);
   process.exit(0);
 }
 
-if (process.argv.includes("--check") && literalRows.length > (baseline.literal ?? 0)) {
+if (process.argv.includes("--check") && literalMarkers.size > (baseline.literal ?? 0)) {
   console.error(
-    `i18n: ${literalRows.length} deliberate literal(s) is above the baseline of ${baseline.literal ?? 0}; a marker is a reviewed decision, not a way to pass.`,
+    `i18n: ${literalMarkers.size} deliberate literal(s) is above the baseline of ${baseline.literal ?? 0}; a marker is a reviewed decision, not a way to pass.`,
   );
   process.exit(1);
 }
@@ -368,7 +370,7 @@ console.log(
     " hardcoded-objects=" +
     totals.objects +
     " i18n-literals=" +
-    literalRows.length,
+    literalMarkers.size,
 );
 if (missing.length) {
   console.log("  missing (first 20): " + missing.slice(0, 20).join(", "));
