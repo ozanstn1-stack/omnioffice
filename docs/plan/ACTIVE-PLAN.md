@@ -1045,3 +1045,39 @@ gerekmiyor). i18n tabanı **değişmedi** (64/15/6/0) — çünkü iki kopyadaki
   tavan testi). Ondan sonra kullanıcı adımı: GitHub'da private vulnerability
   reporting'i açmak → `SECURITY.md` linki (Security-Policy 4 → yükselir).
   Açık: #615 (frontend grubu; macOS iptali yüzünden bekliyor).
+
+---
+
+# Kapandı — PR #627 `66c5f38` (kalan dört çeviri) + PR #628 açık (toast kusuru)
+
+**#627 birleşti.** Taban 64/14/6 → **58/12/6**, literal 3, `--expressions-report`
+18 → 9. Çevrilen: Impress boş görsel ipucu, otomatik kaydetme birimleri
+("30 s"/"5 min" → "30 sn"/"5 dk"), imza paneli "Yes / Off" → "Evet / Kapalı",
+sayfa örneği (mevcut `common.pageAlt`). İki yeni `i18n-literal` işareti
+(LinkDialog örnek adres, Convert uzantıları).
+
+**Opus'un pivot önerisi reddedildi (gerekçeli):** `pivot.ts`'deki
+`` `Column ${n}` `` pivot alanı **anahtarı** olarak kullanılıyor; çevirmek
+eşleştirmeyi bozardı ve zaten tabanda sayılmıyor.
+
+## E6 taraması (ürün derinliği)
+`docs/plan/PHASE-E-PROPOSAL.md`'deki E6'nın sekiz maddesi okundu:
+- **Holiday table 2030+**: dosyada **bilinçli** olarak 2029'da kesiliyor
+  ("2030'da iki Ramazan var, Diyanet takvimi gerekli"). Tarihleri uydurmak
+  yasak → bu madde kullanıcı/veri adımı, **yapılmadı**.
+- **LAN resumable downloads, writer-desk tasks, dynamic-array spill, AI
+  embedding batching**: her biri ayrı, uzun dilim.
+- **6.5.1 cihaz denetiminin son açık kusuru: toast alt çubuğu örtüyor** →
+  seçildi: küçük, doğrulanabilir, kullanıcıya görünür.
+
+## PR #628 — toast yerleşimi
+`.toast-host`: her yerde `env(safe-area-inset-bottom)`, **720 px altında** ayrıca
+alt çubuk yüksekliği (56 px) + inset + 12 px; yığın `pointer-events: none`,
+yalnız kartlar `auto` (tam genişlik toast arkadaki dokunuşu yutmasın).
+Üç CSS iddiası `touch-css.test.ts`'te (jsdom stil uygulamadığı için tek yol).
+`RELEASE_READINESS`'teki kusur notu "Fixed" olarak güncellendi.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR #628 CI'da. `[Unreleased]` artık **beş**
+  girdi taşıyor (PasswordField, literal işareti, son dört çeviri, toast) →
+  **7.7.0 sürüm treni** için yeterli. Sonraki adım: #628 merge → sürüm treni
+  (Opus planıyla). Kullanıcı adımı: private vulnerability reporting.
