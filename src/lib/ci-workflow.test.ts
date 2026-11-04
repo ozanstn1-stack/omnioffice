@@ -263,18 +263,38 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
       attributes: Record<string, number>;
       props: Record<string, number>;
       objects: Record<string, number>;
+      literal: number;
     };
-    expect(baseline.version).toBe(4);
+    // 2026-11-04: the baseline grew a fifth field, the count of deliberate
+    // literals a marker silences, so the schema is v5.
+    expect(baseline.version).toBe(5);
     const total = (section: Record<string, number>) => Object.values(section).reduce((sum, count) => sum + count, 0);
     // 2026-11-04: conditionals, logical fallbacks, JSX child expressions and the
     // strings inside a template's interpolations count now, so every ceiling
     // rose on purpose (50 -> 73, 11 -> 20, 6 -> 8); translating the sixteen
-    // strings that measurement found brought them back down to 64/15/6.
+    // strings that measurement found brought them back down to 64/15/6, and
+    // marking the structured-reference placeholder took attributes to 14.
     expect(total(baseline.files)).toBeLessThanOrEqual(64);
-    expect(total(baseline.attributes)).toBeLessThanOrEqual(15);
+    expect(total(baseline.attributes)).toBeLessThanOrEqual(14);
     expect(total(baseline.props)).toBeLessThanOrEqual(6);
     // The object scan reached zero and stays there.
     expect(total(baseline.objects)).toBe(0);
+  });
+
+  it("caps the deliberate literals a marker may silence", () => {
+    // A marker is a reviewed decision, not a way to pass: it needs a reason,
+    // it silences exactly one finding, and the total is both ratcheted and
+    // hard-capped so "just mark it" never becomes the easy path.
+    const baseline = JSON.parse(readFileSync(path.join(root, "scripts", "i18n-baseline.json"), "utf8")) as {
+      literal: number;
+    };
+    const module = readFileSync(path.join(root, "scripts", "lib", "i18n-jsx.mjs"), "utf8");
+    const cap = Number(/export const LITERAL_HARD_CAP = (\d+);/.exec(module)?.[1]);
+    expect(cap).toBeGreaterThan(0);
+    // Exactly one marker today: the structured-reference placeholder in the
+    // Calc table dialog. A second one is a conversation, not a commit.
+    expect(baseline.literal).toBe(1);
+    expect(baseline.literal).toBeLessThanOrEqual(cap);
   });
 });
 

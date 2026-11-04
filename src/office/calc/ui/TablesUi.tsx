@@ -228,6 +228,7 @@ export function TablesPanel({
                   <span>{t("calc.tableFormula")}</span>
                   <input
                     className="input"
+                    // i18n-literal: structured-reference example; "Column" is formula syntax, not UI copy
                     placeholder={`=${table.name}[${table.columns[0]?.name ?? "Column"}]`}
                     value={draft.formula}
                     onChange={(event) => patchDraft(table, { formula: event.target.value })}

@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Deliberate literals can be declared on the JSX side too (E4.7):** a
+  `// i18n-literal: reason` comment silences one finding that must not be
+  translated (a unit, a shortcut, a formula example), with the same discipline
+  as the object scan's `i18n-content:`: the reason must be real, a stale or
+  ambiguous marker fails the run, and the total is ratcheted plus hard-capped at
+  five. The baseline schema moves to v5 for the count.
+
 ### Changed
 
 - **One password field instead of two:** the Protect/Unlock panels and the

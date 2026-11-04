@@ -130,22 +130,22 @@ function run(tree: { root: string; baseline: string }, ...flags: string[]): { st
 }
 
 describe("i18n props ratchet", () => {
-  const v4 = { files: {}, attributes: {}, props: {}, objects: {} };
+  const v5 = { files: {}, attributes: {}, props: {}, objects: {}, literal: 0 };
 
   it("fails when a file grows above its props baseline", () => {
-    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field label="Save" />');
+    const tree = tempTree({ version: 5, ...v5, props: {} }, '<Field label="Save" />');
     const result = run(tree, "--check");
     expect(result.status).toBe(1);
     expect(result.output).toContain("prop string");
   });
 
   it("accepts the file once the props baseline records it", () => {
-    const tree = tempTree({ version: 4, ...v4, props: { "screens/Sample.tsx": 1 } }, '<Field label="Save" />');
+    const tree = tempTree({ version: 5, ...v5, props: { "screens/Sample.tsx": 1 } }, '<Field label="Save" />');
     expect(run(tree, "--check").status).toBe(0);
   });
 
   it("refuses to raise a props count without --allow-raise, and raises it with the flag", () => {
-    const tree = tempTree({ version: 4, ...v4, props: { "screens/Sample.tsx": 0 } }, '<Field label="Save" />');
+    const tree = tempTree({ version: 5, ...v5, props: { "screens/Sample.tsx": 0 } }, '<Field label="Save" />');
     const refused = run(tree, "--update");
     expect(refused.status).toBe(1);
     expect(refused.output).toContain("may only shrink");
@@ -155,7 +155,7 @@ describe("i18n props ratchet", () => {
       version: number;
       props: Record<string, number>;
     };
-    expect(written.version).toBe(4);
+    expect(written.version).toBe(5);
     expect(written.props["screens/Sample.tsx"]).toBe(1);
   });
 
@@ -167,7 +167,7 @@ describe("i18n props ratchet", () => {
   });
 
   it("fails when a sibling prop grows above its baseline", () => {
-    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field hint="Tarih girin" />');
+    const tree = tempTree({ version: 5, ...v5, props: {} }, '<Field hint="Tarih girin" />');
     const result = run(tree, "--check");
     expect(result.status).toBe(1);
     expect(result.output).toContain("prop string");
@@ -175,23 +175,23 @@ describe("i18n props ratchet", () => {
   });
 
   it("names the sibling prop in the backlog report", () => {
-    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Screen subtitle="Ekranı anlat" />');
+    const tree = tempTree({ version: 5, ...v5, props: {} }, '<Screen subtitle="Ekranı anlat" />');
     const result = run(tree, "--props-report");
     expect(result.status).toBe(0);
     expect(result.output).toContain("screens/Sample.tsx:1\tsubtitle\tEkranı anlat");
   });
 
-  it("keeps the baseline schema at v4 when the widened props are recorded", () => {
-    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field hint="Tarih girin" />');
+  it("keeps the baseline schema at v5 when the widened props are recorded", () => {
+    const tree = tempTree({ version: 5, ...v5, props: {} }, '<Field hint="Tarih girin" />');
     expect(run(tree, "--update", "--allow-raise").status).toBe(0);
     const written = JSON.parse(readFileSync(tree.baseline, "utf8")) as Record<string, unknown>;
     // Widening PROPS changes what is counted, not how the baseline is shaped.
-    expect(written.version).toBe(4);
-    expect(Object.keys(written).sort()).toEqual(["attributes", "files", "objects", "props", "version"]);
+    expect(written.version).toBe(5);
+    expect(Object.keys(written).sort()).toEqual(["attributes", "files", "literal", "objects", "props", "version"]);
   });
 
   it("prints the translation backlog with --props-report", () => {
-    const tree = tempTree({ version: 4, ...v4, props: {} }, '<Field label="Save" />');
+    const tree = tempTree({ version: 5, ...v5, props: {} }, '<Field label="Save" />');
     const result = run(tree, "--props-report");
     expect(result.status).toBe(0);
     expect(result.output).toContain("screens/Sample.tsx:1\tlabel\tSave");
@@ -253,6 +253,108 @@ describe("i18n expressions (E4.7)", () => {
     const found = scan('<p title={x ? "Yardım" : "Bilgi"} />');
     expect(found.attributes).toHaveLength(2);
     expect(found.texts).toHaveLength(0);
+  });
+});
+
+describe("i18n deliberate literals (E4.7)", () => {
+  it("excludes an attribute marked by a comment on the line above", () => {
+    const source = ["// i18n-literal: formula syntax example, not UI copy", '<Field label="Column" />'].join("\n");
+    const found = scan(source);
+    expect(found.props).toHaveLength(0);
+    expect(found.ignored).toHaveLength(1);
+    expect(found.ignored[0]).toMatchObject({
+      kind: "prop",
+      name: "label",
+      text: "Column",
+      reason: "formula syntax example, not UI copy",
+    });
+  });
+
+  it("excludes a JSX child marked by a comment above it", () => {
+    const source = ["<p>", "  {/* i18n-literal: shortcut hint, rendered as typed */}", '  {"Ctrl+S"}', "</p>"].join(
+      "\n",
+    );
+    const found = scan(source);
+    expect(found.texts).toHaveLength(0);
+    expect(found.ignored[0].kind).toBe("text");
+  });
+
+  it("excludes a value marked by a trailing comment on the same line", () => {
+    const found = scan('<Field label="SUM" /> // i18n-literal: Calc function name, never translated');
+    expect(found.props).toHaveLength(0);
+    expect(found.ignored[0].line).toBe(1);
+  });
+
+  it("keeps the marker's reason in the report so a reviewer can judge it", () => {
+    const source = ["// i18n-literal: a unit, the table header already translates it", '<img alt="pt" />'].join("\n");
+    expect(scan(source).ignored[0].reason).toBe("a unit, the table header already translates it");
+  });
+
+  it("rejects a marker without a reason and keeps counting the text", () => {
+    const source = ["// i18n-literal:", '<Field label="Column" />'].join("\n");
+    const found = scan(source);
+    expect(found.props).toHaveLength(1);
+    expect(found.invalidMarkers).toEqual([{ line: 1, problem: "missing-reason" }]);
+  });
+
+  it("rejects a placeholder reason such as todo or a two-word note", () => {
+    for (const reason of ["todo", "FIXME", "ok"]) {
+      const source = [`// i18n-literal: ${reason}`, '<Field label="Column" />'].join("\n");
+      const found = scan(source);
+      expect(found.props, reason).toHaveLength(1);
+      expect(found.invalidMarkers[0].problem, reason).toBe("weak-reason");
+    }
+  });
+
+  it("reports a marker that binds to no finding", () => {
+    // The marker stayed behind when the attribute moved: say so instead of
+    // letting the number quietly stay higher than it needs to be.
+    const source = ["// i18n-literal: this attribute moved away years ago", "", "const x = 1;"].join("\n");
+    expect(scan(source).invalidMarkers).toEqual([{ line: 1, problem: "orphan" }]);
+  });
+
+  it("reports a marker whose line holds two different attributes", () => {
+    const source = ["// i18n-literal: which one did I mean here?", '<Field label="Amount" hint="Quantity" />'].join(
+      "\n",
+    );
+    expect(scan(source).invalidMarkers).toEqual([{ line: 1, problem: "ambiguous" }]);
+  });
+
+  it("binds a template and its expression as one finding", () => {
+    // The structured-reference placeholder of TablesUi: one attribute, one
+    // decision, even though the audit sees a template and a fallback in it.
+    const source = [
+      "// i18n-literal: structured reference, formula syntax",
+      '<Field label={`=${name}[${col ?? "Column"}]`} />',
+    ].join("\n");
+    const found = scan(source);
+    expect(found.props).toHaveLength(0);
+    expect(found.invalidMarkers).toHaveLength(0);
+    expect(found.ignored).toHaveLength(1);
+  });
+
+  it("does not let a marker reach past the next code line", () => {
+    const source = [
+      "// i18n-literal: only the first line is marked, not this one",
+      '<Field label="Column" />',
+      '<Field label="Amount" />',
+    ].join("\n");
+    const found = scan(source);
+    expect(found.props.map((row) => row.text)).toEqual(["Amount"]);
+  });
+
+  it("treats a // line inside JSX children as text, not as a marker", () => {
+    const source = ["<p>", "  // i18n-literal: not a comment out here", "</p>"].join("\n");
+    const found = scan(source);
+    expect(found.invalidMarkers).toEqual([{ line: 2, problem: "in-jsx-text" }]);
+  });
+
+  it("keeps the two pragmas in their own scans", () => {
+    // `i18n-content:` speaks about data, `i18n-literal:` about JSX syntax;
+    // neither silences the other.
+    const objectSource = ["// i18n-literal: JSX only", 'export const table = { label: "Çalışan" };'].join("\n");
+    const objectScan = scanObjects("src/table.ts", objectSource);
+    expect(objectScan.counted).toHaveLength(1);
   });
 });
 
@@ -341,7 +443,7 @@ describe("i18n object strings (E4.6)", () => {
 
   it("fails when an object string grows above its baseline", () => {
     const tree = tempTree(
-      { version: 4, files: {}, attributes: {}, props: {}, objects: {} },
+      { version: 5, files: {}, attributes: {}, props: {}, objects: {}, literal: 0 },
       'const o = { label: "Çalışan" };',
     );
     const result = run(tree, "--check");
@@ -351,7 +453,7 @@ describe("i18n object strings (E4.6)", () => {
 
   it("prints the object backlog in three sections", () => {
     const tree = tempTree(
-      { version: 4, files: {}, attributes: {}, props: {}, objects: {} },
+      { version: 5, files: {}, attributes: {}, props: {}, objects: {}, literal: 0 },
       'const o = { label: "Çalışan", title: "DeepSeek" };',
     );
     const result = run(tree, "--objects-report");

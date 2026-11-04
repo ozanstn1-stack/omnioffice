@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "files": {
     "App.tsx": 2,
     "components/ai-settings.tsx": 1,
@@ -36,7 +36,6 @@
     "components/ai-settings.tsx": 2,
     "office/calc/ui/CalcRibbon.tsx": 2,
     "office/calc/ui/LinkDialog.tsx": 2,
-    "office/calc/ui/TablesUi.tsx": 1,
     "office/ImpressEditor.tsx": 1,
     "screens/Ai.tsx": 3,
     "screens/PageTools.tsx": 1,
@@ -46,5 +45,6 @@
   "props": {
     "office/calc/ui/CalcRibbon.tsx": 6
   },
-  "objects": {}
+  "objects": {},
+  "literal": 1
 }

@@ -140,7 +140,20 @@ export function scanSource(name, body) {
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return { texts, attributes, props };
+  const findings = [
+    ...texts.map((row) => ({ ...row, kind: "text" })),
+    ...attributes.map((row) => ({ ...row, kind: "attribute" })),
+    ...props.map((row) => ({ ...row, kind: "prop" })),
+  ];
+  const { kept, ignored, invalid } = bindLiteralMarkers(findings, findLiteralMarkers(body));
+  const of = (kind) => kept.filter((row) => row.kind === kind);
+  return {
+    texts: of("text"),
+    attributes: of("attribute"),
+    props: of("prop"),
+    ignored,
+    invalidMarkers: invalid,
+  };
 }
 
 /** The per-file counts the baseline records. */
@@ -205,6 +218,113 @@ export const CONTENT_PATHS = [
 
 const TURKISH = /[çğıöşüÇĞİÖŞÜ]/;
 const CONTENT_PRAGMA = /i18n-content:\s*(\S[^\n]*)/;
+
+/** A deliberate literal on the JSX side: syntax, a unit, a shortcut. The reason
+ * is required - a marker without one is an error, not a pass. */
+export const LITERAL_PRAGMA = "i18n-literal";
+
+/** The absolute ceiling on markers. Raising it is a code change with review,
+ * which is the friction the check exists for; the ratchet below it is the
+ * baseline count. */
+export const LITERAL_HARD_CAP = 5;
+
+/** Why a reason is not good enough, or null when it is. A reason has to say
+ * something: "todo" and "fixme" are placeholders, not justifications. */
+export function literalReasonProblem(reason) {
+  const text = String(reason ?? "").trim();
+  if (!text) return "missing-reason";
+  if (text.length < 12 || /^(todo|fixme|tmp|temp|ignore|skip|later|wip|n\/?a|-)\b/i.test(text)) {
+    return "weak-reason";
+  }
+  return null;
+}
+
+/**
+ * The marker comments in one source, by line. Two shapes are accepted:
+ *
+ *   // i18n-literal: reason            (above an attribute, or trailing it)
+ *   {/* i18n-literal: reason *\/}       (above a JSX child)
+ *
+ * A standalone comment binds to the next line that is neither blank nor a
+ * comment; a trailing one binds to its own line.
+ */
+export function findLiteralMarkers(body) {
+  const lines = body.split("\n");
+  const markers = [];
+  const commentOnly = /^\s*(?:(?:\/\/|\{\s*\/\*)\s*i18n-literal:\s*([^\n]*?)(?:\*\/\s*\})?)\s*$/;
+  const trailing = /(?:\/\/|\/\*)\s*i18n-literal:\s*([^\n]*?)(?:\*\/)?\s*$/;
+  lines.forEach((line, index) => {
+    const number = index + 1;
+    const standalone = commentOnly.exec(line);
+    if (standalone) {
+      let bound = number + 1;
+      while (bound <= lines.length && (lines[bound - 1].trim() === "" || commentOnly.test(lines[bound - 1]))) {
+        bound += 1;
+      }
+      markers.push({ line: number, boundLine: bound, reason: standalone[1].trim(), standalone: true });
+      return;
+    }
+    const tail = trailing.exec(line);
+    if (tail) markers.push({ line: number, boundLine: number, reason: tail[1].trim(), standalone: false });
+  });
+  return markers;
+}
+
+/** Groups the findings of one line: an attribute's template and its expression
+ * are one decision, not two. */
+function groupKey(row) {
+  return `${row.kind}\u0000${row.name ?? ""}`;
+}
+
+/**
+ * Splits the findings into what stays counted and what a marker silences.
+ * `invalid` carries the markers that are not usable: a missing or weak reason,
+ * one that binds to nothing (a stale marker), or one whose line holds findings
+ * from two different attributes (which of them did the author mean?).
+ */
+export function bindLiteralMarkers(findings, markers) {
+  const byLine = new Map();
+  for (const row of findings) {
+    const list = byLine.get(row.line) ?? [];
+    list.push(row);
+    byLine.set(row.line, list);
+  }
+  const silenced = new Set();
+  const ignored = [];
+  const invalid = [];
+  for (const marker of markers) {
+    const problem = literalReasonProblem(marker.reason);
+    if (problem) {
+      invalid.push({ line: marker.line, problem });
+      continue;
+    }
+    // `// i18n-literal:` inside JSX children is text on screen, not a comment.
+    if ((byLine.get(marker.line) ?? []).some((row) => row.kind === "text")) {
+      invalid.push({ line: marker.line, problem: "in-jsx-text" });
+      continue;
+    }
+    const rows = byLine.get(marker.boundLine) ?? [];
+    if (rows.length === 0) {
+      invalid.push({ line: marker.line, problem: "orphan" });
+      continue;
+    }
+    const groups = new Map();
+    for (const row of rows) groups.set(groupKey(row), [...(groups.get(groupKey(row)) ?? []), row]);
+    if (groups.size > 1) {
+      invalid.push({ line: marker.line, problem: "ambiguous" });
+      continue;
+    }
+    for (const row of rows) {
+      silenced.add(row);
+      ignored.push({ ...row, reason: marker.reason, markerLine: marker.line });
+    }
+  }
+  return {
+    kept: findings.filter((row) => !silenced.has(row)),
+    ignored: ignored.sort((left, right) => left.line - right.line),
+    invalid,
+  };
+}
 
 /** A property name, or null when it is computed. Shorthand assignments are a
  * different node type and never reach here. */

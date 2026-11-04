@@ -31,7 +31,7 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanObjects, scanSource } from "./lib/i18n-jsx.mjs";
+import { LITERAL_HARD_CAP, scanObjects, scanSource } from "./lib/i18n-jsx.mjs";
 
 // Test hooks: a temporary tree can be audited without touching the repository
 // (the same shape `check-reproducibility-inputs.mjs` uses with REPRO_ROOT).
@@ -149,6 +149,11 @@ const propRows = [];
 // template's interpolation). `--expressions-report` prints them so a reviewer
 // can see what the measurement grew by instead of trusting a number.
 const expressionRows = [];
+// JSX literals a developer marked as deliberate (`// i18n-literal: reason`).
+// `literalRows` is what a marker silenced, `invalidMarkers` the markers that
+// cannot be used - a stale one, an ambiguous one, or one without a reason.
+const literalRows = [];
+const invalidMarkers = [];
 for (const file of walk(srcRoot)) {
   if (!file.endsWith(".tsx")) continue;
   const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
@@ -162,6 +167,14 @@ for (const file of walk(srcRoot)) {
       found.texts.slice(0, 3).map((row) => row.text.slice(0, 48)),
     );
   for (const row of found.props) propRows.push(`${relative}:${row.line}\t${row.name}\t${row.text}`);
+  for (const row of found.ignored ?? []) {
+    literalRows.push(
+      `${relative}:${row.line}\t${row.kind}\t${row.name ?? ""}\t${row.text}\t${row.reason}`,
+    );
+  }
+  for (const problem of found.invalidMarkers ?? []) {
+    invalidMarkers.push(`${relative}:${problem.line}\t${problem.problem}`);
+  }
   for (const [section, rows] of [
     ["text", found.texts],
     ["attribute", found.attributes],
@@ -214,6 +227,13 @@ if (process.argv.includes("--expressions-report")) {
   process.exit(0);
 }
 
+if (process.argv.includes("--literals-report")) {
+  for (const line of literalRows.sort()) console.log(line);
+  console.log(`i18n:literals-report: ${literalRows.length} deliberate literal(s), cap ${LITERAL_HARD_CAP}`);
+  for (const line of invalidMarkers.sort()) console.log(`invalid: ${line}`);
+  process.exit(invalidMarkers.length ? 1 : 0);
+}
+
 if (process.argv.includes("--objects-report")) {
   console.log(
     `counted: ${objectRows.counted.length} object string(s) across ${Object.keys(scan.objects).length} file(s)`,
@@ -229,7 +249,7 @@ if (process.argv.includes("--objects-report")) {
 
 const baseline = existsSync(baselinePath)
   ? JSON.parse(readFileSync(baselinePath, "utf8"))
-  : { version: 4, files: {}, attributes: {}, props: {}, objects: {} };
+  : { version: 5, files: {}, attributes: {}, props: {}, objects: {}, literal: 0 };
 if (process.argv.includes("--check") && baseline.props === undefined) {
   console.error("i18n: the baseline has no `props` section yet; run `npm run i18n:audit -- --update --allow-raise`.");
   process.exit(1);
@@ -238,12 +258,32 @@ if (process.argv.includes("--check") && baseline.objects === undefined) {
   console.error("i18n: the baseline has no `objects` section yet; run `npm run i18n:audit -- --update --allow-raise`.");
   process.exit(1);
 }
+if (process.argv.includes("--check") && baseline.literal === undefined) {
+  console.error("i18n: the baseline has no `literal` count yet; run `npm run i18n:audit -- --update`.");
+  process.exit(1);
+}
 const known = {
   files: baseline.files ?? {},
   attributes: baseline.attributes ?? {},
   props: baseline.props ?? {},
   objects: baseline.objects ?? {},
 };
+
+// A marker cannot be used to get out of a shrinking number: an unusable one
+// fails the run no matter what the baseline says.
+if (invalidMarkers.length) {
+  for (const line of invalidMarkers.sort()) console.error(`i18n: invalid i18n-literal marker at ${line}`);
+  console.error(
+    "i18n: a marker needs a reason (12+ characters, not a placeholder), must bind to exactly one finding on the next code line, and cannot sit inside JSX text.",
+  );
+  process.exit(1);
+}
+if (literalRows.length > LITERAL_HARD_CAP) {
+  console.error(
+    `i18n: ${literalRows.length} deliberate literals is above the hard cap of ${LITERAL_HARD_CAP}; translate them or raise the cap in code with a reason.`,
+  );
+  process.exit(1);
+}
 
 if (process.argv.includes("--update")) {
   const grown = Object.entries(scan).flatMap(([section, counts]) =>
@@ -257,14 +297,29 @@ if (process.argv.includes("--update")) {
     process.exit(1);
   }
   const sort = (counts) => Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
-  const next = { version: 4 };
+  if (baseline.literal !== undefined && literalRows.length > baseline.literal && !process.argv.includes("--allow-raise")) {
+    console.error(
+      `i18n:update: deliberate literals would grow ${baseline.literal} -> ${literalRows.length}; pass --allow-raise to move it on purpose.`,
+    );
+    process.exit(1);
+  }
+  const next = { version: 5 };
   for (const section of Object.keys(scan)) next[section] = sort(scan[section]);
+  next.literal = literalRows.length;
   writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}\n`);
   const totals = Object.keys(scan).map(
     (section) => `${Object.values(scan[section]).reduce((sum, n) => sum + n, 0)} ${section}`,
   );
+  totals.push(`${literalRows.length} literal`);
   console.log(`i18n:update: recorded ${totals.join(", ")}`);
   process.exit(0);
+}
+
+if (process.argv.includes("--check") && literalRows.length > (baseline.literal ?? 0)) {
+  console.error(
+    `i18n: ${literalRows.length} deliberate literal(s) is above the baseline of ${baseline.literal ?? 0}; a marker is a reviewed decision, not a way to pass.`,
+  );
+  process.exit(1);
 }
 
 const LABELS = {
@@ -311,7 +366,9 @@ console.log(
     " hardcoded-props=" +
     totals.props +
     " hardcoded-objects=" +
-    totals.objects,
+    totals.objects +
+    " i18n-literals=" +
+    literalRows.length,
 );
 if (missing.length) {
   console.log("  missing (first 20): " + missing.slice(0, 20).join(", "));
