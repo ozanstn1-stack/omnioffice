@@ -1104,3 +1104,38 @@ Sürüm dosyaları 7.7.0 / versionCode 7007000; sürüm tutarlılık kapısı ve
 
 `[Unreleased]` dört dilim taşıyordu → `[7.7.0]` bölümü `Fixed` → `Changed` →
 `Developer notes` sırasıyla yazıldı (mağaza listesi toast düzeltmesiyle başlıyor).
+
+## KAPANDI — v7.7.0 yayınlandı ve doğrulandı (2026-11-04 22:30 UTC)
+
+**PR #629 → `44a3c56`.** Tag `v7.7.0` → `44a3c56` (merge commit).
+
+**auto-tag bu kez kendiliğinden koştu** (manuel dispatch gerekmedi):
+```
+created v7.7.0 at 44a3c56dd7752a5018fff2fa0c014cde34b6eea0
+dispatched release.yml and android.yml on v7.7.0
+```
+Master Desktop yeşil bitince tetiklendi; macOS kapasitesi geri dönmüştü.
+
+### Yayın kanıtı
+- `Release` `41919394646` success (3/3), `Android` `41919398784` success (5/5).
+- **18 varlık**, draft/prerelease değil; ad kümesi v7.6.0'ınkiyle **birebir aynı**.
+- Checksum: `SHA256SUMS.txt` 8/8, `-windows` 3/3, `-linux` 2/2, `-android` 4/4
+  → **17/17** GitHub digest'iyle eşleşti.
+- `latest.json`: `version=7.7.0`, imza dolu, url v7.7.0 varlığını gösteriyor.
+- Release gövdesi `changelog-section.mjs 7.7.0` çıktısıyla **birebir aynı** (1604 karakter).
+- Android: `APK versionCode: 7007000`,
+  `Signing certificate matches the previous release (v7.6.0)`,
+  `ABI matrix OK: 4 artifacts, two ABIs, one signing identity`.
+
+### Bu sürümde
+Kullanıcıya görünen: **toast artık alt çubuğu örtmüyor** (6.5.1'in son açık
+kusuru) ve **son dört İngilizce metin Türkçeleşti**. Altyapı: ortak şifre alanı
+(263→241, 296→262 satır), JSX `i18n-literal` işareti (şema v5, taban 58/12/6,
+tavan 5).
+
+- **NEREDE KALDIK / SIRADAKİ ADIM:** v7.7.0 yayında ve doğrulandı. Kullanıcı
+  adımı bekliyor: GitHub'da *Settings → Code security → Private vulnerability
+  reporting* açılırsa `SECURITY.md`'ye advisories linki eklenecek
+  (Security-Policy 4 → yükselir). Sonraki ürün dilimi adayı: E6'nın kalan
+  maddeleri (LAN resumable downloads, dynamic-array spill, AI embedding
+  batching) veya holiday table 2030+ (Diyanet verisi gerekli — kullanıcı adımı).
