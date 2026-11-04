@@ -129,14 +129,7 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
   const udfEnabled = flagEnabled("experimentalUdf");
 
   return (
-    <Screen
-      title={t("petition.title")}
-      subtitle={
-        udfEnabled
-          ? "Resmî makamlara sunulmak üzere standartlara uygun UDF, DOCX ve PDF dilekçe oluşturun."
-          : "Resmî makamlara sunulmak üzere standartlara uygun DOCX ve PDF dilekçe oluşturun."
-      }
-    >
+    <Screen title={t("petition.title")} subtitle={udfEnabled ? t("petition.subtitleUdf") : t("petition.subtitle")}>
       <div className="flex flex-col gap-4 max-w-4xl mx-auto">
         <Card className="p-5 flex flex-col gap-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

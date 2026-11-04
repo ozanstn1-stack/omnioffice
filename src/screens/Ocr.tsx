@@ -113,13 +113,7 @@ export function Ocr({ initialFiles, dragging }: { initialFiles?: string[]; dragg
               {session.info ? (
                 <Card className="p-4">
                   <InfoStrip info={session.info} error={session.infoError} />
-                  {session.info.hasTextLayer ? (
-                    <p className="text-xs muted mt-2">
-                      {settings.language === "tr"
-                        ? "Bu belgede zaten bir metin katmanı var — yalnızca taranmış sayfalar için OCR önerilir."
-                        : "This document already contains a text layer — OCR is mainly useful for scanned pages."}
-                    </p>
-                  ) : null}
+                  {session.info.hasTextLayer ? <p className="text-xs muted mt-2">{t("ocr.textLayerHint")}</p> : null}
                 </Card>
               ) : null}
 

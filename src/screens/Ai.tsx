@@ -1303,7 +1303,7 @@ export function Ai({
                                               void openOfficePath(target.path).then(() => onNavigate?.("office"));
                                             }
                                           }}
-                                          title={c.quote || c.snippet || `Jump to page ${c.page}`}
+                                          title={c.quote || c.snippet || t("ai.jumpToPage", { page: c.page })}
                                         >
                                           <BookOpenCheck size={11} style={{ color: "var(--accent)" }} />
                                           <span>

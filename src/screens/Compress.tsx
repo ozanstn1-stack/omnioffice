@@ -207,11 +207,7 @@ export function Compress({ initialFiles, dragging }: { initialFiles?: string[]; 
                       </div>
                       <p className="text-xs muted">
                         {shownEstimate.method} · {shownEstimate.sample_pages} {t("common.pages")} ·{" "}
-                        {shownEstimate.accurate
-                          ? defaults.language === "tr"
-                            ? "tam"
-                            : "exact"
-                          : t("common.estimated")}
+                        {shownEstimate.accurate ? t("compress.estimateExact") : t("common.estimated")}
                       </p>
                       <p className="text-xs muted">{t("compress.estimateNote")}</p>
                     </div>

@@ -3233,7 +3233,6 @@
   "vault.pageNext": "Sonraki",
   "vault.buildSemanticIndex": "Semantik Vektör İndeksi Oluştur",
   "files.passwordNote": "Parolalar asla saklanmaz veya günlüklere yazılmaz.",
-  "writer.pageBreak": "— sayfa sonu —",
   "pageTools.formatPageN": "Sayfa 1",
   "pageTools.formatPageNOfTotal": "Sayfa 1 / 20",
   "redact.toast.certVerified.one": "Sertifika ({id}) doğrulandı — {count} madde.",
@@ -3244,5 +3243,15 @@
   "organize.sourcePage": "Kaynak sayfa {page}",
   "batch.fileCount.one": "{count} dosya",
   "batch.fileCount.other": "{count} dosya",
-  "table.gridSize": "{rows} × {cols}"
+  "table.gridSize": "{rows} × {cols}",
+  "common.hide": "Gizle",
+  "common.show": "Göster",
+  "history.date": "Tarih",
+  "studio.noPrivateKey": "özel anahtar yok",
+  "merge.localNote": "Birleştirme tamamen yerel olarak yapılır; dosyalarınız cihazdan ayrılmaz.",
+  "ocr.textLayerHint": "Bu belgede zaten bir metin katmanı var — yalnızca taranmış sayfalar için OCR önerilir.",
+  "compress.estimateExact": "tam",
+  "petition.subtitle": "Resmî makamlara sunulmak üzere standartlara uygun DOCX ve PDF dilekçe oluşturun.",
+  "petition.subtitleUdf": "Resmî makamlara sunulmak üzere standartlara uygun UDF, DOCX ve PDF dilekçe oluşturun.",
+  "writer.pageBreakMarker": "— sayfa sonu —"
 }

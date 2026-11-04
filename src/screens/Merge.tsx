@@ -4,7 +4,6 @@ import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../compone
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { useSettings } from "../lib/store";
 import { useState } from "react";
 import { mergePdfs } from "../lib/api";
 
@@ -18,7 +17,6 @@ export function Merge({ initialFiles, dragging }: { initialFiles?: string[]; dra
     initialPaths: initialFiles,
   });
   const [preserveMetadata, setPreserveMetadata] = useState(true);
-  const defaultCompression = useSettings((s) => s.settings);
 
   session.registerAutoRun(() => void run());
   const run = () =>
@@ -82,11 +80,7 @@ export function Merge({ initialFiles, dragging }: { initialFiles?: string[]; dra
                 />
                 <span>{t("merge.preserveMetadata")}</span>
               </label>
-              <p className="text-xs muted">
-                {defaultCompression.language === "tr"
-                  ? "Birleştirme tamamen yerel olarak yapılır; dosyalarınız cihazdan ayrılmaz."
-                  : "Merging happens fully offline; your documents never leave this device."}
-              </p>
+              <p className="text-xs muted">{t("merge.localNote")}</p>
             </Card>
           </>
         }

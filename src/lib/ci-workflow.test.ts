@@ -268,10 +268,11 @@ describe("i18n audit is a blocking gate (E4.5)", () => {
     const total = (section: Record<string, number>) => Object.values(section).reduce((sum, count) => sum + count, 0);
     // 2026-11-04: conditionals, logical fallbacks, JSX child expressions and the
     // strings inside a template's interpolations count now, so every ceiling
-    // rose on purpose: files 50 -> 73, attributes 11 -> 20, props 6 -> 8.
-    expect(total(baseline.files)).toBeLessThanOrEqual(73);
-    expect(total(baseline.attributes)).toBeLessThanOrEqual(20);
-    expect(total(baseline.props)).toBeLessThanOrEqual(8);
+    // rose on purpose (50 -> 73, 11 -> 20, 6 -> 8); translating the sixteen
+    // strings that measurement found brought them back down to 64/15/6.
+    expect(total(baseline.files)).toBeLessThanOrEqual(64);
+    expect(total(baseline.attributes)).toBeLessThanOrEqual(15);
+    expect(total(baseline.props)).toBeLessThanOrEqual(6);
     // The object scan reached zero and stays there.
     expect(total(baseline.objects)).toBe(0);
   });

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -196,6 +196,8 @@ import { Merge } from "./Merge";
 import { Split } from "./Split";
 import { Compress } from "./Compress";
 import { Security } from "./Security";
+import { useSettings } from "../lib/store";
+import { DEFAULT_SETTINGS } from "../lib/types";
 import { Watermark } from "./Watermark";
 import { Metadata } from "./Metadata";
 import { InfoScreen } from "./Info";
@@ -274,6 +276,27 @@ describe("PDF tool screens call their backend with the request envelope", () => 
     // The owner password falls back to the user password.
     expect(request.ownerPassword).toBe("secret123");
     expect(request.allowPrinting).toBe(true);
+  });
+
+  it("labels the password toggle in the interface language", async () => {
+    // The label used to be a ternary of literal strings, so the Turkish
+    // interface read "Show"/"Hide" to a screen reader.
+    const user = userEvent.setup();
+    act(() => {
+      useSettings.setState({ settings: { ...DEFAULT_SETTINGS, language: "tr" } });
+    });
+    try {
+      render(<Security tab="protect" initialFiles={["C:/docs/a.pdf"]} dragging={false} />);
+      // The protect tab has a password field and its confirmation, each with its
+      // own toggle.
+      const [show] = await screen.findAllByRole("button", { name: "Göster" });
+      await user.click(show);
+      expect(screen.getAllByRole("button", { name: "Gizle" })[0]).toBeInTheDocument();
+    } finally {
+      act(() => {
+        useSettings.setState({ settings: DEFAULT_SETTINGS });
+      });
+    }
   });
 
   it("sends the watermark options as edited", async () => {
