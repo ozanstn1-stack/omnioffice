@@ -993,3 +993,26 @@ yüzden kırmızı kalıyor ve bir sonraki sürüm yine elle tag'lenmek zorunda.
 
 `.github/dependabot.yml`'ye gerekçeli `ignore` kuralları eklendi (mevcut
 `eslint`/`typescript`/`vitest`/`der`/`hmac` kalıbıyla aynı biçim).
+
+## Kapandı (2026-11-04 17:58 UTC) — Dependabot ayıklaması
+
+**Birleşenler:** `8886330` (#593 Cargo rust grubu), `f79a92e` (#591 extension
+grubu), `56d04ae` (#616 actions grubu), `0fb96c3` (#620 bizim PR).
+
+**#608 → #616:** ilk PR scorecard.yml eklenmeden açılmıştı; `@dependabot rebase`
+sonrası 9 dosyayı kapsadı ve `codeql.yml` + `scorecard.yml` aynı yeni SHA'da
+(`9b325408…`) — pin testim merge'de kırılmadı.
+
+**Park edilen üç major** (ignore + tracking issue): #617 `sha2 0.11`,
+#618 `getrandom 0.3+`, #619 extension `vite 8`. PR'lar #595/#594/#470
+gerekçeyle kapatıldı.
+
+**Gerçek sebep bulundu:** GitHub'ın **Actions ve Pages kesintisi** (major,
+16:05–17:01 UTC, Actions `partial_outage`); macOS işlerinin 15 dk sonra
+`cancelled` olması ve kuyrukta kalması bundandı. Kesinti çözüldükten sonra
+#616 ve #620 yeşile geldi ve birleşti.
+
+- **AÇIK:** #615 (frontend grubu) — tek kırmızı `Rust (macos-latest)`
+  iptaliydi; yeniden koşu istendi. macOS kuyruğu düzelince birleştirilecek.
+  **master Desktop** de aynı sebeple kırmızı kaldı; kuyruk normale dönünce
+  yeşile gelecek ve `auto-tag` "already exists" diyecek.

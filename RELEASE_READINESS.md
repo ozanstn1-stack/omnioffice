@@ -67,6 +67,20 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **One password field instead of two (E4.7 follow-up):** the Protect/Unlock
+  panels and the converter each carried their own copy of the same component,
+  and they had already drifted: one set `autoComplete="new-password"`, the other
+  `"off"`. `src/components/password-field.tsx` now holds the implementation and
+  the difference is a prop; the two screens shrank by 22 and 34 lines and their
+  file budgets came down with them. The behaviour the copies shared is pinned by
+  its own test file, including the two that would bite a user: the toggle is
+  `type="button"` (a stray submit would start a PDF job with a half-typed
+  password) and its `aria-label` follows the interface language.
+  `test:src/components/password-field.test.tsx#toggles the input type between hidden and visible`
+  `test:src/components/password-field.test.tsx#never submits the form around it`
+  `test:src/components/password-field.test.tsx#labels the toggle from the dictionary, following the language`
+  `test:src/components/password-field.test.tsx#passes autoComplete through, so the browser knows the field's purpose`
+
 - **The sixteen strings the wider measurement found are in the dictionary
   (E4.7):** the audit's new expression rule surfaced text that never passed
   through the tables, and this slice moves all of it out of hand-written

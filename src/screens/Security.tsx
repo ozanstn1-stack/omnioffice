@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Eye, EyeOff, KeyRound, Lock, LockOpen, ShieldCheck } from "lucide-react";
+import { KeyRound, Lock, LockOpen, ShieldCheck } from "lucide-react";
 import { Badge, Card, Field, Segmented, Toggle } from "../components/ui";
 import { DropZone, FileList, InfoStrip, OutputBar, ResultCard } from "../components/files";
+import { PasswordField } from "../components/password-field";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
@@ -42,45 +43,6 @@ export function Security({
         <Unlock initialFiles={initialFiles} dragging={dragging} />
       )}
     </Screen>
-  );
-}
-
-function PasswordField({
-  value,
-  onChange,
-  placeholder,
-  autoFocus = false,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
-}) {
-  const t = useT();
-  const [visible, setVisible] = useState(false);
-  return (
-    <div className="relative">
-      <input
-        className="input pr-10"
-        type={visible ? "text" : "password"}
-        value={value}
-        // eslint-disable-next-line jsx-a11y/no-autofocus -- the password field is the dialog's only target; focusing it is the expected flow
-        autoFocus={autoFocus}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        autoComplete="new-password"
-        spellCheck={false}
-      />
-      <button
-        type="button"
-        className="absolute right-1 top-1/2 -translate-y-1/2 icon-btn"
-        onClick={() => setVisible((previous) => !previous)}
-        aria-label={visible ? t("common.hide") : t("common.show")}
-        tabIndex={-1}
-      >
-        {visible ? <EyeOff size={15} /> : <Eye size={15} />}
-      </button>
-    </div>
   );
 }
 
@@ -167,17 +129,28 @@ function Protect({ initialFiles, dragging }: { initialFiles?: string[]; dragging
           <OutputBar session={session} runLabel={t("security.run")} onRun={run} disabled={!session.primary} />
           <OptionCard title={t("nav.protect")}>
             <Field label={t("security.userPassword")}>
-              <PasswordField value={userPassword} onChange={setUserPassword} placeholder="••••••••" />
+              <PasswordField
+                autoComplete="new-password"
+                value={userPassword}
+                onChange={setUserPassword}
+                placeholder="••••••••"
+              />
             </Field>
             <Field label={t("security.ownerPassword")} hint={t("common.optional")}>
               <PasswordField
+                autoComplete="new-password"
                 value={ownerPassword}
                 onChange={setOwnerPassword}
                 placeholder={t("security.ownerPassword")}
               />
             </Field>
             <Field label={t("security.confirmPassword")}>
-              <PasswordField value={confirm} onChange={setConfirm} placeholder={t("security.confirmPassword")} />
+              <PasswordField
+                autoComplete="new-password"
+                value={confirm}
+                onChange={setConfirm}
+                placeholder={t("security.confirmPassword")}
+              />
             </Field>
             {confirm && userPassword !== confirm ? (
               <p className="text-xs" style={{ color: "var(--danger)" }}>
@@ -248,8 +221,13 @@ function Unlock({ initialFiles, dragging }: { initialFiles?: string[]; dragging:
           />
           <OptionCard title={t("nav.unlock")}>
             <Field label={t("security.unlockPassword")}>
-              {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the unlock password is the only field in this panel; focusing it is expected */}
-              <PasswordField value={password} onChange={setPassword} placeholder="••••••••" autoFocus />
+              <PasswordField
+                autoComplete="new-password"
+                value={password}
+                onChange={setPassword}
+                placeholder="••••••••"
+                focusOnMount
+              />
             </Field>
             <p className="text-xs muted flex items-start gap-1.5">
               <LockOpen size={12} style={{ marginTop: 2 }} /> {t("security.unlockNote")}

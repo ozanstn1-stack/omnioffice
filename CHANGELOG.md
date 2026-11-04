@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **One password field instead of two:** the Protect/Unlock panels and the
+  converter carried their own copies of the same component and had already
+  drifted on `autoComplete`. They share one implementation now; the behaviour
+  both copies relied on - the toggle never submits the form, and it is labelled
+  in the interface language - is pinned by a test file of its own.
+
 ## [7.6.0] - Ölçülen güvenlik (Phase E / E5 ve E4 kalanları)
 
 ### Changed

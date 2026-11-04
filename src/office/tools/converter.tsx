@@ -2,8 +2,9 @@
 import { useState } from "react";
 import { call } from "../../lib/typed-call";
 import { appCacheDir, join } from "@tauri-apps/api/path";
-import { Check, Eye, EyeOff, Plus, RefreshCw } from "lucide-react";
+import { Check, Plus, RefreshCw } from "lucide-react";
 import { useT } from "../../lib/i18n";
+import { PasswordField } from "../../components/password-field";
 import { fileBaseName } from "../../lib/format";
 import { pickDirectoryToken, pickDocumentTokens } from "../../lib/file-tokens";
 import { errorMessage } from "../../lib/store";
@@ -20,41 +21,6 @@ import { useDataLossPrompt } from "../../components/data-loss-dialog";
 // ---------------------------------------------------------------------------
 // Universal converter
 // ---------------------------------------------------------------------------
-
-function PasswordField({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  const t = useT();
-  const [visible, setVisible] = useState(false);
-  return (
-    <div className="relative">
-      <input
-        className="input pr-10"
-        type={visible ? "text" : "password"}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        autoComplete="off"
-        spellCheck={false}
-      />
-      <button
-        type="button"
-        className="absolute right-1 top-1/2 -translate-y-1/2 icon-btn"
-        onClick={() => setVisible((previous) => !previous)}
-        aria-label={visible ? t("common.hide") : t("common.show")}
-        tabIndex={-1}
-      >
-        {visible ? <EyeOff size={15} /> : <Eye size={15} />}
-      </button>
-    </div>
-  );
-}
 
 export function ConverterScreen() {
   const t = useT();
