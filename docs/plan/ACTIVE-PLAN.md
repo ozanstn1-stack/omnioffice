@@ -901,3 +901,55 @@ Aldığım önlemler:
 sonrası **ilk kez** koşacak. Geri dönüş yolu: okuma hatasında tag oluşmaz,
 düzeltip `gh workflow run auto-tag.yml --ref master`; POST başarılı + dispatch
 başarısızsa auto-tag'i tekrar koşturma, eksik workflow'u elle başlat.
+
+## KAPANDI — v7.6.0 yayınlandı ve doğrulandı (2026-11-04 16:45 UTC)
+
+**PR #614 → `153b768`.** Tag `v7.6.0` → `153b768` (merge commit).
+
+### Yeni auto-tag yolu ilk kez uçtan uca koştu
+Log (`Auto release tag`, `workflow_dispatch`, success):
+```
+created v7.6.0 at 153b768836a4650cdb357ded4d836deb41a0ad3d
+dispatched release.yml and android.yml on v7.6.0
+```
+Yani Contents API ile dört dosya indirme + üç sürüm kontrolü + `git/refs` POST
++ iki dispatch **çalışıyor**. `::error` satırı yok, "already exists" yok.
+
+### Volta: master Desktop iki kez `cancelled`
+Merge sonrası master Desktop **kırmızı** bitti: tek sebep
+`Rust (macos-latest)` işinin **runner sağlanamadığı için** iptal edilmesi
+(15 dk, **hiç adım koşmadı**, `runner_name` boş). `rerun-failed-jobs` iki kez
+denendi; ikisi de aynı şekilde iptal, üçüncü deneme kuyrukta kaldı.
+Aynı ağaçtaki `Rust (macos-latest)` **PR koşusunda 21 adımla geçmişti**.
+Bu yüzden `auto-tag`'in **belgelenmiş manuel yolu** kullanıldı
+("Manual dispatch skips the gate on purpose (a human decided the commit is
+good)"). Kod hatası yok; hosting kapasitesi sorunu.
+
+### Yayın kanıtı
+- `Release` `41863872326` success (3/3 iş), `Android` `41863875733` success.
+- Release "OmniOffice v7.6.0": **18 varlık**, draft/prerelease değil; ad kümesi
+  v7.5.0'ınkiyle **birebir aynı** (7.6.0'a yeniden adlandırılmış).
+- Checksum: `SHA256SUMS.txt` 8/8, `-windows` 3/3, `-linux` 2/2, `-android` 4/4
+  → **17/17** GitHub digest'iyle eşleşti.
+- `latest.json`: `version=7.6.0`, url `v7.6.0/OmniOffice_7.6.0_x64-setup.exe`,
+  imza dolu.
+- Release gövdesi `changelog-section.mjs 7.6.0` çıktısıyla **birebir aynı** (4699 karakter).
+- Android tag logu: `APK versionCode: 7006000`,
+  `Signing certificate matches the previous release (v7.5.0)`,
+  `ABI matrix OK: 4 artifacts, two ABIs, one signing identity`
+  (iki ABI'de de `f17e1d97…`).
+
+### Ders
+Sürüm treninin tek gerçek riski (tag oluşturma yolu) sorunsuz çalıştı; asıl
+aksilik **CI altyapısıydı** (macOS runner kapasitesi). Bir sonraki sürümde:
+merge'den sonra master Desktop'ın macOS işini bekle, `cancelled` ise
+auto-tag'i manuel dispatch etmek meşru — ama önce aynı ağacın PR'da geçtiğini
+kanıtla (bu turda öyle yapıldı).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** v7.6.0 yayında ve doğrulandı; master
+  `153b768`, tag `v7.6.0`. Yerelde bu plan commit'i sıradaki PR'a girecek.
+  Sıradaki adaylar: (a) `PasswordField` tekrarını ortak bileşene almak,
+  (b) JSX tarafına `i18n-content:` benzeri yoksayma işareti (TablesUi gibi
+  bilinçli literaller için), (c) Scorecard'ın kalan düşük kontrolleri.
+  Kullanıcı adımı: GitHub'da private vulnerability reporting'i açmak
+  (Security-Policy 4 → yükselir).
