@@ -47,8 +47,6 @@ describe("i18n JSX scanner", () => {
     // A template's fixed words count now; only a bare placeholder does not.
     expect(scan("<Field label={`Total ${count}`} />").props.map((row) => row.text)).toEqual(["Total ${…}"]);
     expect(scan("<Field label={`${count}`} />").props).toHaveLength(0);
-    // A conditional's branches are the documented gap of the first version.
-    expect(scan('<Field label={flag ? "A" : "B"} />').props).toHaveLength(0);
   });
 
   it("skips separators and empty values", () => {
@@ -79,9 +77,11 @@ describe("i18n JSX scanner", () => {
   });
 
   it("leaves a translated or conditional sibling prop out of the count", () => {
+    // Translated and computed values stay out; a conditional is covered by the
+    // expression tests below, which is where a real phrase is read.
     expect(scan('<Field hint={t("a.b")} />').props).toHaveLength(0);
     expect(scan("<Field hint={value} />").props).toHaveLength(0);
-    expect(scan('<Screen subtitle={flag ? "A" : "B"} />').props).toHaveLength(0);
+    expect(scan("<Screen subtitle={label} />").props).toHaveLength(0);
   });
 
   it("does not count a title twice when a component takes it as a prop", () => {
@@ -195,6 +195,64 @@ describe("i18n props ratchet", () => {
     const result = run(tree, "--props-report");
     expect(result.status).toBe(0);
     expect(result.output).toContain("screens/Sample.tsx:1\tlabel\tSave");
+  });
+});
+
+describe("i18n expressions (E4.7)", () => {
+  it("counts both branches of a conditional attribute and prop", () => {
+    expect(scan('<Field label={flag ? "Kaydet" : "İptal"} />').props.map((row) => row.text)).toEqual([
+      "Kaydet",
+      "İptal",
+    ]);
+    expect(scan('<img alt={f ? "Grafik" : "Tablo"} />').attributes).toHaveLength(2);
+    expect(scan('<img alt={a ? "Birinci" : b ? "İkinci" : "Üçüncü"} />').attributes).toHaveLength(3);
+  });
+
+  it("counts the literal fallback of ??, || and &&", () => {
+    expect(scan('<Field label={name ?? "Adsız"} />').props.map((row) => row.text)).toEqual(["Adsız"]);
+    expect(scan('<Field label={name || "Anonim"} />').props.map((row) => row.text)).toEqual(["Anonim"]);
+    expect(scan('<Field label={busy && "Yükleniyor"} />').props.map((row) => row.text)).toEqual(["Yükleniyor"]);
+    // The condition is a comparison, not prose.
+    expect(scan('<Field label={mode === "edit" ? t("a.b") : t("c.d")} />').props).toHaveLength(0);
+  });
+
+  it("counts a string, template or conditional written as a JSX child", () => {
+    expect(scan('<p>{"Merhaba"}</p>').texts.map((row) => row.text)).toEqual(["Merhaba"]);
+    expect(scan("<p>{`${n} sayfa`}</p>").texts.map((row) => row.text)).toEqual(["${…} sayfa"]);
+    expect(scan('<p>{ok ? "Tamam" : "Hata"}</p>').texts.map((row) => row.text)).toEqual(["Tamam", "Hata"]);
+  });
+
+  it("never reads a condition, a call, a class name or a separator as prose", () => {
+    expect(scan('<p>{t(f ? "a.b" : "c.d")}</p>').texts).toHaveLength(0);
+    expect(scan('<div className={x ? "btn active" : "btn"} />').texts).toHaveLength(0);
+    expect(scan('<p>{items.join(", ")}</p>').texts).toHaveLength(0);
+    // `+` builds a string instead of choosing one.
+    expect(scan('<p>{"Ad" + soyad}</p>').texts).toHaveLength(0);
+    // A JSX child inside a branch is counted once, as a text node.
+    expect(scan("<p>{x ? <b>Kalın</b> : null}</p>").texts).toHaveLength(1);
+  });
+
+  it("reads the literals inside a template's interpolations", () => {
+    // The shell is placeholders only, but the branch words are prose.
+    expect(scan('<img alt={`${n} ${n === 1 ? "page" : "pages"}`} />').attributes.map((row) => row.text)).toEqual([
+      "page",
+      "pages",
+    ]);
+    expect(scan('<img alt={`${n} ${n === 1 ? "Sayfa" : "Sayfalar"}`} />').attributes.map((row) => row.text)).toEqual([
+      "Sayfa",
+      "Sayfalar",
+    ]);
+    expect(scan('<img alt={`Sayfa ${f ? "ön" : "arka"}`} />').attributes.map((row) => row.text)).toEqual([
+      "Sayfa ${…}",
+      "ön",
+      "arka",
+    ]);
+  });
+
+  it("does not count an attribute expression as a child too", () => {
+    const found = scan('<p title={x ? "Yardım" : "Bilgi"} />');
+    expect(found.attributes).toHaveLength(2);
+    expect(found.texts).toHaveLength(0);
   });
 });
 

@@ -67,6 +67,27 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **The audit reads expressions, and the wider rule found real text (E4.7):**
+  until now a string only counted when it was written directly in a JSX text
+  node or as a plain attribute value, so `label={flag ? "Kaydet" : "İptal"}`,
+  `<p>{ok ? "Tamam" : "Hata"}</p>`, `name ?? "Adsız"` and the words inside
+  `` `${n} ${n === 1 ? "Sayfa" : "Sayfalar"}` `` were invisible - and so was the
+  same gap in the object scan. One recursive rule now reads them all, with two
+  deliberate exclusions: the condition of a conditional (`mode === "edit"` is a
+  comparison, not prose) and `+` concatenation. `--expressions-report` lists
+  every string the rule added with its origin (`branch` or `span`), so the
+  measurement is reviewable rather than a number. Measured: files 50 -> 73,
+  attributes 11 -> 20, props 6 -> 8, objects 0 -> 0 (that side found nothing).
+  The findings include hand-rolled `language === "tr" ? … : …` pairs in `Merge`,
+  `Ocr` and `Compress` and an untranslated `Hide`/`Show`/`Date` cluster; the
+  baseline records them so the translation slice has a fixed list.
+  `test:src/lib/i18n-jsx-audit.test.ts#counts both branches of a conditional attribute and prop`
+  `test:src/lib/i18n-jsx-audit.test.ts#counts the literal fallback of ??, || and &&`
+  `test:src/lib/i18n-jsx-audit.test.ts#counts a string, template or conditional written as a JSX child`
+  `test:src/lib/i18n-jsx-audit.test.ts#never reads a condition, a call, a class name or a separator as prose`
+  `test:src/lib/i18n-jsx-audit.test.ts#reads the literals inside a template's interpolations`
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+
 - **The tag job no longer checks code out (E5):** OpenSSF Scorecard scored
   Dangerous-Workflow at 0 because `auto-tag.yml` checked out
   `github.event.workflow_run.head_sha` - the shape of a fork-code-with-secrets

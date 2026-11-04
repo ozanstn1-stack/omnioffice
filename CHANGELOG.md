@@ -21,6 +21,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   publishing job asks for what it writes; the effective scopes are unchanged
   except `release/version-consistency`, which never wrote anything.
 
+- **The i18n audit reads expressions, and found text that never counted
+  (E4.7):** conditionals (`label={flag ? "Kaydet" : "İptal"}`), logical
+  fallbacks (`??`, `||`, `&&`), JSX child expressions (`<p>{ok ? "Tamam" :
+  "Hata"}</p>`) and the strings inside a template's interpolation are measured
+  now, in both the JSX scan and the object scan. `--expressions-report` lists
+  what the wider rule added and where it came from. The measured baseline moved
+  from 50/11/6 to 73/20/8 and the object section stayed at zero; the additions
+  include hand-written Turkish/English ternaries and an untranslated
+  `Hide`/`Show`/`Date` cluster, which the next translation slice takes.
+
 ### Added
 
 - **OpenSSF Scorecard grades the repository (E5):** a weekly run, a run on
