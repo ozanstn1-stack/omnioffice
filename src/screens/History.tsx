@@ -233,7 +233,7 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
               <tr>
                 <th>{t("common.name")}</th>
                 <th>{t("common.actions")}</th>
-                <th style={{ width: 180 }}>{t("settings.version") === "" ? "Date" : "Date"}</th>
+                <th style={{ width: 180 }}>{t("history.date")}</th>
               </tr>
             </thead>
             <tbody>

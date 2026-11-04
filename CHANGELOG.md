@@ -31,6 +31,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   include hand-written Turkish/English ternaries and an untranslated
   `Hide`/`Show`/`Date` cluster, which the next translation slice takes.
 
+### Fixed
+
+- **Sixteen hardcoded strings moved into the dictionary (E4.7):** the password
+  visibility toggle spoke English inside the Turkish interface, `History`'s date
+  column was written twice in one expression, the petition subtitle showed the
+  Turkish sentence to English users, and `Merge`, `Ocr` and `Compress` picked
+  their text with a `language === "tr" ? … : …` ternary instead of the table.
+  All of them go through `t()` now, with the Turkish wording unchanged.
+- **The page-break marker has its own key:** `writer.pageBreak` was defined
+  twice and the last definition won, so the ribbon button asking for it showed
+  "— page break —". The marker keeps that text; the button reads "Page break".
+
 ### Added
 
 - **OpenSSF Scorecard grades the repository (E5):** a weekly run, a run on

@@ -3233,7 +3233,6 @@
   "vault.pageNext": "Next",
   "vault.buildSemanticIndex": "Build semantic vector index",
   "files.passwordNote": "Passwords are never stored or written to logs.",
-  "writer.pageBreak": "— page break —",
   "pageTools.formatPageN": "Page 1",
   "pageTools.formatPageNOfTotal": "Page 1 / 20",
   "redact.toast.certVerified.one": "Certificate ({id}) verified — {count} item.",
@@ -3244,5 +3243,15 @@
   "organize.sourcePage": "Source page {page}",
   "batch.fileCount.one": "{count} file",
   "batch.fileCount.other": "{count} files",
-  "table.gridSize": "{rows} by {cols}"
+  "table.gridSize": "{rows} by {cols}",
+  "common.hide": "Hide",
+  "common.show": "Show",
+  "history.date": "Date",
+  "studio.noPrivateKey": "no private key",
+  "merge.localNote": "Merging happens fully offline; your documents never leave this device.",
+  "ocr.textLayerHint": "This document already contains a text layer — OCR is mainly useful for scanned pages.",
+  "compress.estimateExact": "exact",
+  "petition.subtitle": "Create standards-compliant DOCX and PDF petitions for submission to official authorities.",
+  "petition.subtitleUdf": "Create standards-compliant UDF, DOCX and PDF petitions for submission to official authorities.",
+  "writer.pageBreakMarker": "— page break —"
 }

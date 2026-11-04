@@ -56,6 +56,7 @@ function PasswordField({
   placeholder?: string;
   autoFocus?: boolean;
 }) {
+  const t = useT();
   const [visible, setVisible] = useState(false);
   return (
     <div className="relative">
@@ -74,7 +75,7 @@ function PasswordField({
         type="button"
         className="absolute right-1 top-1/2 -translate-y-1/2 icon-btn"
         onClick={() => setVisible((previous) => !previous)}
-        aria-label={visible ? "Hide" : "Show"}
+        aria-label={visible ? t("common.hide") : t("common.show")}
         tabIndex={-1}
       >
         {visible ? <EyeOff size={15} /> : <Eye size={15} />}

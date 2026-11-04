@@ -67,6 +67,25 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **The sixteen strings the wider measurement found are in the dictionary
+  (E4.7):** the audit's new expression rule surfaced text that never passed
+  through the tables, and this slice moves all of it out of hand-written
+  conditionals: the password toggle's `Hide`/`Show` (two screens, read out
+  loud in English inside the Turkish interface), `History`'s `Date` header,
+  `PdfStudio`'s "no private key", `Ai`'s citation fallback, the
+  `language === "tr" ? … : …` pairs in `Merge`, `Ocr` and `Compress`, and the
+  petition subtitle - whose English interface had been showing the Turkish
+  sentence. The Turkish wording is unchanged, which a contract test pins key by
+  key. Working on it also turned up a real defect: `writer.pageBreak` was
+  defined twice in both tables and the second definition won, so the ribbon
+  button rendered "— page break —"; the marker now has its own key and the
+  button reads "Page break". Baseline: 73/20/8 -> **64/15/6** objects 0, and the
+  CI ceilings follow it down.
+  `test:src/lib/i18n-conditional-strings.test.ts#keep their exact wording in both languages`
+  `test:src/lib/i18n-conditional-strings.test.ts#gives the page-break marker its own key`
+  `test:src/screens/tools-screens.test.tsx#labels the password toggle in the interface language`
+  `test:src/lib/ci-workflow.test.ts#records a hardcoded-JSX baseline the audit compares against`
+
 - **The audit reads expressions, and the wider rule found real text (E4.7):**
   until now a string only counted when it was written directly in a JSX text
   node or as a plain attribute value, so `label={flag ? "Kaydet" : "İptal"}`,

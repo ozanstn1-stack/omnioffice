@@ -18,17 +18,14 @@
     "office/version-history-dialog.tsx": 1,
     "screens/Ai.tsx": 3,
     "screens/Batch.tsx": 2,
-    "screens/Compress.tsx": 2,
     "screens/Convert.tsx": 2,
-    "screens/History.tsx": 2,
     "screens/Info.tsx": 2,
     "screens/Inspect.tsx": 2,
     "screens/Invoices.tsx": 3,
-    "screens/Merge.tsx": 2,
-    "screens/Ocr.tsx": 4,
+    "screens/Ocr.tsx": 2,
     "screens/Organize.tsx": 3,
     "screens/PageTools.tsx": 5,
-    "screens/PdfStudio.tsx": 7,
+    "screens/PdfStudio.tsx": 6,
     "screens/Redact.tsx": 1,
     "screens/Security.tsx": 1,
     "screens/Settings.tsx": 5,
@@ -41,16 +38,13 @@
     "office/calc/ui/LinkDialog.tsx": 2,
     "office/calc/ui/TablesUi.tsx": 1,
     "office/ImpressEditor.tsx": 1,
-    "office/tools/converter.tsx": 2,
-    "screens/Ai.tsx": 4,
+    "screens/Ai.tsx": 3,
     "screens/PageTools.tsx": 1,
     "screens/PdfStudio.tsx": 1,
-    "screens/Security.tsx": 2,
     "screens/Vault.tsx": 2
   },
   "props": {
-    "office/calc/ui/CalcRibbon.tsx": 6,
-    "screens/PetitionWizard.tsx": 2
+    "office/calc/ui/CalcRibbon.tsx": 6
   },
   "objects": {}
 }

@@ -175,13 +175,6 @@ for (const file of walk(srcRoot)) {
   }
 }
 
-if (process.argv.includes("--expressions-report")) {
-  // The measurement check: what did reading expressions add, and is it prose?
-  console.log(expressionRows.sort().join("\n"));
-  console.log(`i18n:expressions-report: ${expressionRows.length} expression string(s) in .tsx files`);
-  process.exit(0);
-}
-
 if (process.argv.includes("--props-report")) {
   // The translation backlog, cheapest source first: one line per prop string.
   console.log(propRows.sort().join("\n"));

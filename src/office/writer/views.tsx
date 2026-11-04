@@ -307,7 +307,7 @@ export const StaticBlocks = memo(function StaticBlocks({
             ) : null}
             {block.type === "pageBreak" ? (
               <div className="writer-page-break">
-                <span>{t("writer.pageBreak")}</span>
+                <span>{t("writer.pageBreakMarker")}</span>
               </div>
             ) : null}
             {block.type === "toc" ? <TocView entries={block.entries} onOpen={onOpen} /> : null}
@@ -792,7 +792,7 @@ export function BlockView({
   if (block.type === "pageBreak") {
     return (
       <div className="writer-page-break" contentEditable={false}>
-        <span>{t("writer.pageBreak")}</span>
+        <span>{t("writer.pageBreakMarker")}</span>
       </div>
     );
   }

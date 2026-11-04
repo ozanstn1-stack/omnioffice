@@ -1410,7 +1410,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
                         <option key={cert.index} value={cert.index}>
                           {cert.subject}
                           {cert.expired ? ` (${t("studio.expired")})` : ""}
-                          {cert.hasPrivateKey ? "" : " - no private key"}
+                          {cert.hasPrivateKey ? "" : ` - ${t("studio.noPrivateKey")}`}
                         </option>
                       ))}
                     </select>
