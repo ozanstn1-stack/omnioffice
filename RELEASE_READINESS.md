@@ -67,6 +67,16 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.6.0) - Sürüm hatları ve tedarik zinciri (E5)
 
+- **The toast stack clears the bottom bar (6.5.1 device check):** a toast sat
+  `bottom: 16px` from the viewport, which on a phone covered the navigation bar
+  and reached into the system gesture area. `.toast-host` now offsets by
+  `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
+  plus its inset as well; the stack is `pointer-events: none` with only the
+  cards taking the pointer, so a full-width toast cannot swallow a tap meant for
+  the screen behind it.
+  `test:src/components/touch-css.test.ts#clears the home indicator at the foot of the screen`
+  `test:src/components/touch-css.test.ts#sits above the bottom bar on a phone`
+  `test:src/components/touch-css.test.ts#stops a full-width toast from swallowing taps behind it`
 - **The last four English strings the expression scan could see are gone
   (E4.7):** `SlideObjectView` told the Turkish Impress UI "Double-click to add an
   image", the autosave buttons wrote `30 s` / `5 min` with English units, the
@@ -1534,7 +1544,9 @@ release-train schedule is decided.
   (no test: open defect.)
 - A toast at the foot of the screen covers the bottom bar and reaches into
   the system gesture area on a phone.
-  (no test: open defect.)
+  **Fixed 2026-11-04:** the stack is now `.toast-host`, which clears the home
+  indicator everywhere and the bottom bar on a narrow screen; the stack itself
+  is click-through so a full-width toast cannot swallow taps behind it.
 
 ### Device check (6.5.1, 29.10.2026)
 

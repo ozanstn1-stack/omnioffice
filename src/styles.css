@@ -751,6 +751,39 @@ body {
   max-width: 420px;
 }
 
+/* The toast stack clears the bottom bar and the system gesture area: `bottom-4`
+   alone put it on top of the navigation on a phone (6.5.1 device check). */
+.toast-host {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.toast-host > * {
+  pointer-events: auto;
+}
+.toast-host .toast {
+  width: 100%;
+}
+@media (max-width: 720px) {
+  /* 56 px is `.bottom-nav-placeholder` plus its border; the bar itself carries
+     the safe-area padding, so the host adds both. */
+  .toast-host {
+    left: 12px;
+    right: 12px;
+    bottom: calc(56px + env(safe-area-inset-bottom) + 12px);
+    align-items: stretch;
+  }
+  .toast-host .toast {
+    max-width: none;
+  }
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }

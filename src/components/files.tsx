@@ -692,7 +692,7 @@ export function Toasts() {
   const toasts = useToasts((s) => s.toasts);
   const dismiss = useToasts((s) => s.dismiss);
   return (
-    <div className="fixed bottom-4 right-4 z-[70] flex flex-col gap-2">
+    <div className="toast-host">
       {toasts.map((toast) => (
         <div
           key={toast.id}

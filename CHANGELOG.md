@@ -22,6 +22,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ambiguous marker fails the run, and the total is ratcheted plus hard-capped at
   five. The baseline schema moves to v5 for the count.
 
+### Fixed
+
+- **A toast no longer covers the bottom bar on a phone (6.5.1):** the stack sat
+  16 px from the viewport edge, so on a phone it covered the navigation bar and
+  reached into the system gesture area. It clears both now, and the stack is
+  click-through so a full-width toast cannot swallow taps behind it.
+
 ### Changed
 
 - **One password field instead of two:** the Protect/Unlock panels and the
