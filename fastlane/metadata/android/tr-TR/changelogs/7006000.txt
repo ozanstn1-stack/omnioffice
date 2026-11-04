@@ -1,0 +1,7 @@
+7.6.0 "Ölçülen güvenlik": Türkçe arayüzde İngilizce kalan metinler gitti —
+şifre alanı düğmesi artık "Gizle/Göster" okuyor, dilekçe sihirbazının alt
+başlığı İngilizce arayüzde Türkçe görünmüyor ve Writer şeridindeki sayfa sonu
+düğmesi doğru etiketi gösteriyor. Depo güvenlik duruşu artık ölçülüyor
+(OpenSSF Scorecard); jeton izinleri iş düzeyine indi, sürüm ve beta hatları
+motorları yeniden indirmiyor. Arayüz metni taraması koşullu dalları, mantıksal
+yedekleri ve şablon içi dizeleri de okuyor.
