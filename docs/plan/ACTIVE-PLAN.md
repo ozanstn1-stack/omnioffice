@@ -953,3 +953,43 @@ kanıtla (bu turda öyle yapıldı).
   bilinçli literaller için), (c) Scorecard'ın kalan düşük kontrolleri.
   Kullanıcı adımı: GitHub'da private vulnerability reporting'i açmak
   (Security-Policy 4 → yükselir).
+
+---
+
+# Seçilen iş kalemi: Dependabot birikimini ayıklamak (Opus kararı `3f5c2943`)
+
+Opus: bu pencerenin en değerli işi bağımlılık birikimi (7 açık PR); (a)/(b)/(c)
+adayları sonraki dilime. macOS iptalleri tek başına iş değil, ön koşul.
+
+## macOS teşhisi (Faz 0, yapıldı)
+`Rust (macos-latest)` işi master'da **4 denemede de** iptal edildi. Karşılaştırma:
+- push (master): `runner_name` **boş**, **0 adım**, created → cancelled 15 dk.
+- PR (aynı ağaç): runner `GitHub Actions 1000017468`, **21 adım**, success.
+- `rust` işi matrisi push/PR için **birebir aynı** (`macos-latest`, timeout 45).
+
+Yani sebep kod değil, **macOS runner kapasitesi** (hiç atanmadı). Opus'un karar
+tablosuna göre koda dokunulmadı; `continue-on-error` **yapılmadı** (tek macOS
+derleme korumasını sustururdu). Deneme 4 kuyrukta bırakıldı; master Desktop bu
+yüzden kırmızı kalıyor ve bir sonraki sürüm yine elle tag'lenmek zorunda.
+
+## Birleşenler
+- **#593** Cargo rust grubu → `8886330`.
+- **#591** chrome-extension npm grubu → `f79a92e`.
+
+## #608 → #616 (actions grubu)
+İlk PR (#608) scorecard.yml eklenmeden açılmıştı: `github/codeql-action` pini
+`codeql.yml`'de güncellenip `scorecard.yml`'de eski kalacaktı, yani benim
+"tek codeql-action commit'i" testim merge sonrası kırılacaktı.
+`@dependabot rebase` istendi → Dependabot **#616** olarak yeniden açtı; yeni dal
+9 dosyayı (scorecard.yml dahil) kapsıyor ve iki dosyada da aynı yeni SHA
+(`9b325408…`) var. #608 kapandı.
+
+## Kırıcı üç bump: kapatıldı + ignore + tracking issue
+| PR | Ne | Issue |
+| --- | --- | --- |
+| #595 | `sha2 0.11` (digest 0.11 / hybrid-array; hmac/pbkdf2 ailesi 0.10'da) | **#617** |
+| #594 | `getrandom 0.4` (`getrandom()` → `fill()`, `rand` 0.8 hâlâ 0.2 çekiyor) | **#618** |
+| #470 | chrome-extension `vite 8` (rolldown, manifest yolları) | **#619** |
+
+`.github/dependabot.yml`'ye gerekçeli `ignore` kuralları eklendi (mevcut
+`eslint`/`typescript`/`vitest`/`der`/`hmac` kalıbıyla aynı biçim).
