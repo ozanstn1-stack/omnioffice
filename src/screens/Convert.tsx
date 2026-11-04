@@ -195,6 +195,7 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
             </Field>
             <Toggle checked={grayscale} onChange={setGrayscale} label={t("compress.grayscale")} />
             <p className="text-xs muted">
+              {/* i18n-literal: file extensions in a filename example */}
               {t("common.example")} {prefix}_001.{format === "jpeg" ? "jpg" : "png"}
             </p>
           </OptionCard>

@@ -3253,5 +3253,9 @@
   "compress.estimateExact": "exact",
   "petition.subtitle": "Create standards-compliant DOCX and PDF petitions for submission to official authorities.",
   "petition.subtitleUdf": "Create standards-compliant UDF, DOCX and PDF petitions for submission to official authorities.",
-  "writer.pageBreakMarker": "— page break —"
+  "writer.pageBreakMarker": "— page break —",
+  "impress.emptyImage": "Double-click to add an image",
+  "settings.autosaveSecondsShort": "{seconds} s",
+  "settings.autosaveMinutes": "{minutes} min",
+  "studio.fieldYesOff": "Yes / Off"
 }

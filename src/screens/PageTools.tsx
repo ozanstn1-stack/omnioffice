@@ -949,7 +949,7 @@ function Numbering({ initialFiles, dragging }: { initialFiles?: string[]; draggi
             />
             <p className="text-xs muted flex items-center gap-1.5">
               <Hash size={12} /> {t("common.example")}{" "}
-              {options.format === "n" ? "1" : options.format === "page_n" ? "Page 1" : "1 / 20"}
+              {options.format === "n" ? "1" : options.format === "page_n" ? t("common.pageAlt", { page: 1 }) : "1 / 20"}
             </p>
           </OptionCard>
           {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}
