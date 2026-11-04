@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **OpenSSF Scorecard grades the repository (E5):** a weekly run, a run on
+  every push to master and a run when a branch-protection rule changes analyse
+  the project's own security posture, upload the SARIF report to code scanning
+  and publish the score. The action refuses every event that is neither a pull
+  request nor the default branch, so a `pull_request` trigger filtered to the
+  workflow file is what lets the change be proven before it merges.
+
 ### Changed
 
 - **The release and beta trains stop re-downloading the engines (E5):** both

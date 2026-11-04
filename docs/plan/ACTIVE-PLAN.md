@@ -603,3 +603,33 @@ push'unu dinler), sonra `release.yml` dispatch'i restore'u ve
   dispatch (restore kanıtı), sonra kontrol yeşilse squash merge.
   Scorecard ayrı ve sonraki dilim (yeni workflow + yeni check), Renovate
   **yapılmayacak**: Dependabot zaten çalışıyor, karar notu bu dosyada.
+
+## Kapandı (2026-11-04 00:37 UTC) — PR #607 → `a4be68f`
+37 kontrol fail 0 / pending 0. Dalda iki dispatch kanıtı:
+- `desktop.yml` `41730857483` → yeni anahtar yazıldı
+  (`engines-Windows-96edecc6…`, 56 MB, `refs/heads/ci/engine-cache-release`).
+- `release.yml` `41734071635` → `Cache restored from key: engines-Windows-96edecc6…`,
+  fetch adımı `pdfium/qpdf/tesseract/liberation fonts (already present)` dedi;
+  yalnız `ip7z` bootstrap indirildi.
+- **Dürüst ölçüm:** fetch v7.5.0 tag'inde 15 sn, bu dalda restore 3 sn + fetch
+  6 sn = 9 sn. Yani kazanç ~6 sn; **asıl değer hız değil güvenilirlik** — mutable
+  `main` URL'leri (tessdata_fast, google/fonts, tesseract `pdf.ttf`) artık sürüm
+  işinin kritik yolunda değil. Bu, PR'da da bu şekilde yazıldı.
+- **`beta.yml` dispatch EDİLMEDİ** (Opus uyarısı: rolling beta prerelease adımı
+  tag'e bağlı değil, daldan derleme kanala gider).
+
+## Takip işleri (ölçüldü, yapılmadı)
+- `7zr.exe` + `7z2301-x64.exe` bootstrap'i koşulsuz indiriliyor (fetch betiği
+  ~201-214) → tesseract bloğuna taşınabilir.
+- Tesseract closure'ında `Write-Warning` ile geçen hatalar önbellekte kalıcı →
+  `-Strict` anahtarı bunları hataya çevirmeli.
+- v4 → v6 önbellek sürüm birleştirmesi (bench işi v6.1.0'da).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** motor önbelleği dilimi `a4be68f` ile
+  master'da. Sürüm numarası değişmediği için `auto-tag` bir sonraki master
+  Desktop koşusunda "v7.5.0 already exists" deyip hiçbir şey yayınlamaz.
+  Sıradaki kalem **OpenSSF Scorecard** (yeni workflow + yeni check;
+  `publish_results` yalnız varsayılan dalda anlamlı olduğu için ayrı dilim olarak
+  ve Opus planıyla). Ondan sonra: tarayıcı boşlukları (koşullu JSX dalları,
+  nesne içi `${…}`). **Renovate yapılmayacak** — Dependabot zaten pinleri
+  güncelliyor (karar).
