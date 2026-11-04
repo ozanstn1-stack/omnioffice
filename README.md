@@ -10,12 +10,12 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.5.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.6.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
 
-## What's new (6.2 to 7.5.0)
+## What's new (6.2 to 7.6.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -212,7 +212,14 @@ was split into per-format modules.
   and the i18n audit reached into component props, object literals, `.ts`
   modules, toast details and template attributes - which brought the
   hardcoded-text baseline down from 80 to 50 and took the last English
-  sentences out of the Turkish interface.
+  sentences out of the Turkish interface. 7.6.0 is the measured-security
+  release: OpenSSF Scorecard grades the repository on a schedule and publishes
+  the score (4.6 when it first ran), the token permissions of every workflow
+  moved into the job that uses them (Token-Permissions 0 -> 10), the tag job
+  stopped checking code out (Dangerous-Workflow 0 -> 10), the release and beta
+  trains restore the pinned engines from a cache the pull-request runs already
+  fill, and the i18n audit learned to read expressions - which found sixteen
+  strings the Turkish interface still showed in English.
 - **LAN sync** (6.11.0): two devices on the same Wi-Fi pair with a one-time
   six-digit code, keep a pinned TLS connection and move office documents
   between their folders with a three-way plan; conflicts stay for the user
@@ -221,14 +228,14 @@ was split into per-format modules.
   deletion, with an Android foreground service keeping the folder reachable;
   6.13.0 adds the two-host acceptance contract, a 30-day deletion trash with
   tombstones and resumable chunked uploads with live progress.
-**Downloads (v7.5.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v7.5.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.5.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.5.0/OmniOffice-Setup-7.5.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.5.0/OmniOffice-Portable-7.5.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.5.0/OmniOffice-Linux-7.5.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.5.0/OmniOffice-Linux-7.5.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.5.0/OmniOffice-Android-7.5.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.5.0/OmniOffice-Android-7.5.0-armeabi-v7a.apk)
+**Downloads (v7.6.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v7.6.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.6.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.6.0/OmniOffice-Setup-7.6.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.6.0/OmniOffice-Portable-7.6.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.6.0/OmniOffice-Linux-7.6.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.6.0/OmniOffice-Linux-7.6.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.6.0/OmniOffice-Android-7.6.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.6.0/OmniOffice-Android-7.6.0-armeabi-v7a.apk)
 
 ## Release history
 

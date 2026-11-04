@@ -844,3 +844,34 @@ büyüme listesini bastı (ratchet çalışıyor).
   üçlüler `t()` + dil değişimi), `PetitionWizard` "UDF" yazımını doğrulamak ve
   tabanı düşürmek (`--update`, bayraksız). Ondan sonra 7.6.0 sürüm treni
   (auto-tag'in tag oluşturma yolu ilk kez orada sınanacak).
+
+## Kapandı (2026-11-04 13:50 UTC) — PR #613 → `0fd9408`
+
+Opus planı (`0dc6c43b`) sınırları netleştirdi, uygulandı. **16 dize, 8 dosya.**
+Türkçe metinler birebir korundu (`i18n-conditional-strings.test.ts` on anahtarı
+pinliyor). Tek bilinçli görünür değişiklik: dilekçe sihirbazının alt başlığı
+İngilizce arayüzde **Türkçe** görünüyordu.
+
+**Yol üstünde bulunan gerçek hata:** `writer.pageBreak` iki kez tanımlıydı
+(en: satır 1242 ve 3236) ve JSON'da sonuncusu kazanıyordu → Writer şeridindeki
+düğme "— sayfa sonu —" gösteriyordu. İşaret artık `writer.pageBreakMarker`.
+
+**Ölçüm:** `files` 73 → **64**, `attributes` 20 → **15**, `props` 8 → **6**,
+`objects` 0. `--update` **bayraksız** geçti (ratchet düşüşü kabul ediyor);
+`ci-workflow` tavanları 64/15/6/0. `--expressions-report` 34 → **18** satır;
+kalanlar meşru literal (`https://`, `jpg`/`png`, `(CA)`, `${…} min`, biçim
+örnekleri). `TablesUi`'deki `"Column"` bilinçli (formül sözdizimi).
+
+**Yan düzeltme:** `i18n-audit.mjs`'te `--expressions-report` bloğu iki kez
+vardı, ilki erken çıkıyordu → nesne tarafının ifade satırları hiç yazılmıyordu.
+
+**Dosya bütçesi:** iki `PasswordField` bileşenine `const t = useT();` eklendiği
+için `converter.tsx` 295→296, `Security.tsx` 262→263; gerekçeli, aynı PR'da.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** beş 7.6.0 dilimi master'da
+  (`a4be68f`, `e40e3ba`, `3db1519`, `7d9cd8f`, `0fd9408`) + `917acd1`.
+  Skor 6.5; Security-Policy 4 yalnız kullanıcı adımıyla yükselir.
+  **Sıradaki en değerli kalem: 7.6.0 sürüm treni** — auto-tag'in tag oluşturma
+  yolu (checkout'suz hali) ilk kez orada uçtan uca sınanacak; ayrıca 10+ dilim
+  birikti. Ondan sonra: `PasswordField` tekrarını ortak bileşene almak, JSX
+  tarafına `i18n-content:` benzeri yoksayma işareti.

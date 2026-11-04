@@ -4,64 +4,82 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-- **The tag job reads the release metadata instead of checking it out (E5):**
-  `auto-tag.yml` checked out the triggering run's commit to read four version
-  files, which OpenSSF Scorecard flags as a dangerous workflow pattern and which
-  put a write-scoped token in a working tree for no reason. It now fetches those
-  four files from the very commit it tags and runs with no checkout at all.
+## [7.6.0] - Ölçülen güvenlik (Phase E / E5 ve E4 kalanları)
 
 ### Changed
 
-- **Workflow write permissions moved to the job that uses them (E5):** the
-  OpenSSF Scorecard run scored Token-Permissions at 0, because `auto-tag`,
-  `beta`, `linux-package`, `pr-size` and `release` granted write scopes at the
-  workflow level to every job. They now default to `contents: read` and the
-  publishing job asks for what it writes; the effective scopes are unchanged
-  except `release/version-consistency`, which never wrote anything.
-
-- **The i18n audit reads expressions, and found text that never counted
-  (E4.7):** conditionals (`label={flag ? "Kaydet" : "İptal"}`), logical
-  fallbacks (`??`, `||`, `&&`), JSX child expressions (`<p>{ok ? "Tamam" :
-  "Hata"}</p>`) and the strings inside a template's interpolation are measured
-  now, in both the JSX scan and the object scan. `--expressions-report` lists
-  what the wider rule added and where it came from. The measured baseline moved
-  from 50/11/6 to 73/20/8 and the object section stayed at zero; the additions
-  include hand-written Turkish/English ternaries and an untranslated
-  `Hide`/`Show`/`Date` cluster, which the next translation slice takes.
-
-### Fixed
-
 - **Sixteen hardcoded strings moved into the dictionary (E4.7):** the password
-  visibility toggle spoke English inside the Turkish interface, `History`'s date
-  column was written twice in one expression, the petition subtitle showed the
-  Turkish sentence to English users, and `Merge`, `Ocr` and `Compress` picked
-  their text with a `language === "tr" ? … : …` ternary instead of the table.
-  All of them go through `t()` now, with the Turkish wording unchanged.
-- **The page-break marker has its own key:** `writer.pageBreak` was defined
-  twice and the last definition won, so the ribbon button asking for it showed
-  "— page break —". The marker keeps that text; the button reads "Page break".
+  visibility toggle spoke English inside the Turkish interface, `History` wrote
+  its date header as a conditional with the same word in both arms,
+  `PdfStudio`'s "no private key" and `Ai`'s citation fallback were literals, and
+  `Merge`, `Ocr` and `Compress` chose their text with a
+  `language === "tr" ? … : …` ternary instead of a key. All of them go through
+  `t()` now, with the Turkish wording unchanged and pinned key by key by a
+  contract test. The petition subtitle had been showing the Turkish sentence to
+  English users; it has one key per product state now (`experimentalUdf` on or
+  off). Baseline 73/20/8 -> 64/15/6.
+- **The release and beta trains stop re-downloading the engines (E5):** both
+  restore `src-tauri/resources/engines` from the entry the Desktop run stored on
+  the default branch and never write one themselves, so a publishing run cannot
+  seed a cache another run trusts. The key covers the lock file and the fetch
+  script, because the script trusts files that are already present. The nightly
+  stays uncached on purpose: it is the canary for the mutable `main` URLs in the
+  lock, and a cached copy would hide exactly that drift.
+- **Workflow write permissions moved to the job that uses them (E5):** Scorecard
+  scored Token-Permissions at 0 because five workflows granted the repository
+  token's write scopes to every job. They default to `contents: read` now and the
+  publishing job asks for what it writes; the effective scopes are unchanged
+  everywhere except `release/version-consistency`, which never wrote anything.
+  The score went to 10.
+- **The tag job reads the release metadata instead of checking it out (E5):**
+  `auto-tag.yml` checked out the triggering run's commit to read four version
+  files - the shape of a fork-code-with-secrets attack, and a write-scoped token
+  sitting in a working tree. It fetches those four files from the commit it is
+  about to tag and runs with no checkout at all; the version gate and the tag are
+  guaranteed to describe one commit. Dangerous-Workflow went from 0 to 10 and the
+  total score from 5.3 to 6.5.
 
 ### Added
 
-- **OpenSSF Scorecard grades the repository (E5):** a weekly run, a run on
-  every push to master and a run when a branch-protection rule changes analyse
-  the project's own security posture, upload the SARIF report to code scanning
-  and publish the score. The action refuses every event that is neither a pull
-  request nor the default branch, so a `pull_request` trigger filtered to the
-  workflow file is what lets the change be proven before it merges.
+- **OpenSSF Scorecard grades the repository (E5):** a weekly run, a run on every
+  push to master, a run when a branch-protection rule changes and a dispatch
+  analyse the project's own security posture, upload the SARIF report to code
+  scanning and publish the score. The action refuses every event that is neither
+  a pull request nor the default branch, so a `pull_request` trigger filtered to
+  the workflow file is what lets the change be proven before it merges. The first
+  measured score was 4.6.
+- **The i18n audit reads expressions (E4.7):** a string used to count only when
+  it was written directly in a JSX text node or as a plain attribute value, so
+  `label={flag ? "Kaydet" : "İptal"}`, `<p>{ok ? "Tamam" : "Hata"}</p>`,
+  `name ?? "Adsız"` and the words inside `` `${n} ${n === 1 ? "Sayfa" :
+  "Sayfalar"}` `` were invisible. One recursive rule now reads them, with two
+  tested exclusions: the condition itself (`mode === "edit"` is a comparison, not
+  prose) and `+` concatenation. `--expressions-report` lists what the rule added
+  and where it came from, so the measurement is reviewable. Files 50 -> 73,
+  attributes 11 -> 20, props 6 -> 8; the object section stayed at zero.
 
-### Changed
+### Fixed
 
-- **The release and beta trains stop re-downloading the engines (E5):** both
-  restored nothing while the pull-request jobs already cached the ~100 MB of
-  pinned third-party artifacts, so every publishing run fetched them again.
-  They now restore `src-tauri/resources/engines` from the entry the Desktop run
-  stored on the default branch and never write one themselves; the key covers
-  the lock file and the fetch script, since the script trusts files that are
-  already present. The nightly stays uncached: it is the canary for the mutable
-  `main` URLs in the lock, and a cached copy would hide exactly that drift.
+- **`writer.pageBreak` was defined twice in both tables:** the second definition
+  won, so the ribbon button asking for it rendered "— page break —" instead of
+  "Page break". The marker has its own key (`writer.pageBreakMarker`).
+- **`--expressions-report` printed only half its rows:** the flag was handled
+  twice and the first handler exited before the object scan ran, so the object
+  side's expression strings never reached the report.
+
+### Notes
+
+- The Windows installers remain **unsigned by decision** (`docs/signing.md`,
+  D10): SmartScreen shows "unknown publisher". Verify a download against
+  `SHA256SUMS-windows.txt`. Scorecard's Signed-Releases check reads 8/10 for
+  that reason.
+- Security-Policy reads 4/10: `SECURITY.md` is detected but carries no link, and
+  GitHub's private vulnerability reporting is off, so the advisories link would
+  404. Turning it on is a repository-settings step, and the link follows it.
+- Moved to 7.7.0: the duplicated `PasswordField` component (two screens carry
+  their own copy), a JSX-side ignore marker for deliberate literals such as the
+  formula placeholder in `TablesUi`, and the scanner gaps that remain (a string
+  arriving through a variable or a return value).
 
 ## [7.5.0] - Uçtan uca kanıt (Phase E / E4 kalanları, E5)
 
