@@ -7,13 +7,16 @@
 //   * a JSX text node with at least two letters ("—", "·", "1", "/" are
 //     separators the translation table never needs),
 //   * one of the ATTRIBUTES or PROPS whose value is a literal - a plain string,
-//     a braced string or a template without substitutions. A `t("…")` call, a
-//     variable or a conditional is not a hardcoded string and is skipped.
+//     a braced string or a template without substitutions. A `t("…")` call or
+//     a variable is not a hardcoded string and is skipped.
 //
-// A template counts for its fixed words: `alt={`Page ${page}`}` is prose the user
-// reads, with the interpolation collapsed to `${…}`. A template made only of
-// placeholders is not prose. A conditional's branches (`label={flag ? "A" : "B"}`)
-// still stay out - a known gap, documented in docs/i18n.md.
+// A string also reaches the screen through an expression, so an expression is
+// read the same way in an attribute, a prop, a JSX child and an object value:
+// a template counts for its fixed words with each interpolation collapsed to
+// `${…}`, both branches of a conditional count, and so does the fallback of
+// `??`, `||` and `&&`. Two things explicitly do not count: the condition
+// itself (`mode === "edit"` is a comparison, not prose) and `+` concatenation
+// (a builder, not a sentence).
 import ts from "typescript";
 
 /** Attributes the user reads or hears (aria, alt, tooltips, form hints). */
@@ -50,6 +53,57 @@ export function templateText(node) {
   return [node.head.text, ...node.templateSpans.map((span) => `\${…}${span.literal.text}`)].join("");
 }
 
+/** The strings an expression can put on the screen, each tagged with where it
+ * came from: `literal` (the value itself), `span` (inside a template's
+ * interpolation) or `branch` (one arm of a conditional or a logical fallback).
+ * The tag is what `--expressions-report` lists, so a reader can see which
+ * strings the wider rule added. */
+export function expressionTexts(node, via = "literal") {
+  const current = unwrap(node);
+  if (ts.isStringLiteral(current) || ts.isNoSubstitutionTemplateLiteral(current)) {
+    return [{ text: current.text, via }];
+  }
+  if (ts.isTemplateExpression(current)) {
+    const rows = [{ text: templateText(current), via }];
+    for (const span of current.templateSpans) {
+      rows.push(...expressionTexts(span.expression, "span"));
+    }
+    return rows;
+  }
+  if (ts.isConditionalExpression(current)) {
+    // The condition is a test, not prose: `mode === "edit"` must not count.
+    return [
+      ...expressionTexts(current.whenTrue, "branch"),
+      ...expressionTexts(current.whenFalse, "branch"),
+    ];
+  }
+  if (ts.isBinaryExpression(current)) {
+    // `a ?? "Adsız"`, `busy && "Yükleniyor"`, `name || "Anonim"`: the right
+    // operand is the one the user reads. `+` builds a string instead of
+    // choosing one, so it stays out.
+    const fallback = current.operatorToken.kind;
+    if (
+      fallback === ts.SyntaxKind.QuestionQuestionToken ||
+      fallback === ts.SyntaxKind.BarBarToken ||
+      fallback === ts.SyntaxKind.AmpersandAmpersandToken
+    ) {
+      return expressionTexts(current.right, "branch");
+    }
+  }
+  // A call, a variable, a property access, a JSX child, a function: not text.
+  return [];
+}
+
+/** The strings a JSX attribute (or prop) value holds. */
+export function attributeTexts(initializer) {
+  if (!initializer) return [];
+  if (ts.isStringLiteral(initializer)) return [{ text: initializer.text, via: "literal" }];
+  if (ts.isJsxExpression(initializer) && initializer.expression) {
+    return expressionTexts(initializer.expression);
+  }
+  return [];
+}
+
 /**
  * Every hardcoded string in one TSX source, with the line it sits on.
  * The three lists keep their order: text nodes, attributes, props.
@@ -60,17 +114,27 @@ export function scanSource(name, body) {
   const texts = [];
   const attributes = [];
   const props = [];
+  const prose = (line, text, via) => ({ line, text: text.trim(), via });
   const visit = (node) => {
     if (ts.isJsxText(node)) {
       const text = node.text.replace(/\s+/g, " ").trim();
-      if (PROSE.test(text)) texts.push({ line: lineOf(node), text });
+      if (PROSE.test(text)) texts.push({ line: lineOf(node), text, via: "literal" });
     } else if (ts.isJsxAttribute(node)) {
       const name = node.name.getText(source);
-      const value = literalText(node.initializer, source);
-      const text = value?.trim() ?? "";
-      if (text && PROSE.test(text)) {
-        if (ATTRIBUTES.includes(name)) attributes.push({ line: lineOf(node), name, text });
-        else if (PROPS.includes(name)) props.push({ line: lineOf(node), name, text });
+      for (const row of attributeTexts(node.initializer)) {
+        if (!PROSE.test(row.text)) continue;
+        const entry = prose(lineOf(node), row.text, row.via);
+        if (ATTRIBUTES.includes(name)) attributes.push({ ...entry, name });
+        else if (PROPS.includes(name)) props.push({ ...entry, name });
+      }
+    } else if (ts.isJsxExpression(node) && node.expression) {
+      // `<p>{ok ? "Tamam" : "Hata"}</p>` and `<p>{"Merhaba"}</p>` are text
+      // nodes to the user. Only when the expression is a child: an attribute
+      // value is read above, and counting it here too would double it.
+      if (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)) {
+        for (const row of expressionTexts(node.expression)) {
+          if (PROSE.test(row.text)) texts.push(prose(lineOf(node), row.text, row.via));
+        }
       }
     }
     ts.forEachChild(node, visit);
@@ -162,13 +226,7 @@ function unwrap(node) {
 
 /** The strings one property value holds, as the user would read them. */
 function valueTexts(initializer) {
-  const node = unwrap(initializer);
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
-  if (ts.isTemplateExpression(node)) return [templateText(node)];
-  if (ts.isConditionalExpression(node)) {
-    return [...valueTexts(node.whenTrue), ...valueTexts(node.whenFalse)];
-  }
-  return [];
+  return expressionTexts(initializer);
 }
 
 /** The justification written above a property, or null when there is none. The
@@ -209,10 +267,10 @@ export function scanObjects(name, body) {
       const key = propertyKey(node.name);
       if (key && OBJECT_KEYS.includes(key)) {
         const reason = contentReason(node, body);
-        for (const text of valueTexts(node.initializer)) {
-          const row = { line: lineOf(node), key, text };
+        for (const found of valueTexts(node.initializer)) {
+          const row = { line: lineOf(node), key, text: found.text, via: found.via };
           if (reason) excluded.push({ ...row, reason });
-          else if (TURKISH.test(text)) counted.push(row);
+          else if (TURKISH.test(row.text)) counted.push(row);
           else unmarked.push(row);
         }
       }

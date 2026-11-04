@@ -144,6 +144,11 @@ const fakePlurals = enKeys.filter((key) => /\(s\)/.test(String(en[key])) || /\(s
 const scan = { files: {}, attributes: {}, props: {}, objects: {} };
 const samples = new Map();
 const propRows = [];
+// Every string the wider expression rule added, with where it came from:
+// `branch` (a conditional arm or a logical fallback) or `span` (inside a
+// template's interpolation). `--expressions-report` prints them so a reviewer
+// can see what the measurement grew by instead of trusting a number.
+const expressionRows = [];
 for (const file of walk(srcRoot)) {
   if (!file.endsWith(".tsx")) continue;
   const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
@@ -157,6 +162,24 @@ for (const file of walk(srcRoot)) {
       found.texts.slice(0, 3).map((row) => row.text.slice(0, 48)),
     );
   for (const row of found.props) propRows.push(`${relative}:${row.line}\t${row.name}\t${row.text}`);
+  for (const [section, rows] of [
+    ["text", found.texts],
+    ["attribute", found.attributes],
+    ["prop", found.props],
+  ]) {
+    for (const row of rows) {
+      if (row.via && row.via !== "literal") {
+        expressionRows.push(`${relative}:${row.line}\t${section}\t${row.via}\t${row.text}`);
+      }
+    }
+  }
+}
+
+if (process.argv.includes("--expressions-report")) {
+  // The measurement check: what did reading expressions add, and is it prose?
+  console.log(expressionRows.sort().join("\n"));
+  console.log(`i18n:expressions-report: ${expressionRows.length} expression string(s) in .tsx files`);
+  process.exit(0);
 }
 
 if (process.argv.includes("--props-report")) {
@@ -170,7 +193,7 @@ if (process.argv.includes("--props-report")) {
 // through a JSX literal. Only a value with a Turkish-specific letter counts;
 // `--objects-report` prints what is counted, what a `i18n-content:` pragma or a
 // content file keeps out, and what the narrow rule let through.
-const objectRows = { counted: [], excluded: [], unmarked: [], contentFiles: [] };
+const objectRows = { counted: [], excluded: [], unmarked: [], expressions: [], contentFiles: [] };
 for (const file of walk(srcRoot)) {
   const relative = file.slice(srcRoot.length + 1).replace(/\\/g, "/");
   const found = scanObjects(`src/${relative}`, readFileSync(file, "utf8"));
@@ -179,10 +202,23 @@ for (const file of walk(srcRoot)) {
     continue;
   }
   if (found.counted.length) scan.objects[relative] = found.counted.length;
-  for (const row of found.counted) objectRows.counted.push(`${relative}:${row.line}\t${row.key}\t${row.text}`);
+  for (const row of found.counted) {
+    objectRows.counted.push(`${relative}:${row.line}\t${row.key}\t${row.text}`);
+    if (row.via && row.via !== "literal") {
+      objectRows.expressions.push(`${relative}:${row.line}\t${row.key}\t${row.via}\t${row.text}`);
+    }
+  }
   for (const row of found.excluded)
     objectRows.excluded.push(`${relative}:${row.line}\t${row.key}\t${row.text}\t${row.reason}`);
   for (const row of found.unmarked) objectRows.unmarked.push(`${relative}:${row.line}\t${row.key}\t${row.text}`);
+}
+
+if (process.argv.includes("--expressions-report")) {
+  console.log([...expressionRows, ...objectRows.expressions].sort().join("\n"));
+  console.log(
+    `i18n:expressions-report: ${expressionRows.length + objectRows.expressions.length} expression string(s)`,
+  );
+  process.exit(0);
 }
 
 if (process.argv.includes("--objects-report")) {
