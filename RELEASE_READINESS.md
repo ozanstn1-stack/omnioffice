@@ -3166,9 +3166,9 @@ with a regression test that failed before the fix:
 
 ### Not done in this pass (honest)
 
-- N-up rebuilds the page tree: source links, outlines and named destinations
-  are dropped and source annotations are not repainted onto the sheets (also
-  declared in the README). Old page objects stay unreferenced.
+- N-up rebuilds the page tree: link annotations and the outline are carried
+  over, but markup and widget annotations are not repainted onto the sheets
+  (also declared in the README). Old page objects stay unreferenced.
 - Deleting an annotation leaves the orphan object in the file (incremental
   updates cannot remove objects), which is what keeps signed documents
   byte-stable.

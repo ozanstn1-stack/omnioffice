@@ -15,8 +15,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   matrix (source rotation included) and clipped to the cell, an external target
   is kept as it was, an internal one is rewritten to the sheet page it points at,
   and a named destination is resolved into an explicit array so the output no
-  longer depends on the source name tree. Other annotations and the outline are
-  still dropped on purpose.
+  longer depends on the source name tree. Other annotations are still dropped on
+  purpose.
+- **N-up keeps its bookmarks too:** the outline is rebuilt on the sheet pages
+  with its hierarchy, colours, flags and the signed `/Count` rule, so an entry
+  that pointed at page 7 points at the sheet carrying page 7 now. A named
+  destination resolves the same way a link's does, and an entry whose page fell
+  outside the selection loses its target - or disappears when it has no child to
+  keep it. A source outline that cannot reach any sheet is removed instead of
+  left dangling.
 - **A LAN download resumes where it stopped:** uploads have resumed since D3, but
   a download was one request and started over when the Wi-Fi dropped. The
   protocol gains `begin_get` and `get_chunk`; the partial file carries a note
