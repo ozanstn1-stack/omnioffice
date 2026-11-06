@@ -1229,5 +1229,12 @@ doğrulanabilir (pdfcore testleri), yeni bağımlılık yok.
 `cargo test -p pdfcore --test nup_test` · yeni iki test dosyası · `files:check` ·
 `claims:check` · `npx vitest run`. Sonunda `cargo clean` + `df -h /`.
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** #630 birleşti. Sıradaki: bu planın 1. adımı
-  (`nup/sheet.rs` refactor) → 2 → 3 → 4, tek PR `feat/nup-keep-links`.
+- **DURUM:** dört adım da uygulandı, tek PR **#631** (`feat/nup-link-annots`,
+  `ebffd22` kod + `c0b6aa4` test + `af7e426` belge). Yerelde: pdfcore lib 197,
+  `nup_test` 8, yeni `nup_links_test` 9, `nup_links_edge_test` 4 test geçti;
+  clippy `-D warnings`, fmt, `files:check`, `claims:check` temiz.
+  `nup.rs` 398 → 362 (taban düştü). CI bekleniyor.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** #631 CI yeşilse squash merge; sonra Opus'a
+  sıradaki kalem (aday: N-up outline remap — aynı `DestMap` yeniden kullanılır,
+  ya da markup düzleştirme).
