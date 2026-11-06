@@ -1394,6 +1394,61 @@ onları **sayfaya çizmek**.
   zaten sayfa uzayına çıktığı ve `Placement.matrix` sayfa uzayı→sheet olduğu
   için `O` (MediaBox ötelemesi) gerekmiyor; link testleri bunu kanıtlıyor.
   Ayrıca `fresh_name` yardımcısı kullanılmadığı için silindi.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki kalem (Opus'un listesi): (1) v7.9.0 sürüm treni mi yoksa (2) form
-  (Widget/AcroForm) düzleştirme mi — Opus'a sorulacak.
+- **PR #634 birleşti** (`7d86c21`), 18 kontrol yeşil, dal silindi; `target/`
+  temizlendi (4.1 GiB), disk %60.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** sıradaki kalem Opus'a soruldu
+  (`96dedcbd`); dal `feat/nup-form-flatten` açıldı. Karar gelince plan aşağıya
+  yazılacak ve uygulanacak.
+
+---
+
+# Seçilen iş kalemi: N-up'ta doldurulmuş form alanlarını (Widget) düzleştirme — **Opus planı `96dedcbd`**
+
+Gerekçe (Opus): `[Unreleased]` tek girdiyle zayıf; widget dilimi markup
+düzleştirmeyle aynı hikâyeyi tamamlıyor ("N-up'ta kâğıda çıkan her şey çıkar") ve
+v7.9.0 iki girdiyle anlamlı oluyor. Kodun ~%80'i `markup.rs`'te (AP seçimi,
+`/AS`, `P·A`, kırpma, ExtGState, `/OC`, hata politikası); yeni kısım yalnız alan
+çözümleme ve atlama kuralları. Görsel doğrulama gerekmiyor (yeni görünüm
+üretilmiyor); riskli iki kısım (`/NeedAppearances`, imzasız imza alanı) "atla"
+kuralıyla çözülüyor — atlanan widget bugünkü gibi kaybolur, gerileme olmaz.
+
+## Kapsam (dar)
+1. **`crates/pdfcore/src/nup/widget.rs`** (≤180 satır):
+   `AcroCtx { need_appearances }` (Root `/AcroForm /NeedAppearances`, bozuksa
+   `false`), `FieldInfo { ft, ff, has_v }` — `/FT`, `/Ff`, `/V` widget'ta yoksa
+   `/Parent` zincirinde aranır (derinlik 32, `HashSet` ile döngü kesme),
+   `classify(doc, widget, &ctx) -> Draw | Skip(reason)`.
+2. **Atlama kuralları sırası:** `/Sig` + `/V` yok → atla; `/Sig` + `/V` var →
+   çiz (imza zaten geçersiz, görünüm basılır); `/Tx` veya `/Ch` +
+   `NeedAppearances` → atla (bayat görünüm yanlış değer gösterebilir);
+   `/Btn` → çiz; `/FT` yoksa (öksüz widget) → AP varsa çiz.
+3. **`markup.rs` (+~20 satır, ≤340):** `/Widget` dışlaması kalkar, `classify`
+   çağrılır; `Draw` ise mevcut yol aynen işler (Print/Hidden süzgeci,
+   `/AP /N` + `/AS`, `C = P·A`, kırpma, ExtGState, `/OC`). `AcroCtx` belge
+   başına bir kez kurulur. 4096 sayacı ortak.
+4. **Hata politikası:** bozuk `/Parent`/`/FT`/`/Ff` yalnız o widget'ı atlar;
+   `/AcroForm` okunamazsa `need_appearances = false`; çizilecek yoksa çıktı
+   bayt bayt değişmez.
+5. **Testler** `crates/pdfcore/tests/nup_widget_test.rs` (≤300, 15 vaka):
+   checkbox `/AS On`/`Off`, `/AS` yok → atla, `/Tx` NeedAppearances yok → çiz,
+   `/Tx`+`/Btn` NeedAppearances açık → yalnız Btn, `/Sig` imzasız → atla,
+   `/Sig` imzalı → çiz, `/FT` yalnız `/Parent`'ta → kalıtım, `/Parent` döngüsü →
+   asılmaz, Print bayrağı yok → atla, pushbutton, `/OC` → BDC, markup+widget
+   karışık sıra, formsuz belge bayt bayt aynı, bozuk `/Ff` → yalnız o atlanır.
+   Mevcut 34 N-up + 17 markup testi değişmeden geçer.
+6. **Bütçe:** `widget.rs` ≤180 · `markup.rs` ≤340 · `nup.rs` 360 (değişmez) ·
+   yeni test ≤300. `nup.rs`'e dokunmamak için `mod widget;` satırı `markup.rs`
+   içinde `#[path]` ile mi yoksa `nup.rs`'te mi duracak — uygularken ratchet'e
+   göre karar verilecek (nup.rs'te +1 satır olursa doc'tan 1 satır kazanılır).
+7. **Kapsam dışı:** AP üretimi (`/DA`, `/MK`, NeedAppearances yeniden üretimi),
+   XFA, çıktıda AcroForm'u etkileşimli tutma/temizleme, imzasız imza alanı yer
+   tutucusu, `/NoZoom`, `/Watermark /FixedPrint`, etiketli PDF.
+8. **Sonraki iki kalem:** (1) **v7.9.0 sürüm treni** (iki girdi; v7.8.0
+   doğrulama listesi, versionCode 7009000), (2) geometri tabanlı AP üretimi
+   dilim 1 (yalnız `/QuadPoints` vurguları ve `/C`,`/IC`,`/BS` şekilleri;
+   FreeText/font ayrı dilim).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-widget-flatten`, plan bu
+  commit'te. Sıradaki: adım 1 (`nup/widget.rs`) → 2 (`markup.rs` bağlama) → 5
+  (15 test) → belgeler (CHANGELOG `[Unreleased]` ikinci girdi, README, roadmap,
+  RELEASE_READINESS iddiası) → kapılar + PR.
