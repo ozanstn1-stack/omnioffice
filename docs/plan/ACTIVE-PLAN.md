@@ -1448,7 +1448,21 @@ kuralıyla çözülüyor — atlanan widget bugünkü gibi kaybolur, gerileme ol
    dilim 1 (yalnız `/QuadPoints` vurguları ve `/C`,`/IC`,`/BS` şekilleri;
    FreeText/font ayrı dilim).
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-widget-flatten`, plan bu
-  commit'te. Sıradaki: adım 1 (`nup/widget.rs`) → 2 (`markup.rs` bağlama) → 5
-  (15 test) → belgeler (CHANGELOG `[Unreleased]` ikinci girdi, README, roadmap,
-  RELEASE_READINESS iddiası) → kapılar + PR.
+- **DURUM:** uygulandı. `crates/pdfcore/src/nup/markup/widget.rs` **102 satır**
+  (`AcroCtx`, `/Parent` zincirinde `/FT`+`/V` kalıtımı, `classify`),
+  `crates/pdfcore/src/nup/markup/install.rs` **98 satır** (yazma yarısı),
+  `markup.rs` 313 → **234** (ratchet düştü), `nup.rs` 360 değişmedi.
+  Testler: **16 yeni** (`nup_widget_test.rs`) — checkbox On/Off, `/AS` yok,
+  `/Tx` güncel, `NeedAppearances` açıkken yalnız düğme, imzasız imza atlanır,
+  imzalı basılır, `/Parent` kalıtımı (hem güncel hem bayat durumda), `/Parent`
+  döngüsü, Print bayrağı yok, pushbutton, `/OC`+`/CA`, markup+widget sırası,
+  formsuz belge değişmez, sarkan `/Parent`, bozuk `/FT`. Toplam N-up testi
+  **34 + 17 + 16 = 67**; lib 197. Kapılar: fmt, clippy `-D warnings`,
+  `files:check`, `docs:stats`, `claims:check` (388 iddia / 494 işaret) temiz.
+  **Opus planından sapma:** `/Ff` okunmuyor (sınıflandırma `/FT` + `/V` +
+  `NeedAppearances` ile yapılıyor); "bozuk `/Ff`" testi yerine "bozuk `/FT`"
+  testi var ve bozuk tip görünüm akışına düşüyor. `mod widget;` `nup.rs` yerine
+  `markup.rs` içinde (nup.rs 360'ta kaldı).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
+  Sonraki: **v7.9.0 sürüm treni** (iki girdi: markup + widget düzleştirme;
+  v7.8.0 doğrulama listesi, versionCode **7009000**).

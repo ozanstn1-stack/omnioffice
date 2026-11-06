@@ -857,8 +857,11 @@ These are real and honest:
   explicit array, and the outline is rebuilt with its hierarchy and counts.
   Entries whose page falls outside the selection are dropped. Printable markup
   (notes, highlights, ink, stamps - the kinds marked for printing) is painted
-  into the sheet, with `/NoRotate` honoured; widgets and redactions are still
-  dropped, and the old page objects are left unreferenced.
+  into the sheet, with `/NoRotate` honoured, and a form field is painted when
+  its appearance is trustworthy (its `/AS` state, a current text appearance, a
+  signed signature field) - `NeedAppearances` holds text and choice fields back
+  and an unsigned signature stays a placeholder. Redactions are still dropped,
+  and the old page objects are left unreferenced.
 - **PPTX**: programmatic animations are simplified to what the model
   represents; ODP keeps groups, animations, real charts, footer/date/
   slide-number frames, hidden slides, connectors and image crops (since
@@ -958,7 +961,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1492 |
+| Rust tests | 1508 |
 | TypeScript test files | 231 |
 | TypeScript test cases (approx.) | 2641 |
 <!-- stats:end -->

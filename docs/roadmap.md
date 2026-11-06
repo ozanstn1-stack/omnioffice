@@ -284,9 +284,11 @@ Effort estimates assume a single developer.
   internal and named destinations rewritten to the target sheet, bookmarks
   rebuilt with their hierarchy and counts, unreachable entries pruned).
   Printable markup (notes, highlights, ink, stamps) is flattened into the sheet
-  from its appearance stream, honouring `/NoRotate`; widgets, redactions and
-  annotations without an appearance stream are still dropped - form flattening,
-  appearance synthesis and `/NoZoom` are the next candidates.
+  from its appearance stream, honouring `/NoRotate`; form widgets follow when
+  their field type says the appearance is current (buttons, current text fields,
+  signed signature fields), while `NeedAppearances` holds text back. Redactions
+  and annotations without an appearance stream are still dropped - appearance
+  synthesis and `/NoZoom` are the next candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF
