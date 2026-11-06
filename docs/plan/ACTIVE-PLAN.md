@@ -1463,6 +1463,14 @@ kuralıyla çözülüyor — atlanan widget bugünkü gibi kaybolur, gerileme ol
   `NeedAppearances` ile yapılıyor); "bozuk `/Ff`" testi yerine "bozuk `/FT`"
   testi var ve bozuk tip görünüm akışına düşüyor. `mod widget;` `nup.rs` yerine
   `markup.rs` içinde (nup.rs 360'ta kaldı).
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki: **v7.9.0 sürüm treni** (iki girdi: markup + widget düzleştirme;
-  v7.8.0 doğrulama listesi, versionCode **7009000**).
+- **PR #635 birleşti** (`a1c75ec`), 18 kontrol yeşil, dal silindi; `target/`
+  temizlendi (4.2 GiB), disk %60.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** sıradaki iş **v7.9.0 sürüm treni**
+  (`[Unreleased]` iki girdi: markup düzleştirme #634 + widget düzleştirme #635).
+  Adımlar: sürüm dosyaları 7.9.0 (`Cargo.toml`/lock, `package.json`/lock,
+  `tauri.conf.json`), `tauri.properties` versionName 7.9.0 / versionCode
+  **7009000**, CHANGELOG `[Unreleased]` → `[7.9.0] - 2026-11-06` + yeni boş
+  `[Unreleased]`, README sürüm/indirme bağlantıları + "What's new" cümlesi,
+  `RELEASE_READINESS` başlığı, fastlane `en-US/7009000.txt` (script) +
+  `tr-TR/7009000.txt` (elle), sonra PR → merge → auto-tag → release doğrulaması
+  (18 asset, `latest.json` 7.9.0 + imza, release gövdesi CHANGELOG birebir).
