@@ -847,10 +847,12 @@ These are real and honest:
   file, so signed documents stay byte-stable. Keyword matching folds case
   character-by-character (Turkish `İ` maps to `i`); regex matches are capped at
   10,000 per document and patterns over 2,000 characters are refused.
-- **N-up and booklets** rebuild the page tree from the selected pages, so
-  links, named destinations and outlines that pointed at the old pages are
-  dropped, and source annotations are not repainted onto the sheets. The old
-  page objects are left unreferenced.
+- **N-up and booklets** rebuild the page tree from the selected pages. Link
+  annotations travel onto the sheets: an external link keeps its rectangle
+  (mapped into the cell it was placed in and clipped to it), an internal one is
+  rewritten to the sheet page it points at, and a named destination is resolved
+  into an explicit array. Other annotations (notes, highlights, widgets) and the
+  outline are dropped, and the old page objects are left unreferenced.
 - **PPTX**: programmatic animations are simplified to what the model
   represents; ODP keeps groups, animations, real charts, footer/date/
   slide-number frames, hidden slides, connectors and image crops (since
@@ -950,7 +952,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1449 |
+| Rust tests | 1462 |
 | TypeScript test files | 231 |
 | TypeScript test cases (approx.) | 2641 |
 <!-- stats:end -->

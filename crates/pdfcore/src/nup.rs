@@ -8,10 +8,11 @@
 //! Sheet pages are fully self-contained (own `/MediaBox` and `/Resources`), so
 //! the fresh `/Pages` root deliberately carries no inherited attributes: the
 //! source tree's inherited `/Rotate` must not be re-applied on top of the
-//! rotation already baked into each form's placement matrix. Rebuilding the
-//! tree also drops links, outlines and named destinations that pointed at the
-//! old pages; the old page objects themselves are unreferenced and are removed
-//! by `prune_objects` on save (any still referenced from surviving catalog
+//! rotation already baked into each form's placement matrix. `/Link`
+//! annotations travel onto the sheets (`links::carry_links`); outlines, named
+//! destinations and every other annotation kind still point at the old pages
+//! and are dropped. The old page objects are unreferenced and removed by
+//! `prune_objects` on save (any still referenced from surviving catalog
 //! branches, e.g. outlines, remain as harmless orphans).
 
 use crate::docutil::{
@@ -24,6 +25,10 @@ use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+mod dests;
+mod links;
+mod sheet;
 
 /// How many pages go on one sheet and in which order.
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -114,6 +119,8 @@ pub fn nup_pdf_bytes(input: &[u8], options: &NupOptions) -> PdfResult<Vec<u8>> {
 /// place it on a sheet.
 struct PageForm {
     id: ObjectId,
+    /// The source page this form was built from.
+    source: ObjectId,
     /// Unrotated page size (the form's BBox).
     page_w: f64,
     page_h: f64,
@@ -272,14 +279,18 @@ fn build_nup(
     let layout = Layout::new(&page_size, &orientation, first_size, per_sheet, options);
 
     let output_pages = slots.len().div_ceil(per_sheet as usize);
-    let mut sheet_ids: Vec<ObjectId> = Vec::with_capacity(output_pages);
+    let mut sheets: Vec<(ObjectId, Vec<sheet::Placement>)> = Vec::with_capacity(output_pages);
     for (index, chunk) in slots.chunks(per_sheet as usize).enumerate() {
         cancel.check()?;
-        let sheet_id = build_sheet_page(doc, &forms, &form_index, chunk, &layout, options.border)?;
-        sheet_ids.push(sheet_id);
+        sheets.push(sheet::build_sheet_page(doc, &forms, &form_index, chunk, &layout, options.border)?);
         progress(ProgressEvent::new("nup.sheet", (index + 1) as u64, output_pages as u64));
     }
 
+    // Page order (1-based page number -> source object) resolves integer
+    // destinations, which are zero-based in the arrays that carry them.
+    let page_order: Vec<ObjectId> = (1..=total_pages).map(|page| page_ids[&page]).collect();
+    links::carry_links(doc, &sheets, &page_order);
+    let sheet_ids: Vec<ObjectId> = sheets.iter().map(|(id, _)| *id).collect();
     install_page_tree(doc, &sheet_ids)?;
     Ok(())
 }
@@ -325,62 +336,15 @@ fn add_page_form(doc: &mut Document, page_id: ObjectId) -> PdfResult<PageForm> {
     let mut stream = Stream::new(form_dict, body);
     stream.compress().ok();
     let (display_w, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
-    Ok(PageForm { id: doc.add_object(Object::Stream(stream)), page_w, page_h, display_w, display_h, rotation })
-}
-
-/// Builds one output sheet page: a content stream that paints the forms in
-/// slot order plus an optional light border, and a `/Resources` dictionary
-/// naming them.
-fn build_sheet_page(
-    doc: &mut Document,
-    forms: &[PageForm],
-    form_index: &HashMap<u32, usize>,
-    slots: &[Option<u32>],
-    layout: &Layout,
-    border: bool,
-) -> PdfResult<ObjectId> {
-    let mut xobjects = Dictionary::new();
-    let mut content: Vec<u8> = Vec::new();
-    for (slot, page) in slots.iter().enumerate() {
-        let Some(page) = page else { continue };
-        let form = &forms[form_index[page]];
-        let scale = (layout.cell_w / form.display_w).min(layout.cell_h / form.display_h);
-        let col = slot % layout.cols;
-        let row = slot / layout.cols;
-        let placed_w = form.display_w * scale;
-        let placed_h = form.display_h * scale;
-        let x = layout.cell_x(col) + (layout.cell_w - placed_w) / 2.0;
-        let y = layout.cell_y(row) + (layout.cell_h - placed_h) / 2.0;
-        let name = format!("Fm{}", form_index[page]);
-        xobjects.set(name.as_str(), Object::Reference(form.id));
-        // The page -> display transform for the source rotation: applying its
-        // inverse paints the page as it was displayed, pre-rotating the
-        // placement instead of relying on a `/Rotate` on the sheet.
-        let to_display =
-            Matrix::display_to_page(form.rotation, form.page_w, form.page_h).inverse().unwrap_or(Matrix::IDENTITY);
-        let matrix = Matrix::translate(x, y).mul(Matrix::scale(scale, scale)).mul(to_display);
-        content.extend_from_slice(format!("q\n{}\n/{} Do\nQ\n", matrix.to_cm(), name).as_bytes());
-        if border {
-            content.extend_from_slice(
-                format!("0.5 w\n0.5 G\n{x:.4} {y:.4} {placed_w:.4} {placed_h:.4} re S\n").as_bytes(),
-            );
-        }
-    }
-    let resources_id = doc.add_object(Object::Dictionary(dictionary! {
-        "XObject" => Object::Dictionary(xobjects),
-    }));
-    let content_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), content)));
-    Ok(doc.add_object(Object::Dictionary(dictionary! {
-        "Type" => "Page",
-        "MediaBox" => vec![
-            Object::Real(0.0),
-            Object::Real(0.0),
-            Object::Real(layout.sheet_w as f32),
-            Object::Real(layout.sheet_h as f32),
-        ],
-        "Resources" => Object::Reference(resources_id),
-        "Contents" => Object::Reference(content_id),
-    })))
+    Ok(PageForm {
+        id: doc.add_object(Object::Stream(stream)),
+        source: page_id,
+        page_w,
+        page_h,
+        display_w,
+        display_h,
+        rotation,
+    })
 }
 
 /// Points the catalog at a fresh `/Pages` root holding exactly the sheets.

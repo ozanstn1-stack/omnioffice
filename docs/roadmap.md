@@ -279,7 +279,11 @@ Effort estimates assume a single developer.
 - **Stamps**: header/footer templates with `{page}`/`{pages}` tokens and Bates
   numbering, appended as new revisions so signatures survive.
 - **N-up/booklet**: `pdfcore::nup` turns source pages into Form XObjects and
-  paints 2-up/4-up sheets or saddle-stitch booklets.
+  paints 2-up/4-up sheets or saddle-stitch booklets. Link annotations are
+  carried onto the sheets (rectangles mapped into their cell, internal and
+  named destinations rewritten to the target sheet); notes, highlights, widgets
+  and the outline are still dropped - flattening printable markup and remapping
+  the outline are the next candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF
