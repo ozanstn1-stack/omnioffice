@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.9.0] - 2026-11-06
+
 ### Added
 
 - **Notes and highlights reach the paper in N-up:** a link survived an
