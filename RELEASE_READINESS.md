@@ -102,6 +102,20 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_outline_test.rs#nested_entries_keep_their_counts`
   `test:crates/pdfcore/tests/nup_outline_test.rs#an_outline_with_no_surviving_target_does_not_appear`
 
+- **Printable markup is flattened into the N-up sheets:** fifteen annotation
+  kinds (`/Text` through `/Stamp`) are painted when their `/F` flag carries
+  Print and not Hidden, using the `/AP /N` stream (or the `/AS` state) without
+  copying it: the box goes through the appearance `/Matrix` onto the annotation
+  rectangle and then onto the sheet, `/NoRotate` keeps a note upright, `/CA`,
+  `/ca` and `/BM` become a graphics state, and the block is clipped to the
+  painted page. Widgets, popups, links, redactions and annotations without an
+  appearance stream are skipped on purpose.
+  `test:crates/pdfcore/tests/nup_markup_test.rs#a_printable_square_is_painted_on_the_sheet`
+  `test:crates/pdfcore/tests/nup_markup_test.rs#norotate_keeps_the_markup_upright`
+  `test:crates/pdfcore/tests/nup_markup_test.rs#annotation_opacity_becomes_a_graphics_state`
+  `test:crates/pdfcore/tests/nup_markup_edge_test.rs#broken_appearances_are_skipped_one_by_one`
+  `test:crates/pdfcore/tests/nup_markup_edge_test.rs#a_link_only_document_is_left_alone`
+
 - **The toast stack clears the bottom bar (6.5.1):** `.toast-host` offsets by
   `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
   plus its inset; the stack is `pointer-events: none` with only the cards taking

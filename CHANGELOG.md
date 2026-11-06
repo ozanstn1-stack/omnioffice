@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Notes and highlights reach the paper in N-up:** a link survived an
+  imposition since 7.8.0, but every dotted underline, sticky note and stamp
+  vanished because an annotation cannot live inside the Form XObject a source
+  page becomes. The kinds that are meant to be printed (fifteen of them, from
+  `/Text` to `/Stamp`) are painted into the sheet's own content stream now: the
+  appearance stream is referenced rather than copied, its box is fitted to the
+  annotation rectangle, `/NoRotate` keeps a note upright on a rotated page, and
+  an annotation that is hidden or not marked for printing stays behind. Widgets
+  and redactions are left alone on purpose - half-flattening a form can print
+  the wrong value, and a flattened redaction would look redacted while the text
+  is still there.
+
 ## [7.8.0] - 2026-11-06
 
 ### Added

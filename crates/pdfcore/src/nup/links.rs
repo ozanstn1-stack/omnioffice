@@ -5,20 +5,15 @@
 //! copied out of the source page's `/Annots`, their rectangles mapped through
 //! the placement matrix into the sheet's space (and clipped to the cell they
 //! were placed in, because the form's BBox clips the artwork there too), and
-//! their targets rewritten to the sheet by [`super::dests`].
-//!
-//! Every other annotation kind (`/Text`, `/Highlight`, widgets, ...) is left
-//! behind deliberately: its appearance stream lives in source-page space and
-//! would need per-subtype rewriting that belongs to a flattening pass, not to
-//! imposition.
+//! their targets rewritten to the sheet by [`super::dests`]. Printable markup
+//! is painted by [`super::markup`]; widgets and redactions stay behind.
 
 use super::dests::DestMap;
 use super::sheet::Placement;
 use crate::docutil::Matrix;
 use lopdf::{Dictionary, Document, Object, ObjectId};
 
-/// Annotation keys copied verbatim from the source (inlined when indirect):
-/// appearance hints that mean the same thing on the sheet.
+/// Annotation keys copied verbatim from the source (inlined when indirect).
 const COPIED_KEYS: [&str; 7] = ["Border", "BS", "C", "H", "F", "Contents", "NM"];
 
 /// Copies the source pages' link annotations onto the sheets that carry them.
@@ -30,6 +25,8 @@ pub(super) fn carry_navigation(doc: &mut Document, sheets: &[(ObjectId, Vec<Plac
     let dests = DestMap::new(sheets, page_order);
     carry_links(doc, sheets, &dests);
     super::outline::carry_outline(doc, &dests);
+    // Printable markup is painted into the sheet stream, not copied (`markup`).
+    super::markup::carry_markup(doc, sheets);
 }
 
 fn carry_links(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], dests: &DestMap) {
@@ -39,7 +36,11 @@ fn carry_links(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], dests:
     for (sheet_id, placements) in sheets {
         let mut copies: Vec<Dictionary> = Vec::new();
         for placement in placements {
-            for source in source_links(doc, placement.source) {
+            let annots = source_annotations(doc, placement.source);
+            for source in annots
+                .into_iter()
+                .filter(|a| a.get(b"Subtype").ok().and_then(|v| v.as_name().ok()).is_some_and(|n| n == b"Link"))
+            {
                 if let Some(copy) = copy_link(doc, &source, placement, *sheet_id, dests) {
                     copies.push(copy);
                 }
@@ -61,9 +62,9 @@ fn carry_links(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], dests:
     }
 }
 
-/// The page's `/Link` annotation dictionaries (inline or behind a reference);
-/// broken entries are skipped rather than reported.
-fn source_links(doc: &Document, page_id: ObjectId) -> Vec<Dictionary> {
+/// The page's annotation dictionaries (inline or behind a reference); broken
+/// entries are skipped rather than reported.
+pub(super) fn source_annotations(doc: &Document, page_id: ObjectId) -> Vec<Dictionary> {
     let Ok(page) = doc.get_dictionary(page_id) else { return Vec::new() };
     let Ok(annots) = page.get(b"Annots") else { return Vec::new() };
     let items: Vec<Object> = match annots {
@@ -81,8 +82,7 @@ fn source_links(doc: &Document, page_id: ObjectId) -> Vec<Dictionary> {
                 Object::Dictionary(dict) => dict,
                 _ => return None,
             };
-            let subtype = dict.get(b"Subtype").ok()?.as_name().ok()?;
-            (subtype == b"Link").then(|| dict.clone())
+            Some(dict.clone())
         })
         .collect()
 }
@@ -133,7 +133,7 @@ fn inline(doc: &Document, value: &Object) -> Object {
     }
 }
 
-fn read_rect(doc: &Document, value: &Object) -> Option<[f64; 4]> {
+pub(super) fn read_rect(doc: &Document, value: &Object) -> Option<[f64; 4]> {
     let items = inline(doc, value);
     let items = items.as_array().ok()?;
     if items.len() != 4 {
@@ -191,7 +191,7 @@ pub(super) fn rect_array(rect: [f64; 4]) -> Object {
     Object::Array(rect.iter().map(|value| Object::Real(*value as f32)).collect())
 }
 
-fn number(value: &Object) -> Option<f64> {
+pub(super) fn number(value: &Object) -> Option<f64> {
     let number = match value {
         Object::Integer(value) => *value as f64,
         Object::Real(value) => *value as f64,

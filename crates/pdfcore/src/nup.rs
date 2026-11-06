@@ -2,16 +2,15 @@
 //!
 //! Places two or four source pages on one output sheet by turning each source
 //! page into a Form XObject and painting it into the new page's content
-//! stream. Booklet mode orders the pages for saddle-stitch printing (the
-//! first sheet carries the last and first page, and so on).
+//! stream. Booklet mode orders the pages for saddle-stitch printing.
 //!
-//! Sheet pages are fully self-contained (own `/MediaBox` and `/Resources`), so
-//! the fresh `/Pages` root deliberately carries no inherited attributes: the
+//! Sheet pages are self-contained (own `/MediaBox` and `/Resources`), so the
+//! fresh `/Pages` root carries no inherited attributes: the
 //! source tree's inherited `/Rotate` must not be re-applied on top of the
 //! rotation already baked into each form's placement matrix. `/Link`
-//! annotations and the outline travel onto the sheets (`links::carry_navigation`
-//! rewrites both); every other annotation kind is dropped. The old page objects
-//! are unreferenced and removed by `prune_objects` on save.
+//! annotations, the outline and printable markup travel onto the sheets
+//! (`links::carry_navigation`); widgets, popups and redactions are dropped, and
+//! the old page objects are pruned on save.
 
 use crate::docutil::{
     load_document, materialize_all_pages, own_page_resources, page_mediabox, page_rotation, resolve_output_path,
@@ -26,6 +25,7 @@ use std::path::{Path, PathBuf};
 
 mod dests;
 mod links;
+mod markup;
 mod outline;
 mod sheet;
 

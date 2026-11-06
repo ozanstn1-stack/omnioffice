@@ -282,9 +282,11 @@ Effort estimates assume a single developer.
   paints 2-up/4-up sheets or saddle-stitch booklets. Link annotations and the
   outline are carried onto the sheets (rectangles mapped into their cell,
   internal and named destinations rewritten to the target sheet, bookmarks
-  rebuilt with their hierarchy and counts, unreachable entries pruned); notes,
-  highlights and widgets are still dropped - flattening printable markup is the
-  next candidate.
+  rebuilt with their hierarchy and counts, unreachable entries pruned).
+  Printable markup (notes, highlights, ink, stamps) is flattened into the sheet
+  from its appearance stream, honouring `/NoRotate`; widgets, redactions and
+  annotations without an appearance stream are still dropped - form flattening,
+  appearance synthesis and `/NoZoom` are the next candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF

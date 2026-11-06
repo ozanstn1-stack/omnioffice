@@ -1308,6 +1308,92 @@ seçeneği — yer imleri her zaman taşınır, yeni ayar eklenmez.
   (6 test işareti), fastlane `en-US/7008000.txt` (script) + `tr-TR/7008000.txt`
   (elle). Kapılar: `claims:check` 386 iddia / 485 işaret, `fastlane:check`,
   `docs:stats`, `files:check`, `i18n:audit` temiz.
-  Sıradaki: PR → merge → auto-tag `v7.8.0` → release doğrulaması (18 asset,
-  checksum 17/17, `latest.json`, versionCode 7008000) → sonra PR-2
-  (baskı açıklamalarını düzleştirme).
+  **v7.8.0 YAYINLANDI ve doğrulandı** (2026-11-06): PR #633 → `4e67f93`, tag
+  `v7.8.0` → `4e67f93`, Release + Android workflow'ları yeşil, release sayfası
+  **18 varlık** (Windows setup/portable, Linux deb/AppImage, 4 Android APK/AAB,
+  `latest.json`, `build-info.json`, 2 SBOM, 4 checksum dosyası),
+  `SHA256SUMS.txt` 8 satır (v7.7.0 ile aynı değişmez), `latest.json` sürüm
+  **7.8.0** + imza dolu (windows-x86_64), release gövdesi CHANGELOG `[7.8.0]`
+  bölümüyle **birebir** (1578 karakter), Android versionCode **7008000**
+  (fastlane dosyası + repo `tauri.properties`).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** sürüm çıktı. Sıradaki kalem: **PR-2 —
+  N-up'ta baskıya çıkan açıklamaları düzleştirme** (`/F` Print biti olan
+  `/Text`, `/Highlight`, `/Ink`, `/Square`, `/Line`, `/FreeText`, `/Stamp`
+  türlerinin `/AP /N` akışını sheet'e çizmek); Opus planı `5062f799` aşağıda.
+
+---
+
+# Seçilen iş kalemi: N-up'ta baskıya çıkan açıklamaları düzleştirme (PR-2) — **Opus planı `5062f799`**
+
+Bugün N-up çıktısında yalnız `/Link` taşınıyor; `/Text`, `/Highlight`, `/Ink`,
+`/Square`, `/Stamp` gibi açıklamalar ne basılıyor ne tıklanıyor. Doğru çözüm
+onları **sayfaya çizmek**.
+
+## Kararlar (Opus)
+1. **Tür listesi (15):** `Text`, `FreeText`, `Line`, `Square`, `Circle`,
+   `Polygon`, `PolyLine`, `Highlight`, `Underline`, `Squiggly`, `StrikeOut`,
+   `Caret`, `Ink`, `Stamp`, `FileAttachment`. Liste dışı atlanır.
+2. **Koşul:** `/F & 4` (Print) var, `/F & 2` (Hidden) yok, `/AP /N` bir
+   **referansa** çözülüyor (gerekirse `/AS` ile durum seçilir). Görünüm akışı
+   yoksa açıklama atlanır (görünüm üretmek kapsam dışı).
+3. **Dışlananlar:** `Widget` (AcroForm düzleştirme ayrı iş — yanlış alan değeri
+   basmamak için), `Popup`, `Link` (zaten taşınıyor), `Redact` (güvenlik: gerçek
+   karartma izlenimi), `Watermark` (`/FixedPrint`), `PrinterMark`/`TrapNet`,
+   çoklu ortam türleri.
+4. **Geometri:** `A = T(rx0,ry0)·S(sx,sy)·T(-bx0,-by0)` (BBox → `/Rect`;
+   `map_rect(M_ap, BBox)` ile sınır kutusu), sheet'e `C = P·O·[R]·A`
+   (`P = Placement.matrix`, `O = MediaBox başlangıcını sıfıra taşır`,
+   `R` yalnız NoRotate'te `+r` döndürme). `M_ap` `cm`'e **konmaz** (`Do` onu
+   kendi uygular). Kırpma `placed ∩ Placement.clip`, blok başına `re W n`.
+5. **Çizim yeri:** kaynak sayfanın Form'una değil, **sheet içerik akışına ayrı
+   `q … re W n … cm … Do … Q` blokları** (grafik durumu temiz; Form içindeki
+   dengesiz `q`/`Q` sızmıyor; kaynak ad çakışması yok). Yeni akış ikinci stream,
+   sheet `/Contents` dizisine eklenir; çizilecek yoksa `/Contents` ve
+   `/Resources` **hiç değişmez**.
+6. **Kaynaklar:** AP'nin kendi `/Resources`'u içinde kalır; sheet'e yalnız
+   `/XObject /AnK`, gerekirse `/ExtGState /AnGsK` (`/CA`, `/ca`, `/BM`) ve
+   `/Properties /AnOcK` (`/OC`) eklenir. Adlar `fresh_name` ile çakışmadan.
+7. **Hata politikası:** her hata yalnız o açıklamayı atlar (`unwrap` yok, işlem
+   düşmez); NaN/tekil matris, bozuk BBox, taşan koordinat, sarkan referans,
+   `/AS` yok → atla. Sayfa başına `MAX_MARKUP_PER_SHEET = 4096`.
+8. **Bütçe:** yeni `crates/pdfcore/src/nup/markup.rs` ~240 satır;
+   `nup.rs` **361'de kalır** (tek `mod` satırı + doc yorumundan 1 satır kazanç),
+   `sheet.rs` ve `Placement` değişmez; çağrı `links::carry_navigation` içinden.
+9. **Testler:** `tests/common/markup_fixtures.rs` + `tests/nup_markup_test.rs`
+   (10) + `tests/nup_markup_edge_test.rs` (7) = **17 yeni**; mevcut 34 N-up
+   testi değişmeden geçer. Piksel/pdfium testi yok (pdfcore pdfium'a bağlı
+   değil); doğrulama lopdf ile yapısal. Beklenen değer, aynı `/Rect`'e konan bir
+   `Link`'in taşınan dikdörtgeniyle karşılaştırılarak bağımsız hesaplanır.
+
+## Sapmalar (benden)
+- Commit'lerde `Co-Authored-By: Claude` ve PR'da Claude rozeti yok (repo
+  konvansiyonu DSH rozeti).
+- NoRotate testinde Opus'un istediği `|b|,|c| ≈ 0` özelliği korunur; ek olarak
+  `(rx0, ry1)` noktasının sabit kaldığı doğrulanır.
+
+## Adımlar
+1. `markup.rs` + `nup.rs`'te `mod markup;` + `links.rs` çağrısı + doc yorumu.
+2. `markup_fixtures.rs` ve 17 test.
+3. Belgeler: README N-up maddesi, roadmap (PR-2 kapandı + takip listesi),
+   `RELEASE_READINESS` iddiası + işaretler, `CHANGELOG [Unreleased]`,
+   `PHASE-E-PROPOSAL` madde 7, `files:update`, `docs:stats`.
+4. Kapılar: fmt, clippy `-D warnings`, `cargo test -p pdfcore` (lib + 7 N-up
+   dosyası), `files:check`, `claims:check`, `docs:stats`; sonunda `cargo clean`
+   + `df -h /`. Tek PR `feat/nup-markup-flatten`.
+
+- **DURUM:** dört adım da uygulandı. `nup/markup.rs` **314 satır** (15 tür,
+  Print/Hidden süzgeci, `/AP /N` + `/AS`, BBox→Rect uyumu, `/NoRotate`, kırpma,
+  `/CA`/`/ca`/`/BM` → ExtGState, `/OC` → BDC, 4096 sınırı); çizim **sheet içerik
+  akışına** ikinci stream olarak ekleniyor, çizilecek yoksa `/Contents` ve
+  `/Resources` değişmiyor. `nup.rs` **360** (ratchet düştü), `links.rs` 201.
+  Testler: lib 197 · `nup_test` 8 · link 9+4 · outline 7+6 · **markup 10+7 = 17
+  yeni** (hepsi geçti). Kapılar: fmt, clippy `-D warnings`, `files:check`/
+  `files:update`, `docs:stats`, `claims:check` (387 iddia / 490 işaret) temiz.
+  **Opus planından sapma:** dönüşüm `C = P·A` (Opus `P·O·A` demişti) — `A`
+  zaten sayfa uzayına çıktığı ve `Placement.matrix` sayfa uzayı→sheet olduğu
+  için `O` (MediaBox ötelemesi) gerekmiyor; link testleri bunu kanıtlıyor.
+  Ayrıca `fresh_name` yardımcısı kullanılmadığı için silindi.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
+  Sonraki kalem (Opus'un listesi): (1) v7.9.0 sürüm treni mi yoksa (2) form
+  (Widget/AcroForm) düzleştirme mi — Opus'a sorulacak.
