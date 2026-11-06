@@ -1490,6 +1490,16 @@ kuralıyla çözülüyor — atlanan widget bugünkü gibi kaybolur, gerileme ol
   için. (2) `QuadPoints` sırası "üst kenar daha yüksek olan" kuralıyla
   normalize ediliyor (Z ve CCW sıraları aynı yolu veriyor); döndürülmüş metin
   quads'ı bilinen sınır. (3) Quads kodu ayrı alt modülde (dosya tavanı).
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki kalem (Opus sıralaması): `FreeText`/`/DA` ve font gerektiren
-  görünümler, ardından v7.10.0 sürüm treni — Opus'a teyit ettirilecek.
+- **PR #637 birleşti** (`b925d0e`), 18 kontrol yeşil (coverage dahil), dal
+  silindi; `target/` temizlendi (4.5 GiB), disk %60. Yol boyunca iki CI
+  düzeltmesi: coverage ratchet'i (birim testleri eklendi, `appearance.rs` ve
+  `quads.rs` tabanları yükseltildi) ve README `docs:stats` bloğu.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** sıradaki iş **v7.10.0 sürüm treni**
+  (`[Unreleased]` tek girdi: görünüm akışı sentezi #637). Adımlar v7.9.0 ile
+  aynı: sürüm 7.10.0 (`Cargo.toml`/lock, `package.json`/lock,
+  `tauri.conf.json`), `tauri.properties` versionName 7.10.0 / versionCode
+  **7010000**, CHANGELOG `[Unreleased]` → `[7.10.0] - 2026-11-06`, README
+  sürüm + indirme bağlantıları + "What's new" cümlesi, `RELEASE_READINESS`
+  başlığı, fastlane `en-US/7010000.txt` + `tr-TR/7010000.txt`, PR → merge →
+  auto-tag → doğrulama. Sonrasında Opus'a sıradaki kalem sorulacak (adaylar:
+  `FreeText`/font dilimi, E6 kalemleri).
