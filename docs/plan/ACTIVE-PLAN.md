@@ -1291,5 +1291,15 @@ Gerekçe (Opus): `DestMap` #631'de yazıldı ve bağlam taze; outline aynı hede
 Markup düzleştirme (`/Text`, `/Highlight`, `/Widget`), `/GoToR` desteği, UI
 seçeneği — yer imleri her zaman taşınır, yeni ayar eklenmez.
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-outline-remap` açıldı. Sıradaki:
-  adım 1 (`dests.rs::remap_dest`) → 2 (`nup/outline.rs`) → 6 → 7 → 8, tek PR.
+- **DURUM:** dört adım da uygulandı; PR açılıyor (`feat/nup-outline-remap`,
+  `042fbb5` kod + `6a813d2` test + `c2a25f2` belge). Yerelde: pdfcore lib 197,
+  eski 8 N-up testi değişmeden 8, link 9+4, **outline 13** geçti; clippy
+  `-D warnings`, fmt, `files:check`, `docs:stats`, `claims:check` temiz.
+  `nup.rs` 362 → **361**, `outline.rs` 236, `dests.rs`'e tek kapı (`remap_dest`
+  yerine mevcut `destination`) — sapma: ayrı bir `remap_dest` fonksiyonu
+  yazmadım, mevcut `DestMap::destination` zaten o işi yapıyor ve `links.rs` onu
+  kullanıyor; outline de aynı fonksiyonu çağırıyor.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR CI yeşilse squash merge; sonra Opus'un
+  sıralaması: (1) v7.8.0 sürüm treni (üç girdi: LAN resumable download, N-up
+  link, N-up outline), (2) PR-2 baskı açıklamalarını düzleştirme (tasarım dilimi
+  + pdfium görsel doğrulama).
