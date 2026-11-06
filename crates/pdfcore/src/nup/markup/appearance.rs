@@ -290,3 +290,74 @@ pub(super) fn number_text(value: f64) -> String {
         trimmed.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::{dictionary, Object};
+
+    fn doc() -> Document {
+        Document::with_version("1.7")
+    }
+
+    fn annot(key: &str, value: Object) -> Dictionary {
+        let mut dict = Dictionary::new();
+        dict.set(key, value);
+        dict
+    }
+
+    fn real(value: f64) -> Object {
+        Object::Real(value as f32)
+    }
+
+    #[test]
+    fn numbers_are_written_without_trailing_zeros() {
+        assert_eq!(number_text(100.0), "100");
+        assert_eq!(number_text(0.5), "0.5");
+        assert_eq!(number_text(-0.0), "0");
+        assert_eq!(number_text(f64::NAN), "0");
+        assert_eq!(number_text(1.25), "1.25");
+    }
+
+    #[test]
+    fn colors_are_read_by_length() {
+        let doc = doc();
+        let missing = Dictionary::new();
+        assert!(matches!(color(&doc, &missing, b"C"), Some(None)));
+        let empty = annot("C", Object::Array(Vec::new()));
+        assert!(matches!(color(&doc, &empty, b"C"), Some(None)));
+        let gray = annot("C", Object::Array(vec![real(0.5)]));
+        assert_eq!(color(&doc, &gray, b"C").unwrap().unwrap().fill_op(), "g");
+        let rgb = annot("C", Object::Array(vec![real(1.0), real(0.0), real(0.0)]));
+        assert_eq!(color(&doc, &rgb, b"C").unwrap().unwrap().stroke_op(), "RG");
+        let cmyk = annot("C", Object::Array(vec![real(0.0); 4]));
+        assert_eq!(color(&doc, &cmyk, b"C").unwrap().unwrap().fill_op(), "k");
+        let wrong = annot("C", Object::Array(vec![real(1.0), real(0.0)]));
+        assert!(color(&doc, &wrong, b"C").is_none());
+        let text = annot("C", Object::Array(vec![Object::string_literal("red")]));
+        assert!(color(&doc, &text, b"C").is_none());
+        // Out-of-range values are clamped rather than refused.
+        let loud = annot("C", Object::Array(vec![real(5.0), real(-2.0), real(0.0)]));
+        let loud = color(&doc, &loud, b"C").unwrap().unwrap();
+        assert_eq!(loud.values, vec![1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn the_border_width_falls_back_through_bs_and_border() {
+        let doc = doc();
+        assert_eq!(border_width(&doc, &Dictionary::new()), Some(1.0));
+        let bs = annot("BS", Object::Dictionary(dictionary! { "W" => 2i64 }));
+        assert_eq!(border_width(&doc, &bs), Some(2.0));
+        let legacy = annot("Border", Object::Array(vec![real(0.0), real(0.0), real(3.0)]));
+        assert_eq!(border_width(&doc, &legacy), Some(3.0));
+        let negative = annot("BS", Object::Dictionary(dictionary! { "W" => -1i64 }));
+        assert_eq!(border_width(&doc, &negative), None);
+        let absurd = annot("BS", Object::Dictionary(dictionary! { "W" => 5_000i64 }));
+        assert_eq!(border_width(&doc, &absurd), None);
+    }
+
+    #[test]
+    fn rectangles_union() {
+        assert_eq!(union([0.0, 0.0, 10.0, 10.0], [5.0, -5.0, 20.0, 5.0]), [0.0, -5.0, 20.0, 10.0]);
+    }
+}

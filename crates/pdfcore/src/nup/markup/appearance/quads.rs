@@ -88,17 +88,23 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4], kin
 fn quads_of(values: &[f64]) -> Vec<Quad> {
     let mut out = Vec::new();
     for chunk in values.chunks(8) {
+        if chunk.len() != 8 {
+            continue;
+        }
         let p = |index: usize| (chunk[index], chunk[index + 1]);
         let (p1, p2, p3, p4) = (p(0), p(2), p(4), p(6));
         // Both orders in the wild list the upper edge first or second; the
         // edge with the higher midpoint is the top one. Text rotated on the
         // page is the documented limitation.
         let upper_first = p1.1 + p2.1 >= p3.1 + p4.1;
-        let (mut tl, mut tr, mut bl, mut br) = if upper_first { (p1, p2, p3, p4) } else { (p3, p4, p1, p2) };
-        if tl.0 > tr.0 {
-            std::mem::swap(&mut tl, &mut tr);
-            std::mem::swap(&mut bl, &mut br);
-        }
+        let (top_a, top_b, bottom_a, bottom_b) = if upper_first { (p1, p2, p3, p4) } else { (p3, p4, p1, p2) };
+        // The lower pair is sometimes stored in the opposite direction; pair
+        // it corner-to-corner with the upper one before ordering the corners.
+        let straight = (top_a.0 - bottom_a.0).abs() + (top_b.0 - bottom_b.0).abs();
+        let crossed = (top_a.0 - bottom_b.0).abs() + (top_b.0 - bottom_a.0).abs();
+        let (bottom_a, bottom_b) = if straight <= crossed { (bottom_a, bottom_b) } else { (bottom_b, bottom_a) };
+        let (tl, tr, bl, br) =
+            if top_a.0 <= top_b.0 { (top_a, top_b, bottom_a, bottom_b) } else { (top_b, top_a, bottom_b, bottom_a) };
         let quad = Quad { tl, tr, br, bl };
         if quad.bl != quad.br && quad.bl != quad.tl {
             out.push(quad);
@@ -196,4 +202,37 @@ fn squiggly(ops: &mut String, quad: &Quad, width: f64) -> bool {
         ops.push_str(&format!("{} {} {} \n", number_text(x), number_text(y), if index == 0 { "m" } else { "l" }));
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_quad_is_normalized_to_corners() {
+        let quad = quads_of(&[100.0, 150.0, 200.0, 150.0, 100.0, 100.0, 200.0, 100.0]);
+        assert_eq!(quad.len(), 1);
+        assert_eq!(quad[0].tl, (100.0, 150.0));
+        assert_eq!(quad[0].tr, (200.0, 150.0));
+        assert_eq!(quad[0].bl, (100.0, 100.0));
+        assert_eq!(quad[0].br, (200.0, 100.0));
+        // The reversed order gives the same corners.
+        let reversed = quads_of(&[100.0, 100.0, 200.0, 100.0, 200.0, 150.0, 100.0, 150.0]);
+        assert_eq!(reversed[0].tl, (100.0, 150.0));
+        assert_eq!(reversed[0].br, (200.0, 100.0));
+        // A degenerate quad is skipped, a short array produces nothing.
+        assert!(quads_of(&[0.0; 8]).is_empty());
+        assert!(quads_of(&[0.0; 7]).is_empty());
+        assert_eq!(quad_bounds(&quad[0]), [100.0, 100.0, 200.0, 150.0]);
+    }
+
+    #[test]
+    fn the_baseline_and_normal_follow_the_quad() {
+        let quad = quads_of(&[100.0, 150.0, 200.0, 150.0, 100.0, 100.0, 200.0, 100.0]).remove(0);
+        let (along, normal) = axes(&quad).expect("axes");
+        assert_eq!(along, (1.0, 0.0));
+        assert_eq!(normal, (0.0, 1.0), "the normal points at the top edge");
+        let flat = Quad { tl: (10.0, 10.0), tr: (10.0, 10.0), br: (10.0, 10.0), bl: (10.0, 10.0) };
+        assert!(axes(&flat).is_none(), "a zero-length baseline has no axes");
+    }
 }
