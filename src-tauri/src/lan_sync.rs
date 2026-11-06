@@ -680,11 +680,7 @@ pub async fn lan_trash_restore(app: AppHandle, folder: String, id: String) -> Re
     let Some((entry, bytes)) = taken else {
         return Err(PdfError::NotFound("this document is no longer in the trash".into()));
     };
-    let target = lan::resolve_path(&root, &entry.path).map_err(sync_error)?;
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
-    }
-    synccore::metadata::write_atomic(&target, &bytes).map_err(|error| PdfError::Internal(error.to_string()))?;
+    write_into(&root, &entry.path, &bytes)?;
     store.clear_tombstone(&entry.peer_device_id, &entry.path);
     store.clear_base(&entry.peer_device_id, &entry.path);
     store::save(&directory, &store)?;
@@ -839,12 +835,10 @@ fn resolve_deletion(
             None
         }
         DeletionAction::RestoreLocal => {
-            let (remote, bytes) = client.fetch(peer, path).map_err(sync_error)?;
-            let target = lan::resolve_path(root, path).map_err(sync_error)?;
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
-            }
-            synccore::metadata::write_atomic(&target, &bytes).map_err(|error| PdfError::Internal(error.to_string()))?;
+            // No progress sink here: a restore is one document and the caller
+            // reports the result, which is what the user asked for.
+            let (remote, bytes) = client.fetch_resumable(peer, path, root, |_, _| {}).map_err(sync_error)?;
+            write_into(root, path, &bytes)?;
             Some(remote.sha256)
         }
         DeletionAction::DeleteLocal => {
@@ -883,6 +877,16 @@ struct SafeReport {
     bases: Vec<(String, String)>,
 }
 
+/// Resolves a relative document path under `root` and writes `bytes` there,
+/// creating the parent folder first. Four download paths share this sequence.
+fn write_into(root: &Path, relative: &str, bytes: &[u8]) -> Result<(), PdfError> {
+    let target = lan::resolve_path(root, relative).map_err(sync_error)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
+    }
+    synccore::metadata::write_atomic(&target, bytes).map_err(|error| PdfError::Internal(error.to_string()))
+}
+
 /// Runs one merge action and returns the new common hash, if any.
 fn execute(
     client: &LanClient,
@@ -908,16 +912,16 @@ fn execute(
             Ok(Some(remote.sha256))
         }
         MergeAction::DownloadCloud => {
-            let (remote, bytes) = client.fetch(peer, path).map_err(sync_error)?;
-            let target = lan::resolve_path(root, path).map_err(sync_error)?;
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
-            }
-            synccore::metadata::write_atomic(&target, &bytes).map_err(|error| PdfError::Internal(error.to_string()))?;
+            let (remote, bytes) = client
+                .fetch_resumable(peer, path, root, |received, total| progress(path, received, total))
+                .map_err(sync_error)?;
+            write_into(root, path, &bytes)?;
             Ok(Some(remote.sha256))
         }
         MergeAction::DownloadCloudCopy => {
-            let (_, bytes) = client.fetch(peer, path).map_err(sync_error)?;
+            let (_, bytes) = client
+                .fetch_resumable(peer, path, root, |received, total| progress(path, received, total))
+                .map_err(sync_error)?;
             let stamp = synccore::metadata::stamp_for_name(std::time::SystemTime::now());
             let file_name = path.rsplit('/').next().unwrap_or(path);
             let parent = Path::new(path).parent().map(|value| value.to_string_lossy().replace('\\', "/"));
@@ -933,11 +937,7 @@ fn execute(
                 Some(folder) if !folder.is_empty() => format!("{folder}/{unique}"),
                 _ => unique,
             };
-            let target = lan::resolve_path(root, &relative).map_err(sync_error)?;
-            if let Some(parent) = target.parent() {
-                std::fs::create_dir_all(parent).map_err(PdfError::from_io)?;
-            }
-            synccore::metadata::write_atomic(&target, &bytes).map_err(|error| PdfError::Internal(error.to_string()))?;
+            write_into(root, &relative, &bytes)?;
             // The copy is a new file; no common hash is recorded for it.
             Ok(None)
         }

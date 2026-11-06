@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **A LAN download resumes where it stopped:** uploads have resumed since D3, but
+  a download was one request and started over when the Wi-Fi dropped. The
+  protocol gains `begin_get` and `get_chunk`; the partial file carries a note
+  with the hash it belongs to, the assembled document is verified before it
+  reaches the caller, and a peer from before this change falls back to the
+  whole-file transfer.
+
 ## [7.7.0] - 2026-11-04
 
 ### Fixed

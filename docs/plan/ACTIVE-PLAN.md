@@ -1081,3 +1081,88 @@ yalnız kartlar `auto` (tam genişlik toast arkadaki dokunuşu yutmasın).
   girdi taşıyor (PasswordField, literal işareti, son dört çeviri, toast) →
   **7.7.0 sürüm treni** için yeterli. Sonraki adım: #628 merge → sürüm treni
   (Opus planıyla). Kullanıcı adımı: private vulnerability reporting.
+
+---
+
+# Kapandı — PR #629 `44a3c56`: v7.7.0 sürüm treni (2026-11-04 21:30 UTC)
+
+Opus `ca01e29b` "gece hazırla, yarın 10:00'da yayınla" dedi; istisna olarak
+"kapı 22:30'a kadar tamamen yeşilse gece birleştirilebilir" dedi. **Kapı tamamen
+yeşil olduğu için birleştirildi.**
+
+Gate kanıtı (hepsi merge öncesi):
+- Sürüm PR'ı **27 kontrol, 0 hata** — Desktop (macOS dahil) **success**.
+- **`android-ci` prova: success** → versionCode **7007000** ile APK/AAB derlendi,
+  ABI matrisi denetlendi.
+- **`release.yml` dalda dispatch provası: success** (3/3 iş: version-consistency,
+  Windows, Linux) → tag'de koşacak hattın aynısı 7.7.0 ile çalıştı.
+- `7.6.0` / `7006000` için stale referans taraması **boş**.
+- macOS kapasitesi geri döndü (macOS işi hızlı runner aldı).
+
+Sürüm dosyaları 7.7.0 / versionCode 7007000; sürüm tutarlılık kapısı ve
+`cargo metadata --locked` yeşil; `target/` oluşmadı.
+
+`[Unreleased]` dört dilim taşıyordu → `[7.7.0]` bölümü `Fixed` → `Changed` →
+`Developer notes` sırasıyla yazıldı (mağaza listesi toast düzeltmesiyle başlıyor).
+
+## KAPANDI — v7.7.0 yayınlandı ve doğrulandı (2026-11-04 22:30 UTC)
+
+**PR #629 → `44a3c56`.** Tag `v7.7.0` → `44a3c56` (merge commit).
+
+**auto-tag bu kez kendiliğinden koştu** (manuel dispatch gerekmedi):
+```
+created v7.7.0 at 44a3c56dd7752a5018fff2fa0c014cde34b6eea0
+dispatched release.yml and android.yml on v7.7.0
+```
+Master Desktop yeşil bitince tetiklendi; macOS kapasitesi geri dönmüştü.
+
+### Yayın kanıtı
+- `Release` `41919394646` success (3/3), `Android` `41919398784` success (5/5).
+- **18 varlık**, draft/prerelease değil; ad kümesi v7.6.0'ınkiyle **birebir aynı**.
+- Checksum: `SHA256SUMS.txt` 8/8, `-windows` 3/3, `-linux` 2/2, `-android` 4/4
+  → **17/17** GitHub digest'iyle eşleşti.
+- `latest.json`: `version=7.7.0`, imza dolu, url v7.7.0 varlığını gösteriyor.
+- Release gövdesi `changelog-section.mjs 7.7.0` çıktısıyla **birebir aynı** (1604 karakter).
+- Android: `APK versionCode: 7007000`,
+  `Signing certificate matches the previous release (v7.6.0)`,
+  `ABI matrix OK: 4 artifacts, two ABIs, one signing identity`.
+
+### Bu sürümde
+Kullanıcıya görünen: **toast artık alt çubuğu örtmüyor** (6.5.1'in son açık
+kusuru) ve **son dört İngilizce metin Türkçeleşti**. Altyapı: ortak şifre alanı
+(263→241, 296→262 satır), JSX `i18n-literal` işareti (şema v5, taban 58/12/6,
+tavan 5).
+
+- **NEREDE KALDIK / SIRADAKİ ADIM:** v7.7.0 yayında ve doğrulandı. Kullanıcı
+  adımı bekliyor: GitHub'da *Settings → Code security → Private vulnerability
+  reporting* açılırsa `SECURITY.md`'ye advisories linki eklenecek
+  (Security-Policy 4 → yükselir). Sonraki ürün dilimi adayı: E6'nın kalan
+  maddeleri (LAN resumable downloads, dynamic-array spill, AI embedding
+  batching) veya holiday table 2030+ (Diyanet verisi gerekli — kullanıcı adımı).
+
+---
+
+# Seçilen iş kalemi: LAN'da kaldığı yerden devam eden indirme (E6.3) — Opus planı `ca5c182c`
+
+Opus, E6'nın kalan maddelerini karşılaştırıp **resumable download**'ı seçti:
+yükleme kesintiden sonra devam ediyor (`begin_put`/`put_chunk`/`finish_put`,
+`.parts/`), indirme ise tek `get` isteğinde — Wi-Fi koparsa baştan başlıyor.
+
+**Elenenler (gerekçeli):** PDF artık nesneleri (artımlı kayıt nesne silemez;
+imzaları bozmadan silmek dosyayı baştan yazmayı gerektirir → ürün kararı),
+N-up bağlantıları (yedek aday), embedding toplu gönderme (sağlayıcı davranışı
+doğrulanmalı), Writer seçim görevleri (`WriterEditor.tsx` bütçe sınırında),
+spill hesaplama (çok büyük), Chrome eklentisi + 2030 tatil tablosu (sahibin
+kararı/verisi).
+
+**Tasarım (Opus):** protokole iki yeni işlem — `begin_get` (boyut+sha+modified)
+ve `get_chunk(offset,total)`; istemcide `fetch_resumable` yarım dosyayı
+`root/.parts/<sha[..32]>.get` + `.get.json` notunda tutar, boyut/sha değişirse
+baştan başlar, sonda tüm dosyanın sha'sını doğrular, 3 deneme yapar. Eski sunucu
+"unknown operation" derse tam `fetch`'e düşer.
+
+**Bilinçli sapma (bu tur):** Opus yükleme kodunun tamamını `lan/upload.rs`'e
+taşımayı önerdi. Ben yalnız **sunucu tarafı** yükleme işleyicilerini taşıyorum
+(~130 satır, saf fonksiyonlar): aynı bütçe kazancını verir, istemci `impl
+LanClient` bloğunu bölme riskini almaz. Ayrıca commit mesajlarına
+`Co-Authored-By: Claude` satırı eklenmiyor — repo konvansiyonu DSH rozeti.

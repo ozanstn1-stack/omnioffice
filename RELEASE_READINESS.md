@@ -67,6 +67,23 @@ release-train schedule is decided.
 
 ## Implemented (this cycle, 7.7.0) - Son kusurlar ve arayüz temizliği
 
+- **A LAN download resumes where it stopped (E6.3):** uploads have resumed since
+  D3; a download was one request that started over when the Wi-Fi dropped. Two
+  operations join the protocol - `begin_get` announces size, hash and mtime, and
+  `get_chunk` serves a window from an offset and refuses when the document
+  changed under the client. The partial file lives in `.parts` with a note that
+  says which document it belongs to, so a resume never splices two versions; the
+  assembled file is hashed before it reaches the caller and drops back to zero
+  on a mismatch, up to three attempts. A host from before this change answers
+  "unknown operation" and the client falls back to the whole-file `get`, so
+  mixed versions keep working.
+  `test:crates/synccore/src/lan/download_tests.rs#a_chunked_download_resumes_from_the_partial_file`
+  `test:crates/synccore/src/lan/download_tests.rs#a_download_restarts_when_the_host_file_changed`
+  `test:crates/synccore/src/lan/download_tests.rs#a_corrupted_partial_is_discarded_after_the_hash_check`
+  `test:crates/synccore/src/lan/download_tests.rs#a_download_chunk_checks_offsets_sizes_and_paths`
+  `test:crates/synccore/src/lan/download_tests.rs#an_empty_document_downloads_without_chunks`
+  `test:crates/synccore/src/lan/download_tests.rs#an_unknown_operation_is_recognised_for_the_whole_file_fallback`
+
 - **The toast stack clears the bottom bar (6.5.1):** `.toast-host` offsets by
   `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
   plus its inset; the stack is `pointer-events: none` with only the cards taking

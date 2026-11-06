@@ -158,8 +158,25 @@ name, are never listed as documents (hidden directories are skipped) and are
 cleaned up when they are older than 24 hours. The client retries up to three
 times and resumes from the host's offset, so a dropped connection or an Android
 foreground-service restart continues instead of restarting. Progress is emitted
-as a `lan-progress` event (`path`, `sent`, `total`) and shown in the LAN card;
-downloads are still whole-file and not resumable yet.
+as a `lan-progress` event (`path`, `sent`, `total`) and shown in the LAN card.
+
+A download resumes the same way, with `begin_get` / `get_chunk`:
+
+- `begin_get` answers size, SHA-256 and mtime, and the client keeps the partial
+  document as `<root>/.parts/<hash of the path>.get` with a `.get.json` note
+  carrying the hash and size it belongs to. `.parts` is hidden from `scan_folder`
+  and refused by `resolve_path`, so the other side can never ask for it.
+- A resume happens only when the note still matches the document the host
+  announces; a changed document starts from zero rather than splicing two
+  versions together.
+- Each `get_chunk` carries the byte offset and the size the client believes in;
+  the host refuses an offset past the end and refuses the whole chunk when the
+  size moved under it ("the document changed; start the download again").
+- The assembled file is hashed before it reaches the caller. A mismatch drops
+  the partial and starts over, up to three attempts - the same rule as uploads.
+- A host from before this change answers "unknown operation" and the client
+  falls back to the whole-file `get`, so mixed versions keep working. The
+  fallback is a whole document, so the mixed-version case does not resume.
 
 ## Deletion safety: trash and tombstones
 
