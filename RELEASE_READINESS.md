@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.9.0
+# Release Readiness — OmniOffice 7.10.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (this cycle, 7.9.0) - N-up'ta bağlantı, yer imi, baskı açıklaması ve form alanları
+## Implemented (this cycle, 7.10.0) - N-up'ta görünümü olmayan işaretlerin sentezi
 
 - **A LAN download resumes where it stopped (E6.3):** uploads have resumed since
   D3; a download was one request that started over when the Wi-Fi dropped. Two

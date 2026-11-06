@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.10.0] - 2026-11-06
+
 ### Added
 
 - **Marks without an appearance stream are drawn anyway in N-up:** many

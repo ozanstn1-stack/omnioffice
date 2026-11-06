@@ -1,0 +1,1 @@
+7.10.0: N-up ve kitapçık çıktısında, belgenin kendi görünümünü vermediği işaretler artık geometriden çiziliyor — vurgular, altı/üstü çizili ve dalgalı işaretler, kare, daire, çizgi ve mürekkep; renkleri ve kenar kalınlıklarıyla birlikte.
