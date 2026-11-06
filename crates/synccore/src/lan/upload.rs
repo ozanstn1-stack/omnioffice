@@ -13,17 +13,13 @@ use std::time::SystemTime;
 use sha2::{Digest, Sha256};
 
 use super::{
-    file_modified, hex_encode, refusal, resolve_path, Failure, HostState, Request, Response, MAX_CHUNK_BYTES,
-    PART_MAX_AGE_SECS,
+    file_modified, hex_encode, parts_dir, refusal, resolve_path, Failure, HostState, Request, Response,
+    MAX_CHUNK_BYTES, PART_MAX_AGE_SECS,
 };
 
 // ---------------------------------------------------------------------------
 // Resumable uploads (D3)
 // ---------------------------------------------------------------------------
-
-fn parts_dir(root: &Path) -> PathBuf {
-    root.join(".parts")
-}
 
 /// One partial upload per relative path; the name is the hash of the path, so
 /// no user-controlled component reaches the filesystem as a name.

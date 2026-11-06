@@ -50,6 +50,9 @@ mod pairing_tests;
 mod replay;
 #[cfg(test)]
 mod tests;
+mod download;
+#[cfg(test)]
+mod download_tests;
 mod transport;
 mod upload;
 
@@ -826,6 +829,11 @@ fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
         "delete" => authenticated(state, &request, &body)
             .and_then(|_| handle_delete(state, &request.path))
             .map(|response| (response, None)),
+        "begin_get" => authenticated(state, &request, &body)
+            .and_then(|_| download::handle_begin_get(state, &request))
+            .map(|response| (response, None)),
+        "get_chunk" => authenticated(state, &request, &body)
+            .and_then(|_| download::handle_get_chunk(state, &request)),
         "begin_put" => authenticated(state, &request, &body)
             .and_then(|_| upload::handle_begin_put(state, &request))
             .map(|response| (response, None)),
@@ -870,6 +878,12 @@ fn handle_list(state: &Arc<HostState>) -> Result<Response, Failure> {
         return Err(refusal("the shared folder holds too many documents"));
     }
     Ok(Response { ok: true, files, ..Response::default() })
+}
+
+/// Where an interrupted transfer keeps its partial file: uploads use `.part`,
+/// downloads `.get`, and neither name is reachable from the network.
+pub(super) fn parts_dir(root: &Path) -> PathBuf {
+    root.join(".parts")
 }
 
 fn handle_get(state: &Arc<HostState>, path: &str) -> Result<(Response, Option<Vec<u8>>), Failure> {
