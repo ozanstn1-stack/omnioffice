@@ -293,9 +293,9 @@ All items are already listed as open in the project docs.
    (RELEASE_READINESS 6.5.1).
 6. **AI:** send embeddings in batches, not per chunk; persistent consent option.
 7. **PDF:** orphan objects after annotation deletion; ~~N-up drops links~~ done
-   (link annotations ride onto the sheets; flattening markup and remapping the
-   outline are the follow-ups); tagged PDF export does not tag
-   tables/headers/footers.
+   and ~~the outline is dropped~~ done (links and bookmarks ride onto the
+   sheets; flattening printable markup is the remaining follow-up); tagged PDF
+   export does not tag tables/headers/footers.
 8. **Chrome extension:** frozen since 3.x; decide archive vs. bring into lint,
    i18n and the release flow.
 

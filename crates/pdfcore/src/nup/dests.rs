@@ -113,7 +113,7 @@ impl DestMap {
 }
 
 /// Follows one indirect reference; anything else is returned as is.
-fn resolve<'a>(doc: &'a Document, value: &'a Object) -> &'a Object {
+pub(super) fn resolve<'a>(doc: &'a Document, value: &'a Object) -> &'a Object {
     match value {
         Object::Reference(id) => doc.get_object(*id).unwrap_or(value),
         other => other,
