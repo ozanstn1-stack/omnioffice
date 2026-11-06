@@ -11,16 +11,20 @@
 //! rectangle and then into the sheet. An annotation whose appearance is missing
 //! or unreadable is skipped; it never fails the imposition.
 //!
-//! Widgets, popups, links, redactions and the printing-production kinds are
-//! left alone on purpose: flattening a form field without its `/AcroForm`
-//! bookkeeping can print the wrong value, and a flattened redaction would look
-//! like redacted content while the text is still there.
+//! Widgets are painted when `widget::classify` trusts their appearance; popups,
+//! links, redactions and the printing-production kinds are left alone: a
+//! flattened redaction would look redacted while the text is still there.
 
 use super::dests::resolve;
 use super::links::{clip_rect, map_rect, number, read_rect, source_annotations};
 use super::sheet::Placement;
 use crate::docutil::{page_rotation, Matrix};
-use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
+use lopdf::{Dictionary, Document, Object, ObjectId};
+
+mod install;
+mod widget;
+
+use install::install;
 
 /// `/Hidden`: a hidden annotation is not printed even when Print is set.
 const FLAG_HIDDEN: i64 = 2;
@@ -53,22 +57,22 @@ const PRINTABLE: &[&[u8]] = &[
 ];
 
 /// One annotation ready to be painted on a sheet.
-struct Draw {
-    appearance: ObjectId,
+pub(super) struct Draw {
+    pub(super) appearance: ObjectId,
     /// Appearance space -> sheet space (the `cm` written before the `Do`).
-    matrix: Matrix,
+    pub(super) matrix: Matrix,
     /// Sheet-space rectangle the block is clipped to.
-    clip: [f64; 4],
-    alpha: Option<Alpha>,
+    pub(super) clip: [f64; 4],
+    pub(super) alpha: Option<Alpha>,
     /// Optional-content group the block is nested in.
-    oc: Option<ObjectId>,
+    pub(super) oc: Option<ObjectId>,
 }
 
 /// `/CA`, `/ca` and `/BM`, when they differ from the defaults.
-struct Alpha {
-    stroke: f64,
-    fill: f64,
-    blend: Option<Vec<u8>>,
+pub(super) struct Alpha {
+    pub(super) stroke: f64,
+    pub(super) fill: f64,
+    pub(super) blend: Option<Vec<u8>>,
 }
 
 /// Paints every printable annotation of the source pages onto its sheet.
@@ -77,6 +81,7 @@ struct Alpha {
 /// and a sheet with nothing to paint is left byte-identical.
 pub(super) fn carry_markup(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)]) {
     // Read everything against an immutable document first, then write.
+    let field_context = widget::AcroCtx::from_doc(doc);
     let mut pending: Vec<(ObjectId, Vec<Draw>)> = Vec::with_capacity(sheets.len());
     for (sheet_id, placements) in sheets {
         let mut draws: Vec<Draw> = Vec::new();
@@ -86,7 +91,7 @@ pub(super) fn carry_markup(doc: &mut Document, sheets: &[(ObjectId, Vec<Placemen
                 if draws.len() >= MAX_MARKUP_PER_SHEET {
                     break;
                 }
-                if let Some(draw) = markup_draw(doc, &annot, placement, rotation) {
+                if let Some(draw) = markup_draw(doc, &annot, placement, rotation, &field_context) {
                     draws.push(draw);
                 }
             }
@@ -101,9 +106,19 @@ pub(super) fn carry_markup(doc: &mut Document, sheets: &[(ObjectId, Vec<Placemen
 }
 
 /// Turns one annotation into a draw, or `None` when it must stay behind.
-fn markup_draw(doc: &Document, annot: &Dictionary, placement: &Placement, rotation: i32) -> Option<Draw> {
+fn markup_draw(
+    doc: &Document,
+    annot: &Dictionary,
+    placement: &Placement,
+    rotation: i32,
+    context: &widget::AcroCtx,
+) -> Option<Draw> {
     let subtype = annot.get(b"Subtype").ok()?.as_name().ok()?;
-    if !PRINTABLE.contains(&subtype) {
+    let is_widget = subtype == b"Widget";
+    if !is_widget && !PRINTABLE.contains(&subtype) {
+        return None;
+    }
+    if is_widget && widget::classify(doc, annot, context) != widget::Decision::Draw {
         return None;
     }
     let flags = annot.get(b"F").ok().and_then(|value| value.as_i64().ok()).unwrap_or(0);
@@ -202,100 +217,6 @@ fn oc_of(annot: &Dictionary) -> Option<ObjectId> {
 }
 
 /// Adds the draws to the sheet's content stream and resources.
-fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) {
-    let Some(resources_id) = resources_id(doc, sheet_id) else { return };
-    let Some(mut resources) = doc.get_dictionary(resources_id).ok().cloned() else { return };
-    let mut xobjects = sub(&resources, b"XObject");
-    let mut graphics = sub(&resources, b"ExtGState");
-    let mut properties = sub(&resources, b"Properties");
-    let mut body = String::from("\n");
-    for (index, draw) in draws.iter().enumerate() {
-        let name = format!("AnX{}", index);
-        xobjects.set(name.as_str(), Object::Reference(draw.appearance));
-        let [x0, y0, x1, y1] = draw.clip;
-        body.push_str("q\n");
-        body.push_str(&format!("{x0:.4} {y0:.4} {:.4} {:.4} re W n\n", x1 - x0, y1 - y0));
-        if let Some(alpha) = &draw.alpha {
-            let state = format!("AnGs{}", index);
-            graphics.set(state.as_str(), Object::Dictionary(alpha_dict(alpha)));
-            body.push_str(&format!("/{} gs\n", state));
-        }
-        if let Some(oc) = draw.oc {
-            let state = format!("AnOc{}", index);
-            properties.set(state.as_str(), Object::Reference(oc));
-            body.push_str(&format!("/OC /{} BDC\n", state));
-        }
-        body.push_str(&format!("{}\n/{name} Do\n", draw.matrix.to_cm()));
-        if draw.oc.is_some() {
-            body.push_str("EMC\n");
-        }
-        body.push_str("Q\n");
-    }
-    if !xobjects.is_empty() {
-        resources.set("XObject", Object::Dictionary(xobjects));
-    }
-    if !graphics.is_empty() {
-        resources.set("ExtGState", Object::Dictionary(graphics));
-    }
-    if !properties.is_empty() {
-        resources.set("Properties", Object::Dictionary(properties));
-    }
-    if let Ok(target) = doc.get_dictionary_mut(resources_id) {
-        *target = resources;
-    }
-    append_content(doc, sheet_id, body.as_bytes());
-}
-
-fn alpha_dict(alpha: &Alpha) -> Dictionary {
-    let mut dict = Dictionary::new();
-    dict.set("Type", Object::Name(b"ExtGState".to_vec()));
-    dict.set("CA", Object::Real(alpha.stroke as f32));
-    dict.set("ca", Object::Real(alpha.fill as f32));
-    if let Some(blend) = &alpha.blend {
-        dict.set("BM", Object::Name(blend.clone()));
-    }
-    dict
-}
-
-/// The sheet's `/Resources` dictionary object, created if it is inline.
-fn resources_id(doc: &mut Document, sheet_id: ObjectId) -> Option<ObjectId> {
-    let value = doc.get_dictionary(sheet_id).ok()?.get(b"Resources").ok()?.clone();
-    match value {
-        Object::Reference(id) => Some(id),
-        Object::Dictionary(dict) => {
-            let id = doc.add_object(Object::Dictionary(dict));
-            if let Ok(page) = doc.get_dictionary_mut(sheet_id) {
-                page.set("Resources", Object::Reference(id));
-            }
-            Some(id)
-        }
-        _ => None,
-    }
-}
-
-fn sub(resources: &Dictionary, key: &[u8]) -> Dictionary {
-    resources.get(key).ok().and_then(|value| value.as_dict().ok()).cloned().unwrap_or_default()
-}
-
-/// Appends a content stream to the sheet, keeping the existing one.
-fn append_content(doc: &mut Document, sheet_id: ObjectId, body: &[u8]) {
-    let Ok(contents) = doc.get_dictionary(sheet_id).and_then(|page| page.get(b"Contents").cloned()) else {
-        return;
-    };
-    let stream_id = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), body.to_vec())));
-    let items = match contents {
-        Object::Reference(id) => vec![Object::Reference(id), Object::Reference(stream_id)],
-        Object::Array(mut items) => {
-            items.push(Object::Reference(stream_id));
-            items
-        }
-        _ => return,
-    };
-    if let Ok(page) = doc.get_dictionary_mut(sheet_id) {
-        page.set("Contents", Object::Array(items));
-    }
-}
-
 fn read_matrix(value: &Object) -> Option<[f64; 6]> {
     let items = value.as_array().ok()?;
     if items.len() != 6 {

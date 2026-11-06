@@ -116,6 +116,19 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_markup_edge_test.rs#broken_appearances_are_skipped_one_by_one`
   `test:crates/pdfcore/tests/nup_markup_edge_test.rs#a_link_only_document_is_left_alone`
 
+- **Form widgets are flattened into the N-up sheets when they can be
+  trusted:** the field type (`/FT`, inherited through `/Parent` with a depth and
+  cycle guard) decides. `/Btn` buttons are painted from their `/AS` state, a
+  `/Tx` or `/Ch` field is painted only when the document does not set
+  `/AcroForm /NeedAppearances` (a stale appearance could print an old value),
+  and a `/Sig` field is painted only when it carries a value - an unsigned
+  signature stays a placeholder. A widget without the print flag is skipped,
+  and a broken field dictionary drops only that widget.
+  `test:crates/pdfcore/tests/nup_widget_test.rs#a_checkbox_draws_its_on_state`
+  `test:crates/pdfcore/tests/nup_widget_test.rs#need_appearances_holds_back_text_but_not_buttons`
+  `test:crates/pdfcore/tests/nup_widget_test.rs#an_unsigned_signature_field_stays_a_placeholder`
+  `test:crates/pdfcore/tests/nup_widget_test.rs#the_field_type_is_inherited_from_the_parent`
+
 - **The toast stack clears the bottom bar (6.5.1):** `.toast-host` offsets by
   `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
   plus its inset; the stack is `pointer-events: none` with only the cards taking

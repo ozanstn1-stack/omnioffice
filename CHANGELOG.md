@@ -19,6 +19,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and redactions are left alone on purpose - half-flattening a form can print
   the wrong value, and a flattened redaction would look redacted while the text
   is still there.
+- **Filled form fields reach the paper too:** a widget is painted from its
+  appearance stream when the field type says the appearance can be trusted - a
+  button's `/AS` state, a text field the producer kept current, a signature
+  field that actually carries a value. `NeedAppearances` holds back text and
+  choice fields, because their stored appearance may predate the value, and an
+  unsigned signature field stays a placeholder instead of printing as one. The
+  field type is inherited through the `/Parent` chain, a cycle in it is cut, and
+  a widget without the print flag is skipped.
 
 ## [7.8.0] - 2026-11-06
 

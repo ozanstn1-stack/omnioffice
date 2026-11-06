@@ -98,11 +98,10 @@ fn hidden_is_dropped_while_noview_and_invisible_are_printed() {
 }
 
 #[test]
-fn widgets_popups_and_links_are_not_flattened() {
+fn popups_and_links_are_not_flattened() {
     let dir = TestDir::new();
     let mut fixture = Fixture::new(&page_specs(2));
     let ap = fixture.add_object(appearance([0.0, 0.0, 100.0, 50.0], None));
-    fixture.annot(0, markup("Widget", [100.0, 100.0, 200.0, 200.0], Some(4), ap));
     fixture.annot(0, markup("Popup", [100.0, 250.0, 200.0, 350.0], Some(4), ap));
     fixture.annot(0, with_action(link([100.0, 400.0, 200.0, 500.0]), uri_action("https://example.com/only-link")));
     let input = dir.path("others.pdf");
@@ -112,7 +111,7 @@ fn widgets_popups_and_links_are_not_flattened() {
     impose(&input, &out, &NupOptions::default());
     let doc = Document::load(&out).expect("load output");
     let sheet = sheets(&doc)[0].1;
-    assert!(painted(&doc, sheet).is_empty(), "widgets and popups are not painted");
+    assert!(painted(&doc, sheet).is_empty(), "a popup is a screen hint, not paper");
     assert!(link_rect(&doc, sheet).is_some(), "the link is still carried as an annotation");
 }
 
