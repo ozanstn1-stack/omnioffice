@@ -21,6 +21,7 @@ use super::sheet::Placement;
 use crate::docutil::{page_rotation, Matrix};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 
+mod appearance;
 mod install;
 mod widget;
 
@@ -56,9 +57,25 @@ const PRINTABLE: &[&[u8]] = &[
     b"FileAttachment",
 ];
 
+/// Where a draw's content comes from.
+pub(super) enum Look {
+    /// An appearance stream that was already in the document.
+    Stream(ObjectId),
+    /// Operators synthesized from the annotation's own geometry.
+    Synth(Synth),
+}
+
+/// A synthesized appearance: operators in page space plus the box they cover.
+pub(super) struct Synth {
+    pub(super) ops: Vec<u8>,
+    pub(super) bbox: [f64; 4],
+    /// `/Highlight` blends, so its form needs a Multiply graphics state.
+    pub(super) multiply: bool,
+}
+
 /// One annotation ready to be painted on a sheet.
 pub(super) struct Draw {
-    pub(super) appearance: ObjectId,
+    pub(super) look: Look,
     /// Appearance space -> sheet space (the `cm` written before the `Do`).
     pub(super) matrix: Matrix,
     /// Sheet-space rectangle the block is clipped to.
@@ -126,8 +143,16 @@ fn markup_draw(
         return None;
     }
     let rect = read_rect(doc, annot.get(b"Rect").ok()?)?;
-    let (appearance, bbox, appearance_matrix) = appearance_of(doc, annot)?;
-    let fit = fit_to_rect(bbox, appearance_matrix, rect)?;
+    // An annotation that ships an appearance is never re-synthesized: a broken
+    // /AP means "nothing to draw", not "guess from the geometry".
+    let (look, fit, boxed) = if annot.has(b"AP") {
+        let (stream, bbox, appearance_matrix) = appearance_of(doc, annot)?;
+        (Look::Stream(stream), fit_to_rect(bbox, appearance_matrix, rect)?, rect)
+    } else {
+        let synth = appearance::synthesize(doc, annot, subtype, rect)?;
+        let boxed = synth.bbox;
+        (Look::Synth(synth), Matrix::IDENTITY, boxed)
+    };
     let matrix = if flags & FLAG_NOROTATE != 0 && rotation.rem_euclid(360) != 0 {
         placement.matrix.mul(no_rotate(rect, rotation)).mul(fit)
     } else {
@@ -138,8 +163,8 @@ fn markup_draw(
     }
     // The page's own box is `placement.clip`, so a link and its markup resolve
     // to the same area on the sheet.
-    let clip = clip_rect(map_rect(&placement.matrix, rect), placement.clip)?;
-    Some(Draw { appearance, matrix, clip, alpha: alpha_of(annot), oc: oc_of(annot) })
+    let clip = clip_rect(map_rect(&placement.matrix, boxed), placement.clip)?;
+    Some(Draw { look, matrix, clip, alpha: alpha_of(annot), oc: oc_of(annot) })
 }
 
 /// The `/AP /N` stream, its `/BBox` and its `/Matrix`.

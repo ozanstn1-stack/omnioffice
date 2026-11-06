@@ -863,8 +863,11 @@ These are real and honest:
   into the sheet, with `/NoRotate` honoured, and a form field is painted when
   its appearance is trustworthy (its `/AS` state, a current text appearance, a
   signed signature field) - `NeedAppearances` holds text and choice fields back
-  and an unsigned signature stays a placeholder. Redactions are still dropped,
-  and the old page objects are left unreferenced.
+  and an unsigned signature stays a placeholder. A mark that ships no appearance
+  stream is drawn from its own geometry (highlights, underlines, strike-outs,
+  squiggles, squares, circles, lines and ink, with their colours and border
+  width); an annotation that does ship one is never re-synthesized. Redactions
+  are still dropped, and the old page objects are left unreferenced.
 - **PPTX**: programmatic animations are simplified to what the model
   represents; ODP keeps groups, animations, real charts, footer/date/
   slide-number frames, hidden slides, connectors and image crops (since
@@ -964,7 +967,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1508 |
+| Rust tests | 1528 |
 | TypeScript test files | 231 |
 | TypeScript test cases (approx.) | 2641 |
 <!-- stats:end -->

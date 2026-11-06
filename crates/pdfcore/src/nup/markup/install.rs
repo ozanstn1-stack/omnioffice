@@ -1,6 +1,6 @@
 //! Paints the collected draws into a sheet's content stream and resources.
 
-use super::{Alpha, Draw};
+use super::{Alpha, Draw, Look, Synth};
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
 
 pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) {
@@ -12,7 +12,11 @@ pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) 
     let mut body = String::from("\n");
     for (index, draw) in draws.iter().enumerate() {
         let name = format!("AnX{}", index);
-        xobjects.set(name.as_str(), Object::Reference(draw.appearance));
+        let xobject = match &draw.look {
+            Look::Stream(id) => *id,
+            Look::Synth(synth) => doc.add_object(Object::Stream(synthesized_form(synth))),
+        };
+        xobjects.set(name.as_str(), Object::Reference(xobject));
         let [x0, y0, x1, y1] = draw.clip;
         body.push_str("q\n");
         body.push_str(&format!("{x0:.4} {y0:.4} {:.4} {:.4} re W n\n", x1 - x0, y1 - y0));
@@ -45,6 +49,37 @@ pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) 
         *target = resources;
     }
     append_content(doc, sheet_id, body.as_bytes());
+}
+
+/// The form XObject that carries a synthesized appearance. Its content is in
+/// page space, so the block's placement matrix is all that is needed; the box
+/// only bounds the content.
+fn synthesized_form(synth: &Synth) -> Stream {
+    let mut dict = Dictionary::new();
+    dict.set("Type", Object::Name(b"XObject".to_vec()));
+    dict.set("Subtype", Object::Name(b"Form".to_vec()));
+    dict.set("BBox", Object::Array(synth.bbox.iter().map(|value| Object::Real(*value as f32)).collect()));
+    let mut content = Vec::with_capacity(synth.ops.len() + 8);
+    if synth.multiply {
+        // The blend state belongs to this form: applying it in the sheet would
+        // need the state in the sheet's own resources.
+        dict.set("Resources", Object::Dictionary(multiply_resources()));
+        content.extend_from_slice(b"/H0 gs\n");
+    }
+    content.extend_from_slice(&synth.ops);
+    Stream::new(dict, content)
+}
+
+/// A highlight blends with what is underneath it.
+fn multiply_resources() -> Dictionary {
+    let mut state = Dictionary::new();
+    state.set("Type", Object::Name(b"ExtGState".to_vec()));
+    state.set("BM", Object::Name(b"Multiply".to_vec()));
+    let mut states = Dictionary::new();
+    states.set("H0", Object::Dictionary(state));
+    let mut resources = Dictionary::new();
+    resources.set("ExtGState", Object::Dictionary(states));
+    resources
 }
 
 fn alpha_dict(alpha: &Alpha) -> Dictionary {

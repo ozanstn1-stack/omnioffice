@@ -129,6 +129,19 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_widget_test.rs#an_unsigned_signature_field_stays_a_placeholder`
   `test:crates/pdfcore/tests/nup_widget_test.rs#the_field_type_is_inherited_from_the_parent`
 
+- **Marks without an appearance stream are synthesized:** the quad-point kinds
+  (`Highlight` filled with a Multiply blend, `Underline`, `StrikeOut`,
+  `Squiggly`) and the shapes (`Square`, `Circle`, `Line`, `Ink`) are drawn from
+  the annotation's own geometry when it ships no `/AP`, honoring `/C`, `/IC` and
+  the `/BS` or legacy `/Border` width. The operators live in page space inside a
+  form, so the placement matrix, `/NoRotate` and the cell clip apply unchanged;
+  an annotation with an `/AP` is never re-synthesized, and a malformed one drops
+  only its own mark.
+  `test:crates/pdfcore/tests/nup_appearance_test.rs#a_highlight_is_filled_and_blends`
+  `test:crates/pdfcore/tests/nup_appearance_test.rs#a_square_strokes_and_fills`
+  `test:crates/pdfcore/tests/nup_appearance_test.rs#ink_draws_every_stroke`
+  `test:crates/pdfcore/tests/nup_appearance_test.rs#an_annotation_with_a_broken_appearance_is_not_synthesized`
+
 - **The toast stack clears the bottom bar (6.5.1):** `.toast-host` offsets by
   `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
   plus its inset; the stack is `pointer-events: none` with only the cards taking

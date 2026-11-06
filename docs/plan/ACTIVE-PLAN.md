@@ -1465,12 +1465,31 @@ kuralıyla çözülüyor — atlanan widget bugünkü gibi kaybolur, gerileme ol
   `markup.rs` içinde (nup.rs 360'ta kaldı).
 - **PR #635 birleşti** (`a1c75ec`), 18 kontrol yeşil, dal silindi; `target/`
   temizlendi (4.2 GiB), disk %60.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** sıradaki iş **v7.9.0 sürüm treni**
-  (`[Unreleased]` iki girdi: markup düzleştirme #634 + widget düzleştirme #635).
-  Adımlar: sürüm dosyaları 7.9.0 (`Cargo.toml`/lock, `package.json`/lock,
-  `tauri.conf.json`), `tauri.properties` versionName 7.9.0 / versionCode
-  **7009000**, CHANGELOG `[Unreleased]` → `[7.9.0] - 2026-11-06` + yeni boş
-  `[Unreleased]`, README sürüm/indirme bağlantıları + "What's new" cümlesi,
-  `RELEASE_READINESS` başlığı, fastlane `en-US/7009000.txt` (script) +
-  `tr-TR/7009000.txt` (elle), sonra PR → merge → auto-tag → release doğrulaması
-  (18 asset, `latest.json` 7.9.0 + imza, release gövdesi CHANGELOG birebir).
+- **v7.9.0 YAYINLANDI ve doğrulandı** (2026-11-06): PR #636 → `74b9af5`, tag
+  `v7.9.0` → `74b9af5`, Release + Android + auto-tag + Desktop yeşil, **18
+  varlık**, `SHA256SUMS.txt` 8 satır (değişmez), `latest.json` sürüm **7.9.0**
+  + imza dolu, release gövdesi CHANGELOG `[7.9.0]` bölümüyle **birebir** (1425
+  karakter), Android `versionName 7.9.0` / `versionCode **7009000**`.
+- **DURUM (görünüm akışı sentezi, Opus planı `4adbb2a9`):** uygulandı.
+  `nup/markup/appearance.rs` **292 satır** (renk `/C`/`/IC`, `/BS`/`/Border`
+  kalınlığı, `Square`, `Circle` 4 Bézier, `Line` — `/LL` varsa atla, `Ink`),
+  `nup/markup/appearance/quads.rs` **199 satır** (`QuadPoints` normalizasyonu,
+  `Highlight` tek dolgu + Multiply, `Underline`/`StrikeOut`/`Squiggly`),
+  `markup.rs` 234 → **259** (`Look { Stream, Synth }`, "`/AP` varsa asla
+  sentezleme" kuralı), `install.rs` 98 → **133** (sentezlenen içerik için kendi
+  Form XObject'i; Multiply durumu formun kendi `/Resources`'unda), `nup.rs`
+  **360** (değişmedi). Testler: **14 yeni** (`nup_appearance_test.rs`, 397
+  satır) — highlight dolgu+blend, quad sırası, underline/strike, squiggly bandı,
+  square stroke+fill, dolgu-only, circle 4 Bézier, line, leader atlanır, ink
+  çoklu yol, bozuk `/AP` sentezlenmez, bozuk geometri yalnız kendini atlar,
+  Hidden/Print yok, döndürülmüş sayfada aynı operatörler. Toplam N-up testi
+  **67 + 14 = 81**; lib 197. Kapılar: fmt, clippy `-D warnings`, `files:check`/
+  `files:update`, `docs:stats`, `claims:check` (389 iddia / 498 işaret) temiz.
+  **Opus planından sapmalar:** (1) sentez için ayrı `install` yolu değil, kendi
+  Form XObject'i — planın B seçeneği; `w` ölçeklenmesi ve kaynak izolasyonu
+  için. (2) `QuadPoints` sırası "üst kenar daha yüksek olan" kuralıyla
+  normalize ediliyor (Z ve CCW sıraları aynı yolu veriyor); döndürülmüş metin
+  quads'ı bilinen sınır. (3) Quads kodu ayrı alt modülde (dosya tavanı).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
+  Sonraki kalem (Opus sıralaması): `FreeText`/`/DA` ve font gerektiren
+  görünümler, ardından v7.10.0 sürüm treni — Opus'a teyit ettirilecek.
