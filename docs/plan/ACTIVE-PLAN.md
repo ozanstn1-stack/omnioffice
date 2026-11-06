@@ -1299,7 +1299,15 @@ seçeneği — yer imleri her zaman taşınır, yeni ayar eklenmez.
   yerine mevcut `destination`) — sapma: ayrı bir `remap_dest` fonksiyonu
   yazmadım, mevcut `DestMap::destination` zaten o işi yapıyor ve `links.rs` onu
   kullanıyor; outline de aynı fonksiyonu çağırıyor.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR CI yeşilse squash merge; sonra Opus'un
-  sıralaması: (1) v7.8.0 sürüm treni (üç girdi: LAN resumable download, N-up
-  link, N-up outline), (2) PR-2 baskı açıklamalarını düzleştirme (tasarım dilimi
-  + pdfium görsel doğrulama).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** #632 birleşti (`4af5a99`) → **v7.8.0 sürüm
+  treni yürütülüyor** (bu dal). Yapılanlar: `Cargo.toml`/`Cargo.lock` +
+  `package.json`/`package-lock.json` + `tauri.conf.json` 7.8.0,
+  `tauri.properties` versionName 7.8.0 / versionCode **7008000**, CHANGELOG
+  `[Unreleased]` → `[7.8.0] - 2026-11-06`, README sürüm/indirme bağlantıları
+  7.8.0 + "What's new" cümlesi, `RELEASE_READINESS` başlığı ve N-up iddiası
+  (6 test işareti), fastlane `en-US/7008000.txt` (script) + `tr-TR/7008000.txt`
+  (elle). Kapılar: `claims:check` 386 iddia / 485 işaret, `fastlane:check`,
+  `docs:stats`, `files:check`, `i18n:audit` temiz.
+  Sıradaki: PR → merge → auto-tag `v7.8.0` → release doğrulaması (18 asset,
+  checksum 17/17, `latest.json`, versionCode 7008000) → sonra PR-2
+  (baskı açıklamalarını düzleştirme).
