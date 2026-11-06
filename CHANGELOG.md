@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Marks without an appearance stream are drawn anyway in N-up:** many
+  producers ship a highlight, a square or an ink stroke without an `/AP` stream
+  and let the viewer paint it from the geometry; an imposed sheet has no viewer,
+  so those marks used to disappear. The geometry is turned into operators now -
+  the quad-point kinds (`Highlight` with a Multiply blend, `Underline`,
+  `StrikeOut`, `Squiggly`) and the shapes (`Square`, `Circle`, `Line`, `Ink`),
+  with `/C`, `/IC` and the `/BS` or legacy `/Border` width. The content is built
+  in page space inside a form of its own, so the placement matrix, `/NoRotate`
+  and the cell clip apply exactly as they do to an existing appearance. An
+  annotation that ships an `/AP` is never re-synthesized, and malformed
+  geometry drops only its own mark.
+
 ## [7.9.0] - 2026-11-06
 
 ### Added
