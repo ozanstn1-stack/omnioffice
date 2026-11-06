@@ -1139,3 +1139,30 @@ tavan 5).
   (Security-Policy 4 → yükselir). Sonraki ürün dilimi adayı: E6'nın kalan
   maddeleri (LAN resumable downloads, dynamic-array spill, AI embedding
   batching) veya holiday table 2030+ (Diyanet verisi gerekli — kullanıcı adımı).
+
+---
+
+# Seçilen iş kalemi: LAN'da kaldığı yerden devam eden indirme (E6.3) — Opus planı `ca5c182c`
+
+Opus, E6'nın kalan maddelerini karşılaştırıp **resumable download**'ı seçti:
+yükleme kesintiden sonra devam ediyor (`begin_put`/`put_chunk`/`finish_put`,
+`.parts/`), indirme ise tek `get` isteğinde — Wi-Fi koparsa baştan başlıyor.
+
+**Elenenler (gerekçeli):** PDF artık nesneleri (artımlı kayıt nesne silemez;
+imzaları bozmadan silmek dosyayı baştan yazmayı gerektirir → ürün kararı),
+N-up bağlantıları (yedek aday), embedding toplu gönderme (sağlayıcı davranışı
+doğrulanmalı), Writer seçim görevleri (`WriterEditor.tsx` bütçe sınırında),
+spill hesaplama (çok büyük), Chrome eklentisi + 2030 tatil tablosu (sahibin
+kararı/verisi).
+
+**Tasarım (Opus):** protokole iki yeni işlem — `begin_get` (boyut+sha+modified)
+ve `get_chunk(offset,total)`; istemcide `fetch_resumable` yarım dosyayı
+`root/.parts/<sha[..32]>.get` + `.get.json` notunda tutar, boyut/sha değişirse
+baştan başlar, sonda tüm dosyanın sha'sını doğrular, 3 deneme yapar. Eski sunucu
+"unknown operation" derse tam `fetch`'e düşer.
+
+**Bilinçli sapma (bu tur):** Opus yükleme kodunun tamamını `lan/upload.rs`'e
+taşımayı önerdi. Ben yalnız **sunucu tarafı** yükleme işleyicilerini taşıyorum
+(~130 satır, saf fonksiyonlar): aynı bütçe kazancını verir, istemci `impl
+LanClient` bloğunu bölme riskini almaz. Ayrıca commit mesajlarına
+`Co-Authored-By: Claude` satırı eklenmiyor — repo konvansiyonu DSH rozeti.
