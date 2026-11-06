@@ -1235,6 +1235,61 @@ doğrulanabilir (pdfcore testleri), yeni bağımlılık yok.
   clippy `-D warnings`, fmt, `files:check`, `claims:check` temiz.
   `nup.rs` 398 → 362 (taban düştü). CI bekleniyor.
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** #631 CI yeşilse squash merge; sonra Opus'a
-  sıradaki kalem (aday: N-up outline remap — aynı `DestMap` yeniden kullanılır,
-  ya da markup düzleştirme).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** #631 **birleşti** (`58a69d0`); dal silindi.
+  Yeni dilim aşağıda (Opus `0c98e515`).
+
+---
+
+# Seçilen iş kalemi: N-up yer imlerini (outline) yeni sayfalara eşleme — **Opus planı `0c98e515`**
+
+Gerekçe (Opus): `DestMap` #631'de yazıldı ve bağlam taze; outline aynı hedef
+çözümünü kullanıyor (`/Dest`, adlandırılmış hedef, `/XYZ` nokta, `/Fit*` → hücre
+`/FitR`). Kullanıcı farkı hemen görür (yer imleri çalışır), tamamı VPS'te
+`cargo test -p pdfcore` ile doğrulanır; pdfium/sır gerekmez. Markup düzleştirme
+(PR-2) görünüm akışı matrisleri yüzünden riskli, görsel doğrulama istiyor.
+
+## Adımlar
+1. **`dests.rs` API'si**: hedef yeniden yazımı tek kapıya iner —
+   `remap_dest(&self, src: &Document, dest: &Object) -> Option<Object>` (ad →
+   `/Names /Dests` + eski `/Dests`, dizi → sheet, `/XYZ` nokta, `/Fit*` → `FitR`).
+   `links.rs` bunu çağıracak şekilde sadeleşir; #631'in 13 testi değişmeden geçer.
+2. **`crates/pdfcore/src/nup/outline.rs`** (≤ 250 satır):
+   `OutlineNode { title, target, color, flags, open, children }`,
+   `OutlineReport { kept, dropped, truncated }`,
+   `carry_outline(src, dst, &DestMap)` → `read_level` (`/Next` zinciri, `seen`
+   ile döngü kesme, `MAX_DEPTH 64`, `MAX_NODES 10_000`) + `write_level`
+   (`/Parent`, `/Prev`, `/Next`, `/First`, `/Last`, `/Count`).
+   `/Count`: açık düğüm `+n`, kapalı `-n`, çocuksuz anahtar yok.
+3. **Hedef önceliği**: `/Dest` sonra `/A`; `/A /GoTo /D` → `remap_dest`; `/URI`
+   korunur; `GoToR/Launch/JavaScript/Named` düşer. Hedef her zaman
+   `[sheet /FitR …]` (ya da `/XYZ` noktası) olarak normalize edilir.
+4. **Budama**: hedefsiz ve çocuksuz düğüm düşer; hedefsiz ama çocuklu düğüm
+   başlık olarak kalır. Hiç düğüm kalmazsa katalogda `/Outlines` yazılmaz;
+   kaynakta `/PageMode /UseOutlines` varsa kalan varsa kopyalanır.
+5. **Hata politikası**: `Result` yok, panik yok; bozukluk `dropped` sayacına.
+   Limit aşımı `truncated` + o ana kadarki ağaç.
+6. **`nup.rs` bağlama**: ratchet 362 — `mod outline;` + tek çağrı; satır
+   nötrlüğü için `carry_links` + `carry_outline` birlikte tek yardımcıya alınır
+   (`dests::carry_navigation`), `nup.rs`'te tek satır kalır.
+7. **Testler** `crates/pdfcore/tests/nup_outline_test.rs` (≤ 400; `nup_test.rs`
+   283 sabit): düz outline → sheet eşlemesi · `/XYZ` dönüşümü · iç içe yapı ve
+   `/Count` işaretleri · seçim dışı yaprak düşer/üst düğüm kalır · hepsi
+   düşerse `/Outlines` yok · kaynakta yoksa çıktıda yok · adlandırılmış hedef
+   (name tree + eski `/Dests`) · `/A /GoTo` normalizasyonu · URI korunur, tehlikeli
+   eylemler düşer · booklet slot eşlemesi · `/Next` döngüsü sonlanır · derinlik/
+   düğüm limiti · bozuk öğe toleransı · başlık baytları + `/C`,`/F` korunur ·
+   kaydet/yeniden yükle. Yardımcı: `assert_outline_consistent(doc)`.
+8. **Belgeler**: `CHANGELOG [Unreleased]` üçüncü girdi, `docs/roadmap.md` PR-3
+   kapandı (PR-2 açık), `RELEASE_READINESS` N-up satırı, `nup.rs` doc yorumu,
+   README N-up maddesi.
+9. **Kapılar**: `cargo fmt --all -- --check`, `cargo clippy -p pdfcore
+   --all-targets -- -D warnings`, `cargo test -p pdfcore` (yeni testler + #631'in
+   13'ü + mevcut 8 N-up testi), `files:check`/`files:update`, `claims:check`,
+   `docs:stats` (README sayıları). Sonunda `cargo clean` + `df -h /`.
+
+## Kapsam dışı
+Markup düzleştirme (`/Text`, `/Highlight`, `/Widget`), `/GoToR` desteği, UI
+seçeneği — yer imleri her zaman taşınır, yeni ayar eklenmez.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-outline-remap` açıldı. Sıradaki:
+  adım 1 (`dests.rs::remap_dest`) → 2 (`nup/outline.rs`) → 6 → 7 → 8, tek PR.
