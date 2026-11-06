@@ -50,10 +50,7 @@ fn a_chunked_download_resumes_from_the_partial_file() {
     let (partial, note) = download::partial_paths(root.path(), "buyuk.pdf");
     std::fs::create_dir_all(partial.parent().expect("parts")).expect("parts dir");
     std::fs::write(&partial, &body[..CHUNK_BYTES]).expect("partial");
-    let note_value = download::PartialNote {
-        sha256: hex_encode(&Sha256::digest(&body)),
-        size: body.len() as u64,
-    };
+    let note_value = download::PartialNote { sha256: hex_encode(&Sha256::digest(&body)), size: body.len() as u64 };
     std::fs::write(&note, serde_json::to_string(&note_value).expect("json")).expect("note");
 
     let mut seen = Vec::new();
@@ -101,10 +98,7 @@ fn a_corrupted_partial_is_discarded_after_the_hash_check() {
     let (partial, note) = download::partial_paths(root.path(), "bozuk.pdf");
     std::fs::create_dir_all(partial.parent().expect("parts")).expect("parts dir");
     std::fs::write(&partial, vec![0xABu8; CHUNK_BYTES]).expect("partial");
-    let value = download::PartialNote {
-        sha256: hex_encode(&Sha256::digest(&body)),
-        size: body.len() as u64,
-    };
+    let value = download::PartialNote { sha256: hex_encode(&Sha256::digest(&body)), size: body.len() as u64 };
     std::fs::write(&note, serde_json::to_string(&value).expect("json")).expect("note");
 
     let (_, bytes) = client.fetch_resumable(&peer, "bozuk.pdf", root.path(), |_, _| {}).expect("download");

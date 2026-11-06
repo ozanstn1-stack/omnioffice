@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::{
-    file_modified, hex_encode, parts_dir, refusal, resolve_path, Failure, HostState, LanClient, PairedPeer,
-    RemoteFile, Request, Response, MAX_CHUNK_BYTES, PART_MAX_AGE_SECS,
+    file_modified, hex_encode, parts_dir, refusal, resolve_path, Failure, HostState, LanClient, PairedPeer, RemoteFile,
+    Request, Response, MAX_CHUNK_BYTES, PART_MAX_AGE_SECS,
 };
 use crate::SyncError;
 
@@ -45,14 +45,12 @@ pub(super) struct PartialNote {
 /// Hashes a file without loading it, so a large document does not sit in RAM
 /// just to be announced.
 fn hash_file(path: &Path) -> Result<String, Failure> {
-    let mut file = std::fs::File::open(path)
-        .map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
+    let mut file =
+        std::fs::File::open(path).map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];
     loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
+        let read = file.read(&mut buffer).map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
         if read == 0 {
             break;
         }
@@ -65,9 +63,8 @@ fn hash_file(path: &Path) -> Result<String, Failure> {
 /// time. The client resumes only when the hash still matches what it has.
 pub(super) fn handle_begin_get(state: &Arc<HostState>, request: &Request) -> Result<Response, Failure> {
     let target = resolve_path(&state.root, &request.path).map_err(|error| refusal(error.to_string()))?;
-    let size = std::fs::metadata(&target)
-        .map_err(|error| refusal(format!("the document is unreadable: {error}")))?
-        .len();
+    let size =
+        std::fs::metadata(&target).map_err(|error| refusal(format!("the document is unreadable: {error}")))?.len();
     if size > crate::MAX_TRANSFER_BYTES {
         return Err(refusal("the document is larger than the transfer limit"));
     }
@@ -88,9 +85,8 @@ pub(super) fn handle_get_chunk(
     request: &Request,
 ) -> Result<(Response, Option<Vec<u8>>), Failure> {
     let target = resolve_path(&state.root, &request.path).map_err(|error| refusal(error.to_string()))?;
-    let size = std::fs::metadata(&target)
-        .map_err(|error| refusal(format!("the document is unreadable: {error}")))?
-        .len();
+    let size =
+        std::fs::metadata(&target).map_err(|error| refusal(format!("the document is unreadable: {error}")))?.len();
     if request.total != 0 && request.total != size {
         return Err(refusal("the document changed; start the download again"));
     }
@@ -98,13 +94,12 @@ pub(super) fn handle_get_chunk(
         return Err(refusal("the requested offset is past the end of the document"));
     }
     let window = (size - request.offset).min(MAX_CHUNK_BYTES as u64) as usize;
-    let mut file = std::fs::File::open(&target)
-        .map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
+    let mut file =
+        std::fs::File::open(&target).map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
     file.seek(SeekFrom::Start(request.offset))
         .map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
     let mut buffer = vec![0u8; window];
-    file.read_exact(&mut buffer)
-        .map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
+    file.read_exact(&mut buffer).map_err(|error| refusal(format!("the document is unreadable: {error}")))?;
     let response = Response {
         ok: true,
         body_len: buffer.len() as u64,
@@ -272,12 +267,8 @@ impl LanClient {
         }
         let _ = std::fs::remove_file(partial);
         let _ = std::fs::remove_file(note_path);
-        let file = RemoteFile {
-            path: path.to_string(),
-            size: total,
-            sha256: announce.sha256,
-            modified: announce.modified,
-        };
+        let file =
+            RemoteFile { path: path.to_string(), size: total, sha256: announce.sha256, modified: announce.modified };
         Ok((file, bytes))
     }
 }

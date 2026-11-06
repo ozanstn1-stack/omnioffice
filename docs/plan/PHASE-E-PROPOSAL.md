@@ -284,7 +284,8 @@ All items are already listed as open in the project docs.
    round-trip counters; multiple ODP master pages; Calc chart UI and Impress
    media.
 2. **Writer-selection-scoped desk tasks** (the open D13 item).
-3. **LAN:** resumable downloads (only uploads resume today).
+3. **LAN:** resumable downloads — *Delivered 2026-11-06:* `begin_get` / `get_chunk`, a
+   partial file with a hash note, and a whole-file fallback for older hosts.
 4. **Türkiye-specific:** CMK rules in deadline calculation; the holiday table
    ends in 2029 → generator and tests for 2030+; enable the UDF reader/writer
    behind the fidelity test.

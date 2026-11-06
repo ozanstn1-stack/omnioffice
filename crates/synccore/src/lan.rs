@@ -43,6 +43,9 @@ use crate::merge::{self, MergeAction, Resolution};
 use crate::metadata::{self, BaseState, SyncState};
 use crate::SyncError;
 
+mod download;
+#[cfg(test)]
+mod download_tests;
 mod mdns;
 mod pairing;
 #[cfg(test)]
@@ -50,9 +53,6 @@ mod pairing_tests;
 mod replay;
 #[cfg(test)]
 mod tests;
-mod download;
-#[cfg(test)]
-mod download_tests;
 mod transport;
 mod upload;
 
@@ -832,8 +832,7 @@ fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
         "begin_get" => authenticated(state, &request, &body)
             .and_then(|_| download::handle_begin_get(state, &request))
             .map(|response| (response, None)),
-        "get_chunk" => authenticated(state, &request, &body)
-            .and_then(|_| download::handle_get_chunk(state, &request)),
+        "get_chunk" => authenticated(state, &request, &body).and_then(|_| download::handle_get_chunk(state, &request)),
         "begin_put" => authenticated(state, &request, &body)
             .and_then(|_| upload::handle_begin_put(state, &request))
             .map(|response| (response, None)),
@@ -930,7 +929,6 @@ fn handle_delete(state: &Arc<HostState>, path: &str) -> Result<Response, Failure
         Err(error) => Err(refusal(format!("the document could not be deleted: {error}"))),
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Discovery
