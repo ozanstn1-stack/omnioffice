@@ -26,8 +26,13 @@ const COPIED_KEYS: [&str; 7] = ["Border", "BS", "C", "H", "F", "Contents", "NM"]
 /// Never fails: an annotation that cannot be mapped (unreadable dictionary, a
 /// destination outside the imposed pages, an unsupported action) is dropped on
 /// its own and the imposition goes on.
-pub(super) fn carry_links(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], page_order: &[ObjectId]) {
+pub(super) fn carry_navigation(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], page_order: &[ObjectId]) {
     let dests = DestMap::new(sheets, page_order);
+    carry_links(doc, sheets, &dests);
+    super::outline::carry_outline(doc, &dests);
+}
+
+fn carry_links(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], dests: &DestMap) {
     // Read phase: every copy is built against an immutable document, so the
     // source annotation dictionaries are never touched.
     let mut pending: Vec<(ObjectId, Vec<Dictionary>)> = Vec::with_capacity(sheets.len());
@@ -35,7 +40,7 @@ pub(super) fn carry_links(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement
         let mut copies: Vec<Dictionary> = Vec::new();
         for placement in placements {
             for source in source_links(doc, placement.source) {
-                if let Some(copy) = copy_link(doc, &source, placement, *sheet_id, &dests) {
+                if let Some(copy) = copy_link(doc, &source, placement, *sheet_id, dests) {
                     copies.push(copy);
                 }
             }

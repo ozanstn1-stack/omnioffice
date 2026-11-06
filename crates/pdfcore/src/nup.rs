@@ -9,11 +9,9 @@
 //! the fresh `/Pages` root deliberately carries no inherited attributes: the
 //! source tree's inherited `/Rotate` must not be re-applied on top of the
 //! rotation already baked into each form's placement matrix. `/Link`
-//! annotations travel onto the sheets (`links::carry_links`); outlines, named
-//! destinations and every other annotation kind still point at the old pages
-//! and are dropped. The old page objects are unreferenced and removed by
-//! `prune_objects` on save (any still referenced from surviving catalog
-//! branches, e.g. outlines, remain as harmless orphans).
+//! annotations and the outline travel onto the sheets (`links::carry_navigation`
+//! rewrites both); every other annotation kind is dropped. The old page objects
+//! are unreferenced and removed by `prune_objects` on save.
 
 use crate::docutil::{
     load_document, materialize_all_pages, own_page_resources, page_mediabox, page_rotation, resolve_output_path,
@@ -28,6 +26,7 @@ use std::path::{Path, PathBuf};
 
 mod dests;
 mod links;
+mod outline;
 mod sheet;
 
 /// How many pages go on one sheet and in which order.
@@ -286,10 +285,9 @@ fn build_nup(
         progress(ProgressEvent::new("nup.sheet", (index + 1) as u64, output_pages as u64));
     }
 
-    // Page order (1-based page number -> source object) resolves integer
-    // destinations, which are zero-based in the arrays that carry them.
+    // 1-based page number -> source object, for zero-based integer destinations.
     let page_order: Vec<ObjectId> = (1..=total_pages).map(|page| page_ids[&page]).collect();
-    links::carry_links(doc, &sheets, &page_order);
+    links::carry_navigation(doc, &sheets, &page_order);
     let sheet_ids: Vec<ObjectId> = sheets.iter().map(|(id, _)| *id).collect();
     install_page_tree(doc, &sheet_ids)?;
     Ok(())
