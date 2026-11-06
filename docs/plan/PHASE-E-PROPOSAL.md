@@ -292,9 +292,10 @@ All items are already listed as open in the project docs.
 5. **Known UI defect:** the toast bar overlaps the bottom navigation area
    (RELEASE_READINESS 6.5.1).
 6. **AI:** send embeddings in batches, not per chunk; persistent consent option.
-7. **PDF:** orphan objects after annotation deletion; ~~N-up drops links~~ done
-   and ~~the outline is dropped~~ done (links and bookmarks ride onto the
-   sheets; flattening printable markup is the remaining follow-up); tagged PDF
+7. **PDF:** orphan objects after annotation deletion; ~~N-up drops links~~ done,
+   ~~the outline is dropped~~ done and ~~printable markup is dropped~~ done
+   (links, bookmarks and printable annotations ride onto the sheets; form
+   flattening and appearance synthesis are the remaining follow-ups); tagged PDF
    export does not tag tables/headers/footers.
 8. **Chrome extension:** frozen since 3.x; decide archive vs. bring into lint,
    i18n and the release flow.

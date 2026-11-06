@@ -1382,6 +1382,18 @@ onları **sayfaya çizmek**.
    dosyası), `files:check`, `claims:check`, `docs:stats`; sonunda `cargo clean`
    + `df -h /`. Tek PR `feat/nup-markup-flatten`.
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-markup-flatten` açıldı, plan
-  bu commit'te. Sıradaki: adım 1 (`nup/markup.rs`) → 2 (fixture + 17 test) → 3
-  (belgeler) → 4 (kapılar + PR).
+- **DURUM:** dört adım da uygulandı. `nup/markup.rs` **314 satır** (15 tür,
+  Print/Hidden süzgeci, `/AP /N` + `/AS`, BBox→Rect uyumu, `/NoRotate`, kırpma,
+  `/CA`/`/ca`/`/BM` → ExtGState, `/OC` → BDC, 4096 sınırı); çizim **sheet içerik
+  akışına** ikinci stream olarak ekleniyor, çizilecek yoksa `/Contents` ve
+  `/Resources` değişmiyor. `nup.rs` **360** (ratchet düştü), `links.rs` 201.
+  Testler: lib 197 · `nup_test` 8 · link 9+4 · outline 7+6 · **markup 10+7 = 17
+  yeni** (hepsi geçti). Kapılar: fmt, clippy `-D warnings`, `files:check`/
+  `files:update`, `docs:stats`, `claims:check` (387 iddia / 490 işaret) temiz.
+  **Opus planından sapma:** dönüşüm `C = P·A` (Opus `P·O·A` demişti) — `A`
+  zaten sayfa uzayına çıktığı ve `Placement.matrix` sayfa uzayı→sheet olduğu
+  için `O` (MediaBox ötelemesi) gerekmiyor; link testleri bunu kanıtlıyor.
+  Ayrıca `fresh_name` yardımcısı kullanılmadığı için silindi.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
+  Sonraki kalem (Opus'un listesi): (1) v7.9.0 sürüm treni mi yoksa (2) form
+  (Widget/AcroForm) düzleştirme mi — Opus'a sorulacak.

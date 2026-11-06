@@ -855,9 +855,10 @@ These are real and honest:
   into the cell it was placed in and clipped to it), an internal one is rewritten
   to the sheet page it points at, a named destination is resolved into an
   explicit array, and the outline is rebuilt with its hierarchy and counts.
-  Entries whose page falls outside the selection are dropped. Other annotations
-  (notes, highlights, widgets) are still dropped, and the old page objects are
-  left unreferenced.
+  Entries whose page falls outside the selection are dropped. Printable markup
+  (notes, highlights, ink, stamps - the kinds marked for printing) is painted
+  into the sheet, with `/NoRotate` honoured; widgets and redactions are still
+  dropped, and the old page objects are left unreferenced.
 - **PPTX**: programmatic animations are simplified to what the model
   represents; ODP keeps groups, animations, real charts, footer/date/
   slide-number frames, hidden slides, connectors and image crops (since
@@ -957,7 +958,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1475 |
+| Rust tests | 1492 |
 | TypeScript test files | 231 |
 | TypeScript test cases (approx.) | 2641 |
 <!-- stats:end -->
