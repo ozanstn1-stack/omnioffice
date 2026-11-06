@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **N-up and booklet sheets keep their links:** imposing a document used to drop
+  every link, because the imposition rebuilds the page tree and an annotation
+  cannot live inside the Form XObject a source page becomes. Link annotations are
+  copied onto the sheet now: the rectangle is mapped through the placement
+  matrix (source rotation included) and clipped to the cell, an external target
+  is kept as it was, an internal one is rewritten to the sheet page it points at,
+  and a named destination is resolved into an explicit array so the output no
+  longer depends on the source name tree. Other annotations and the outline are
+  still dropped on purpose.
 - **A LAN download resumes where it stopped:** uploads have resumed since D3, but
   a download was one request and started over when the Wi-Fi dropped. The
   protocol gains `begin_get` and `get_chunk`; the partial file carries a note

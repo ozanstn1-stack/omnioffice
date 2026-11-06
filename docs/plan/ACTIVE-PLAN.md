@@ -1166,3 +1166,68 @@ taşımayı önerdi. Ben yalnız **sunucu tarafı** yükleme işleyicilerini ta�
 (~130 satır, saf fonksiyonlar): aynı bütçe kazancını verir, istemci `impl
 LanClient` bloğunu bölme riskini almaz. Ayrıca commit mesajlarına
 `Co-Authored-By: Claude` satırı eklenmiyor — repo konvansiyonu DSH rozeti.
+
+---
+
+# Açık — PR #630 birleşti (`53cdd82`, LAN resumable download)
+
+19 kontrol yeşil (2 beklenen skip: Benchmarks, Fuzz), macOS dahil. Dal silindi.
+`[Unreleased]` artık LAN resumable download girdisini taşıyor (7.8.0 treni).
+
+## Seçilen iş kalemi: N-up /Link açıklamalarını koruma — **Opus planı `fc13a2c8`**
+
+Aday gerekçesi: `docs/plan/PHASE-E-PROPOSAL.md` E6 madde 7'de açık duran "N-up drops
+links" sınırı; `nup.rs` doc yorumunda da yazılı. Kullanıcıya görünür (içindekiler/URL
+bağlantısı olan PDF 2-up basılınca tıklanabilirlik kayboluyor), VPS'te tamamen
+doğrulanabilir (pdfcore testleri), yeni bağımlılık yok.
+
+### Kararlar (Opus)
+1. **Yalnız `/Subtype /Link` taşınır.** `/Text`, `/Highlight`, `/Widget` gibi türler
+   bilinçli olarak düşer: görünüm akışları sayfa uzayında, Form XObject içine konamaz;
+   taşımak her alt tip için ayrı dönüşüm ister. Doğru çözüm ileride **düzleştirme**
+   (PR-2 adayı). Bugün de görünmüyorlar, PR kötüleştirmiyor.
+2. **URI** → `/Rect` dönüştürülür + hücreye kırpılır, `/A /S /URI` inline kopya.
+   `/Next` atılır (döngü riski yok). **GoTo / Dest / adlandırılmış hedef** → hedef
+   sheet'e **açık dizi** olarak yeniden yazılır (`/Names /Dests` ağacına bağımlılık
+   kalmaz). **GoToR / Launch / JavaScript / Named / bilinmeyen** → atılır.
+3. `/Rect`: dört köşe yerleşim matrisiyle dönüştürülür, min/max (döndürmeli sayfada
+   eksen hizalı) ve **hücre dikdörtgeniyle kesiştirilir** (Form BBox kırptığı için
+   komşu hücreye taşan tıklama alanı yanlış olurdu). `/QuadPoints` varsa dönüştürülür,
+   geçersizse atılır. `/P` yeni sheet, `/AP` ve `/StructParent` atılır.
+4. Görünüm tipleri: `/XYZ` noktası kesin eşlenir (zoom `null`), `/FitR` dönüştürülüp
+   kırpılır, diğer her şey (`/Fit`, `/FitH`, `/FitV`, `/FitB*`) **hedef hücrenin
+   `/FitR`**'ine indirgenir (sheet'in tamamına `/Fit` 2-up'ta anlam değiştirir).
+5. Dosya bütçesi: `nup.rs` 398'de sabit → `build_sheet_page` **`nup/sheet.rs`**'e
+   taşınır ve `Placement { source, matrix, clip }` döndürür; yeni mantık
+   **`nup/links.rs`** + **`nup/dests.rs`**. `lib.rs` değişmez (alt modül).
+6. Hata politikası: `carry_links` **`Result` döndürmez, `?` kullanmaz** — bozuk
+   `/Annots`, silinmiş nesne, kırık `/A`, döngülü name tree, seçim dışı sayfa hedefi
+   → yalnız o bağlantı atılır, işlem düşmez.
+7. Kopya **paylaşılmaz**: her açıklama yeni nesne, `/P` sheet'e; kaynak sözlüğe hiç
+   yazılmaz (`docutil::clone_page_object` kalıbı).
+
+### Sapmalar (benden)
+- Commit mesajlarında `Co-Authored-By: Claude` yok, PR gövdesinde Claude rozeti yok →
+  repo konvansiyonu DSH rozeti (`dsh-badge`).
+- Opus "PR-2 flatten / PR-3 outline" önerilerini roadmap'e aday olarak yazıyorum,
+  uygulamıyorum.
+
+### Adımlar
+1. `refactor(pdfcore)`: `build_sheet_page` → `nup/sheet.rs`, `Placement` döndür, `PageForm.source`
+   alanı; davranış aynı, 9 mevcut N-up testi değişmeden geçer, `files:check` tabanı düşer.
+2. `feat(pdfcore)`: `nup/dests.rs` (DestMap, name tree okuyucu, `map_dest`, `map_view`) +
+   `nup/links.rs` (`carry_links`, `source_annots`, `map_rect`, `clip`, kopya süzgeci) +
+   `nup.rs`'te tek çağrı.
+3. `test(pdfcore)`: `tests/common/link_fixtures.rs`, `tests/nup_links_test.rs` (geometri/hedef),
+   `tests/nup_links_edge_test.rs` (süzme/bozuk girdi/paylaşım yok) — 12 vaka.
+4. `docs`: `nup.rs` doc yorumu, `README.md` N-up satırı, `docs/roadmap.md` (~281),
+   `PHASE-E-PROPOSAL.md` madde 7, `CHANGELOG.md [Unreleased]`.
+
+### Kapılar
+`cargo fmt -p pdfcore -- --check` · `cargo check -p pdfcore --all-targets` ·
+`cargo clippy -p pdfcore --all-targets -- -D warnings` · `cargo test -p pdfcore --lib` ·
+`cargo test -p pdfcore --test nup_test` · yeni iki test dosyası · `files:check` ·
+`claims:check` · `npx vitest run`. Sonunda `cargo clean` + `df -h /`.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** #630 birleşti. Sıradaki: bu planın 1. adımı
+  (`nup/sheet.rs` refactor) → 2 → 3 → 4, tek PR `feat/nup-keep-links`.
