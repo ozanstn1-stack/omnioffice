@@ -1494,12 +1494,65 @@ kuralıyla çözülüyor — atlanan widget bugünkü gibi kaybolur, gerileme ol
   silindi; `target/` temizlendi (4.5 GiB), disk %60. Yol boyunca iki CI
   düzeltmesi: coverage ratchet'i (birim testleri eklendi, `appearance.rs` ve
   `quads.rs` tabanları yükseltildi) ve README `docs:stats` bloğu.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** sıradaki iş **v7.10.0 sürüm treni**
-  (`[Unreleased]` tek girdi: görünüm akışı sentezi #637). Adımlar v7.9.0 ile
-  aynı: sürüm 7.10.0 (`Cargo.toml`/lock, `package.json`/lock,
-  `tauri.conf.json`), `tauri.properties` versionName 7.10.0 / versionCode
-  **7010000**, CHANGELOG `[Unreleased]` → `[7.10.0] - 2026-11-06`, README
-  sürüm + indirme bağlantıları + "What's new" cümlesi, `RELEASE_READINESS`
-  başlığı, fastlane `en-US/7010000.txt` + `tr-TR/7010000.txt`, PR → merge →
-  auto-tag → doğrulama. Sonrasında Opus'a sıradaki kalem sorulacak (adaylar:
-  `FreeText`/font dilimi, E6 kalemleri).
+- **v7.10.0 YAYINLANDI ve doğrulandı** (2026-11-06): PR #638 → `2b7bb51`, tag
+  `v7.10.0` → `2b7bb51`, Release + Android + auto-tag yeşil, **18 varlık**,
+  `SHA256SUMS.txt` 8 satır, `latest.json` sürüm **7.10.0** + imza dolu, release
+  gövdesi CHANGELOG `[7.10.0]` bölümüyle **birebir** (843 karakter), Android
+  `versionName 7.10.0` / `versionCode **7010000**`.
+
+---
+
+# Seçilen iş kalemi: N-up FreeText sentezi, A dilimi (standart 14 font) — **Opus planı `000577b5`**
+
+Bugün `/AP`'siz `FreeText` açıklamaları N-up'ta kayboluyor (kullanıcının yazdığı
+metin). Riskin büyük kısmı gömülü/`/DR` fontları ve CID kodlamadan geldiği için
+A dilimi **yalnız standart 14 fontla** yapılıyor; çıktıda her zaman kendi
+ürettiğimiz Type1 sözlüğü kullanılıyor, genişlikler Core14 AFM tablolarından
+geliyor, yeni bağımlılık yok. Türkçe (ğ ş ı İ Ğ Ş) WinAnsi'de olmadığı için sabit
+bir `/Differences` tablosuyla çözülüyor.
+
+## Plan
+1. **`crates/pdfcore/src/nup/markup/appearance/std14.rs`** (≤260):
+   `Family { Helvetica, Times, Courier }`, `Std14 { family, bold, italic }`,
+   `base_font()`, `width(code)`, `ascent()`/`descent()`; WinAnsi 32..255
+   genişlik tabloları (AFM'den üretilir), Courier sabit 600;
+   `EXTRA_GLYPHS` (kod 1..31, Türkçe 6 + Latin-A) — aksanlı glif taban harfle
+   aynı genişlikte.
+2. **`appearance/textfit.rs`** (≤220): `decode_text_string` (UTF-16BE BOM, UTF-8
+   BOM, PDFDocEncoding), `encode(font, s)` (kodlanamayan → `None`), `wrap(...)`
+   (açgözlü kelime kırma, taşan tek kelime karakter bazında, `
+` tek kırılım,
+   `max_lines`).
+3. **`appearance/freetext.rs`** (≤320): `/DA` çözümleme (`/Ad size Tf`, son renk
+   operatörü `g`/`rg`/`k`; kaynak sırası annot → `/AcroForm /DA` → `Helv 12 0 g`),
+   `/Q` hizalama (0/1/2), `/C` arka plan, kenar (`/BS /W` → `/Border`), `/RD`
+   içe çekme, `/CL` callout (4 veya 6 sayı), satır yerleşimi
+   `b₁ = ty1 − size·ascent/1000`, `lead = 1.2·size`, metin alanı 2 pt pad.
+4. **İçerik akışı:** arka plan `re f`, kenar `re S`, callout `m/l S`, metin
+   kutusu `re W n`, `BT /FOmni0 size Tf <renk> 1 0 0 1 x b Tm <hex> Tj … ET`;
+   dizeler her zaman hex (kaçış riski yok).
+5. **`appearance.rs`** dispatch'e `b"FreeText"` kolu (+≤3 satır);
+   **`install.rs`** sentezlenen formun `/Resources`'una `/Font` (+≤8 satır).
+   `nup.rs`, `markup.rs`, `quads.rs` dokunulmaz.
+6. **Hata politikası:** kodlanamayan karakter (CJK/emoji) → **açıklamanın
+   tamamı atlanır** (`?` ikamesi yok); `/Rect` geçersiz, boyut >1000, bozuk
+   `/DA` (fallback'ler tükendiyse) → atla; `/Contents` boş → yalnız kutu.
+7. **Testler:** birim (AFM genişlikleri, `EXTRA_GLYPHS`, `/DA` çözümleme, aile
+   eşleme, kodlama/çözme, ölçü, `wrap`, hizalama) + entegrasyon
+   `tests/nup_freetext_test.rs` (12 vaka: `/AP`'siz metin çizilir + `/Differences`,
+   `/AP` varsa sentez yok, `/Q 2` sağa yaslar, `/C` arka plan, `/BS 0` kenarsız,
+   `/RD` içe çekme, callout 4/6/5 sayı, CJK+Latin karışık sayfada yalnız Latin,
+   boş içerik yalnız kutu, taşan metin kırpılır, AcroForm `/DA` fallback,
+   determinizm). Mevcut 81 N-up testi + lib 197 kırılmamalı.
+8. **Kapılar:** `cargo test -p pdfcore` (lib + 10 N-up dosyası), fmt, clippy
+   `-D warnings`, `files:check`/`files:update`, `docs:stats`, `claims:check`;
+   sonunda `cargo clean` + `df -h /`. Tek PR `feat/nup-freetext-std14`.
+
+## Kapsam dışı (B dilimi)
+`/DR`/gömülü font yeniden kullanımı, Type0/CID, `/RC`, `/DS`, RTL/CJK/emoji,
+otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** sürüm çıktı. Dal `feat/nup-freetext-std14`
+  açıldı. Sıradaki: adım 1 (std14 tabloları — AFM verisinden üretilecek) → 2 →
+  3 → 5 → 7 → belgeler. Sonraki iki kalem (Opus): (1) N-up geometri rötuşları
+  (Polygon/PolyLine, kesikli kenar, `/LE` uçları), (2) v7.11.0 sürümü.
