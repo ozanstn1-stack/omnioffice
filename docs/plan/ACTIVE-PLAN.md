@@ -1465,12 +1465,14 @@ kuralıyla çözülüyor — atlanan widget bugünkü gibi kaybolur, gerileme ol
   `markup.rs` içinde (nup.rs 360'ta kaldı).
 - **PR #635 birleşti** (`a1c75ec`), 18 kontrol yeşil, dal silindi; `target/`
   temizlendi (4.2 GiB), disk %60.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** sıradaki iş **v7.9.0 sürüm treni**
-  (`[Unreleased]` iki girdi: markup düzleştirme #634 + widget düzleştirme #635).
-  Adımlar: sürüm dosyaları 7.9.0 (`Cargo.toml`/lock, `package.json`/lock,
-  `tauri.conf.json`), `tauri.properties` versionName 7.9.0 / versionCode
-  **7009000**, CHANGELOG `[Unreleased]` → `[7.9.0] - 2026-11-06` + yeni boş
-  `[Unreleased]`, README sürüm/indirme bağlantıları + "What's new" cümlesi,
-  `RELEASE_READINESS` başlığı, fastlane `en-US/7009000.txt` (script) +
-  `tr-TR/7009000.txt` (elle), sonra PR → merge → auto-tag → release doğrulaması
-  (18 asset, `latest.json` 7.9.0 + imza, release gövdesi CHANGELOG birebir).
+- **v7.9.0 YAYINLANDI ve doğrulandı** (2026-11-06): PR #636 → `74b9af5`, tag
+  `v7.9.0` → `74b9af5`, Release + Android + auto-tag + Desktop yeşil, **18
+  varlık**, `SHA256SUMS.txt` 8 satır (değişmez), `latest.json` sürüm **7.9.0**
+  + imza dolu, release gövdesi CHANGELOG `[7.9.0]` bölümüyle **birebir** (1425
+  karakter), Android `versionName 7.9.0` / `versionCode **7009000**`.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-appearance-synthesis`
+  açıldı. Sıradaki kalem (Opus `96dedcbd` sıralaması): **görünüm akışı (AP)
+  üretimi — dilim 1**, yalnız `/QuadPoints` vurguları (`Highlight`,
+  `Underline`, `Squiggly`, `StrikeOut`) ve `/C`/`/IC`/`/BS` ile `Square`,
+  `Circle`, `Line`, `Ink`; font gerektiren `FreeText`/`/DA` kapsam dışı (ayrı
+  dilim). Önce Opus'tan bu dilimin ayrıntılı planı alınacak.
