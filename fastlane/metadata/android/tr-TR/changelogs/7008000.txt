@@ -1,0 +1,1 @@
+7.8.0: N-up ve kitapçık çıktısı artık bağlantıları ve yer imlerini koruyor; bir belgeyi 2'li/4'lü bastığınızda içindekiler ve URL bağlantıları çalışmaya devam ediyor. LAN üzerinden indirme de kaldığı yerden devam ediyor: Wi-Fi koparsa büyük bir PDF baştan başlamıyor, yarım dosya doğrulanarak tamamlanıyor.

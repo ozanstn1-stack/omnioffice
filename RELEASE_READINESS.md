@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.7.0
+# Release Readiness — OmniOffice 7.8.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (this cycle, 7.7.0) - Son kusurlar ve arayüz temizliği
+## Implemented (this cycle, 7.8.0) - LAN indirme devamı ve N-up bağlantı/yer imleri
 
 - **A LAN download resumes where it stopped (E6.3):** uploads have resumed since
   D3; a download was one request that started over when the Wi-Fi dropped. Two
@@ -83,6 +83,24 @@ release-train schedule is decided.
   `test:crates/synccore/src/lan/download_tests.rs#a_download_chunk_checks_offsets_sizes_and_paths`
   `test:crates/synccore/src/lan/download_tests.rs#an_empty_document_downloads_without_chunks`
   `test:crates/synccore/src/lan/download_tests.rs#an_unknown_operation_is_recognised_for_the_whole_file_fallback`
+
+- **N-up keeps links and bookmarks (E6.3):** imposing a document rebuilds the
+  page tree, and a source page becomes a Form XObject that cannot carry
+  annotations - so links and the outline used to disappear. `/Link` annotations
+  are copied onto the sheet that carries their page: the rectangle goes through
+  the placement matrix (source rotation included), is clipped to the cell, and
+  the target is rewritten - a named destination resolves through `/Names /Dests`
+  into an explicit array. The outline is rebuilt with its hierarchy, colours,
+  flags and the signed `/Count` rule; entries whose page falls outside the
+  selection lose their target or disappear, and a stale outline is removed
+  instead of left dangling. Markup and widget annotations are still dropped on
+  purpose.
+  `test:crates/pdfcore/tests/nup_links_test.rs#uri_link_rect_lands_in_its_cell`
+  `test:crates/pdfcore/tests/nup_links_test.rs#goto_link_targets_second_sheet`
+  `test:crates/pdfcore/tests/nup_links_test.rs#named_destinations_are_resolved_to_explicit_arrays`
+  `test:crates/pdfcore/tests/nup_outline_test.rs#a_flat_outline_lands_on_the_sheets`
+  `test:crates/pdfcore/tests/nup_outline_test.rs#nested_entries_keep_their_counts`
+  `test:crates/pdfcore/tests/nup_outline_test.rs#an_outline_with_no_surviving_target_does_not_appear`
 
 - **The toast stack clears the bottom bar (6.5.1):** `.toast-host` offsets by
   `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
