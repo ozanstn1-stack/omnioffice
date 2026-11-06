@@ -1,0 +1,1 @@
+7.9.0: N-up ve kitapçık çıktısı artık belgenin kendisi gibi görünüyor — bağlantılar, yer imleri, notlar, vurgular, mürekkep ve damgalar kâğıda geçiyor; doldurulmuş form alanları da görünümü güvenilir olduğunda basılıyor. İmzasız imza alanları yer tutucu olarak atlanıyor, NeedAppearances açıkken metin alanları basılmıyor.
