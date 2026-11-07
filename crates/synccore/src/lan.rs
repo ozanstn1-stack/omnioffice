@@ -35,14 +35,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+use auth::{authenticated, refusal_error, refuse, CODE_RANGE_MISMATCH};
 
 use crate::merge::{self, MergeAction, Resolution};
 use crate::metadata::{self, BaseState, SyncState};
 use crate::SyncError;
 
+mod auth;
 mod download;
 #[cfg(test)]
 mod download_tests;
@@ -51,6 +53,11 @@ mod pairing;
 #[cfg(test)]
 mod pairing_tests;
 mod replay;
+mod sig;
+#[cfg(test)]
+mod sig_negotiation_tests;
+#[cfg(test)]
+mod sig_tests;
 #[cfg(test)]
 mod tests;
 mod transport;
@@ -89,8 +96,6 @@ const PART_MAX_AGE_SECS: u64 = 24 * 60 * 60;
 /// Extensions the LAN sync moves. Anything else stays on the machine.
 const ALLOWED_EXTENSIONS: [&str; 14] =
     ["docx", "xlsx", "pptx", "odt", "ods", "odp", "pdf", "rtf", "txt", "csv", "oswk", "png", "jpg", "jpeg"];
-
-type HmacSha256 = Hmac<Sha256>;
 
 /// A device's TLS identity: one self-signed certificate and its private key.
 /// The application layer stores it sealed (DPAPI / Android Keystore).
@@ -188,6 +193,15 @@ pub struct PairedPeer {
     /// directions, the flag only tells the UI which list a peer belongs to.
     #[serde(default)]
     pub host_side: bool,
+    /// Capabilities the peer announced while pairing (`"sig-v2"` today). An
+    /// older build announces nothing, which reads as an empty list.
+    #[serde(default)]
+    pub features: Vec<String>,
+    /// The lowest request signature version this peer may use. `2` is written
+    /// once a version 2 request from it was accepted, and from then on a
+    /// version 1 request is refused: a downgrade cannot undo the upgrade.
+    #[serde(default)]
+    pub min_sig: u8,
 }
 
 /// A six-digit one-time pairing code.
@@ -290,13 +304,6 @@ struct HostState {
     /// Nonces already accepted, so a signed request cannot be replayed.
     replay: replay::ReplayGuard,
     stop: AtomicBool,
-}
-
-impl HostState {
-    fn peer_key(&self, device_id: &str) -> Option<Vec<u8>> {
-        let peers = self.peers.lock().ok()?;
-        peers.iter().find(|peer| peer.device_id == device_id).and_then(|peer| hex_decode(&peer.shared_key))
-    }
 }
 
 /// A running host: a TCP listener plus the discovery responder.
@@ -640,10 +647,12 @@ impl LanClient {
             ..Request::default()
         };
         let body_hash = hex_encode(&Sha256::digest(body.unwrap_or(&[])));
-        request.mac = sign(&peer.shared_key, &request, &body_hash)?;
+        let version = sig::SigVersion::for_peer(&peer.features, peer.min_sig);
+        request.sig_v = version.to_wire();
+        request.mac = sig::sign(&peer.shared_key, &request, &body_hash, &peer.device_id, version)?;
         let (response, body) = connection.request::<_, Response>(&request, body)?;
         if !response.ok {
-            return Err(SyncError::Network(non_empty(&response.error, "the request was refused")));
+            return Err(refusal_error(&response));
         }
         Ok((response, body))
     }
@@ -701,6 +710,16 @@ struct Request {
     /// Pairing: the client's key-confirmation tag, hex.
     #[serde(default)]
     confirm: String,
+    /// Request signature version this request carries: absent (or `1`) means
+    /// the original six-field form, `2` the range-bound one. An older host
+    /// ignores the field and checks a version 2 request as a version 1 one, so
+    /// it answers "the request signature is not valid" - which is exactly how a
+    /// new client learns that peer never negotiated version 2.
+    #[serde(default)]
+    sig_v: u8,
+    /// Pairing: the capabilities the device offers, `"sig-v2"` today.
+    #[serde(default)]
+    features: Vec<String>,
 }
 
 impl transport::HasBodyLen for Request {
@@ -739,6 +758,14 @@ struct Response {
     /// Resumable upload: the host's current offset after a begin/chunk.
     #[serde(default)]
     offset: u64,
+    /// Pairing: the capabilities the host offers, `"sig-v2"` today.
+    #[serde(default)]
+    features: Vec<String>,
+    /// A machine-readable kind for a refusal (`bad-signature`,
+    /// `sig-downgrade`, `range-mismatch`); empty on a host from before this
+    /// field, which is why the caller falls back to the message.
+    #[serde(default)]
+    code: String,
 }
 
 impl transport::HasBodyLen for Response {
@@ -846,29 +873,6 @@ fn handle_request(state: &Arc<HostState>, peer: &mut transport::ServerPeer) {
     };
     let (response, document) = outcome.unwrap_or_else(|failure| (*failure, None));
     let _ = peer.respond(&response, document.as_deref());
-}
-
-fn authenticated(state: &Arc<HostState>, request: &Request, body: &[u8]) -> Result<(), Failure> {
-    if request.device_id.is_empty() {
-        return Err(refusal("not paired"));
-    }
-    let Some(key) = state.peer_key(&request.device_id) else {
-        return Err(refusal("this device is not paired"));
-    };
-    let now = now_unix();
-    if now.abs_diff(request.timestamp) > REQUEST_FRESHNESS_SECS {
-        return Err(refusal("the request timestamp is stale"));
-    }
-    if request.body_len != body.len() as u64 {
-        return Err(refusal("the request body length does not match"));
-    }
-    let body_hash = hex_encode(&Sha256::digest(body));
-    verify_mac(&key, request, &body_hash).map_err(|_| refusal("the request signature is not valid"))?;
-    // A valid MAC is not enough: the same request must not be accepted twice.
-    if !state.replay.accept(&request.device_id, &request.nonce, now) {
-        return Err(refusal("the request was already used"));
-    }
-    Ok(())
 }
 
 fn handle_list(state: &Arc<HostState>) -> Result<Response, Failure> {
@@ -1225,28 +1229,6 @@ fn hex_decode(text: &str) -> Option<Vec<u8>> {
         return None;
     }
     (0..text.len() / 2).map(|index| u8::from_str_radix(text.get(index * 2..index * 2 + 2)?, 16).ok()).collect()
-}
-
-fn sign(shared_key: &str, request: &Request, body_hash: &str) -> Result<String, SyncError> {
-    let key = hex_decode(shared_key).ok_or_else(|| SyncError::Auth("the pairing key is not valid".into()))?;
-    let mut mac = HmacSha256::new_from_slice(&key).map_err(|error| SyncError::Auth(error.to_string()))?;
-    mac.update(canonical(request, body_hash).as_bytes());
-    Ok(hex_encode(&mac.finalize().into_bytes()))
-}
-
-fn verify_mac(shared_key: &[u8], request: &Request, body_hash: &str) -> Result<(), SyncError> {
-    let mut mac = HmacSha256::new_from_slice(shared_key).map_err(|error| SyncError::Auth(error.to_string()))?;
-    mac.update(canonical(request, body_hash).as_bytes());
-    let signature =
-        hex_decode(&request.mac).ok_or_else(|| SyncError::Auth("the request signature is not valid".into()))?;
-    mac.verify_slice(&signature).map_err(|_| SyncError::Auth("the request signature is not valid".into()))
-}
-
-fn canonical(request: &Request, body_hash: &str) -> String {
-    format!(
-        "{}\n{}\n{}\n{}\n{}\n{}",
-        request.device_id, request.timestamp, request.nonce, request.op, request.path, body_hash
-    )
 }
 
 fn now_unix() -> u64 {

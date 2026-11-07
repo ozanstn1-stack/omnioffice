@@ -1743,8 +1743,33 @@ TLS sabitleme değişikliği, UI/ayar, `protocol_version` artışı.
   ayrıca auto-tag tag atmadan önce aynı kontrolü çalıştırsın ve
   Release/Android'de bu adım derlemeden **önce** koşsun.
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/lan-sig-v2` (master `f503e88`
-  üzerine rebase edildi). Sıradaki adım 1 (ön okuma) → 2 (`sig.rs`) → 3 → 4 → 6
-  → 8. Sonraki iki kalem (Opus): (1) `/Cap` caption, (2) Calc dynamic-array
-  spill tasarım dilimi; `release-guard` küçük ve önleyici olduğu için araya
-  alınabilir.
+- **DURUM (Opus `f6a28999`, dilim A):** uygulandı. Yeni `lan/sig.rs` **230**
+  (`SigVersion{V1,V2}`, `canonical_v1` bayt bayt aynı, `canonical_v2` önek +
+  uzunluk-önekli alanlar: op/sender/receiver/transfer_id/path/offset/length/
+  body_hash/total/sha256/nonce/timestamp, `sign`/`verify`, `features`
+  temizleme) + `lan/auth.rs` **120** (`authenticated` buraya taşındı: sürüm
+  seçimi, TOFU `min_sig=2` sabitleme, `bad-signature`/`sig-downgrade`/
+  `range-mismatch` kodları, `refusal_error`) + `lan/sig_tests.rs` **230**
+  (11 birim: v1/v2 golden vektörleri, alan mutasyonları, uzunluk-öneki
+  belirsizliği, anlaşma matrisi) + `lan/sig_negotiation_tests.rs` **113**
+  (4 loopback: özellik alışverişi, eski çift V1, düşürme reddi, pin).
+  Kablo: `Request.sig_v`+`features`, `Response.code`+`features`,
+  `PairedPeer.features`+`min_sig` (`#[serde(default)]`), `protocol_version`
+  artmadı; `get_chunk` artık `total`+`sha256` yolluyor ve sunucu ilk parçada
+  hash'i doğruluyor. `SyncError::{BadSignature,SigDowngrade,RangeMismatch}`
+  eklendi. lib testi 91 → **107**, toplam Rust testi 1629 → 1646.
+  **Opus planından sapmalar:** (1) `features` SPAKE2 transkriptine
+  **katılmadı** — katılsaydı eski sürümle eşleşme ("the code does not match")
+  kırılırdı; kanal zaten TLS pinle ve anahtar iki sertifikaya bağlı, düşürme
+  engeli TOFU pini + `sig-downgrade` ile sağlanıyor (belgelendi);
+  (2) `transfer_id` telde ayrı alan değil, `path`+`total`+`sha256`'dan türetilen
+  32 bayt (yeni kablo yüzeyi açmamak için); (3) `length` = istek gövde uzunluğu;
+  (4) sunucu `sha256`'yı her parçada değil yalnız ilk parçada doğruluyor (tam
+  okuma maliyeti); (5) dosya bütçesi: `lan.rs` bölündü (1270 → 1252) ve testler
+  ayrı dosyaya taşındı; `files:update --allow-raise` ile 5 küçük bütçe
+  yükseltildi (download +7, pairing +10, lan_sync +3, store +2, sync +4).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dilim A PR'da; CI yeşilse squash merge.
+  Sonraki kalem (Opus'a sorulacak): (1) `release-guard` CI kontrolü (küçük,
+  v7.12.0 olayının önleyicisi), (2) `/Cap` caption, (3) sig-v2 **dilim B**
+  (eski çiftler için yükseltme yolu / V1'in zorunlu kılınması).

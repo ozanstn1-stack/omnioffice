@@ -5,11 +5,11 @@ use super::*;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 
-fn folder() -> tempfile::TempDir {
+pub(super) fn folder() -> tempfile::TempDir {
     tempfile::tempdir().expect("temp dir")
 }
 
-fn write_doc(root: &Path, name: &str, body: &[u8]) {
+pub(super) fn write_doc(root: &Path, name: &str, body: &[u8]) {
     let path = root.join(name);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).expect("parent");
@@ -17,7 +17,7 @@ fn write_doc(root: &Path, name: &str, body: &[u8]) {
     std::fs::write(&path, body).expect("write document");
 }
 
-fn host_at(root: &Path) -> (LanHost, PairingTicket, String) {
+pub(super) fn host_at(root: &Path) -> (LanHost, PairingTicket, String) {
     let identity = LanIdentity::generate("host-1", "Atölye PC").expect("identity");
     let ticket = PairingTicket::new().expect("ticket");
     let host = LanHost::start(HostOptions {

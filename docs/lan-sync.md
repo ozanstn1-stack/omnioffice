@@ -104,6 +104,42 @@ the residual risks for what an active attacker can still do.
   already accepted: a bounded 8,192-entry window remembers the nonces of the
   last five minutes, so replaying a captured request inside the freshness
   window is refused (`crates/synccore/src/lan/replay.rs`).
+* **The signature has two versions** (`crates/synccore/src/lan/sig.rs`).
+  Version 1 is the form above and is kept byte for byte, so a device on an
+  older build keeps working. Version 2 keeps every version 1 field and adds
+  the range a transfer asked for: `offset`, the request body length, `total`
+  (the announced document size; `u64::MAX` when the caller does not know it),
+  the document `sha256` (32 zero bytes when unknown) and a `transfer_id`
+  derived from `path`, `total` and `sha256`. The receiver's device id and every
+  field's length are signed too, so `("ab", "c")` and `("a", "bc")` cannot
+  produce the same bytes. Both versions sign the canonical *bytes*, never a
+  JSON encoding:
+
+  ```text
+  v2 prefix: "omnioffice-lan-sig/v2\0"
+  op | sender_id | receiver_id | transfer_id | path | offset u64be |
+  length u64be | body_hash 32B | total u64be | sha256 32B | nonce |
+  timestamp i64be          (every field: u32be length, then the bytes)
+  ```
+
+  The two ends agree on the version while pairing: each side sends
+  `features: ["sig-v2"]` in its pairing message and stores what the other
+  announced (`PairedPeer::features`). The version is per request
+  (`Request::sig_v`) and `protocol_version` does not move, because an older
+  host simply parses the unknown fields and answers "the request signature is
+  not valid" - which is why a client only sends version 2 to a peer that said
+  it can check it. **A pair formed before this change keeps version 1**: the
+  capability is exchanged during pairing, and re-pairing is the upgrade path
+  for those two devices. A version 2 request accepted once is remembered as
+  `min_sig = 2` on the host (**trust on first use**); from then on a version 1
+  request from that peer is refused with `sig-downgrade` and the connection is
+  dropped, so a captured downgrade cannot undo the upgrade even if an older
+  store file lost the feature list.
+* A refused request can name the kind: `bad-signature` (the MAC does not
+  check out; the message never says which field), `sig-downgrade` (the peer
+  must sign with version 2) and `range-mismatch` (the range does not belong to
+  the document the host holds). An older host leaves the field empty, so the
+  caller falls back to the message.
 * Paths are validated: only relative paths, no `..`, no absolute paths, no
   hidden paths, and only document extensions (`docx`, `xlsx`, `pptx`, `odt`,
   `ods`, `odp`, `pdf`, `rtf`, `txt`, `csv`, `oswk`, `png`, `jpg`, `jpeg`).
@@ -169,9 +205,14 @@ A download resumes the same way, with `begin_get` / `get_chunk`:
 - A resume happens only when the note still matches the document the host
   announces; a changed document starts from zero rather than splicing two
   versions together.
-- Each `get_chunk` carries the byte offset and the size the client believes in;
-  the host refuses an offset past the end and refuses the whole chunk when the
-  size moved under it ("the document changed; start the download again").
+- Each `get_chunk` carries the byte offset, the size the client believes in and
+  the SHA-256 of the document it is assembling, all covered by the version 2
+  signature and all checked with the session: an offset past the end, a size
+  that moved and a hash the host does not hold are refused as
+  `range-mismatch` ("the document changed; start the download again"). The hash
+  is verified once, on the first chunk (offset 0), because hashing costs a full
+  read; the assembled file is hashed again on the client before it reaches the
+  caller.
 - The assembled file is hashed before it reaches the caller. A mismatch drops
   the partial and starts over, up to three attempts - the same rule as uploads.
 - A host from before this change answers "unknown operation" and the client

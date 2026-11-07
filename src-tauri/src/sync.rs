@@ -71,6 +71,10 @@ fn sync_error(error: SyncError) -> PdfError {
             format!("The WebDAV server sent an unexpected response: {message}"),
         ),
         SyncError::InvalidInput(message) => PdfError::coded(ErrorCode::InvalidInput, message),
+        // LAN request signatures; the LAN commands map these with more detail.
+        SyncError::BadSignature | SyncError::SigDowngrade | SyncError::RangeMismatch => {
+            PdfError::coded(ErrorCode::InvalidInput, "The other device refused the LAN request.")
+        }
         SyncError::Io(message) => PdfError::Internal(format!("sync I/O error: {message}")),
         SyncError::Internal(message) => PdfError::Internal(message),
     }

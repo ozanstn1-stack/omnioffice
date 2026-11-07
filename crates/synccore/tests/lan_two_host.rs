@@ -53,6 +53,8 @@ fn peer_for(identity: &LanIdentity, address: &str, shared_key: &str, host_side: 
         shared_key: shared_key.to_string(),
         paired_at: "2026-10-31T00:00:00Z".to_string(),
         host_side,
+        features: Vec::new(),
+        min_sig: 0,
     }
 }
 

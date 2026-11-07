@@ -13,7 +13,6 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use sha2::{Digest, Sha256};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 
 use super::transport;
@@ -169,8 +168,7 @@ fn a_signed_request_is_accepted_once() {
         nonce: "0f".repeat(16),
         ..Request::default()
     };
-    let body_hash = hex_encode(&Sha256::digest(b""));
-    request.mac = sign(&peer.shared_key, &request, &body_hash).expect("signature");
+    sig::sign_for_test(&peer, &mut request);
 
     let mut first = transport::Client::connect(&address, Some(&peer.fingerprint)).expect("connect");
     let (accepted, _) = first.request::<Request, Response>(&request, None).expect("first delivery");
@@ -183,7 +181,7 @@ fn a_signed_request_is_accepted_once() {
     // A fresh nonce still works, so the guard is not simply refusing pings.
     let mut fresh = request.clone();
     fresh.nonce = "1e".repeat(16);
-    fresh.mac = sign(&peer.shared_key, &fresh, &body_hash).expect("signature");
+    sig::sign_for_test(&peer, &mut fresh);
     let mut connection = transport::Client::connect(&address, Some(&peer.fingerprint)).expect("connect");
     let (accepted, _) = connection.request::<Request, Response>(&fresh, None).expect("fresh delivery");
     assert!(accepted.ok, "a fresh nonce is accepted: {}", accepted.error);

@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **LAN requests can bind the range they ask for:** the request signature has a
+  second version. Version 1 signs `device_id`, timestamp, nonce, operation,
+  path and the body hash and is unchanged, so an older build keeps working.
+  Version 2 keeps all of it and adds `offset`, the chunk length, `total`, the
+  document `sha256`, a `transfer_id` derived from them and the receiver's device
+  id, with every field length-prefixed, so the MAC of a resumable transfer now
+  says which range of which document version was requested. The two ends agree
+  on the version while pairing (`features: ["sig-v2"]`, stored on the peer) and
+  the version travels per request, so `protocol_version` does not move and a
+  new build still talks to an older peer - a pair formed before this change
+  keeps version 1 until the two devices pair again. The first accepted version 2
+  request from a peer is pinned (`min_sig = 2`) and a later version 1 request
+  from it is refused as `sig-downgrade`; a refused request now names its kind
+  (`bad-signature`, `sig-downgrade`, `range-mismatch`) without ever saying which
+  field failed. `get_chunk` sends the document hash it is assembling, and the
+  host checks the range against the file it holds.
+
 ## [7.12.0] - 2026-11-07
 
 ### Added
