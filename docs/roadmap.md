@@ -294,9 +294,9 @@ Effort estimates assume a single developer.
   diamonds, caps and slashes) follow on lines, polylines and callouts.
   A note also uses the form's own simple `/DR` font when its metrics are
   readable (WinAnsi and `/Widths`), and a line's `/LL` leaders are drawn with
-  their `/LLE`/`/LLO` variants. Redactions, composite (Type0/CID) fonts,
-  bevel/inset border styles, line captions, `/BE` clouds and `/NoZoom` are the
-  next candidates.
+  their `/LLE`/`/LLO` variants, and `/BS /S` bevel, inset and underline frames
+  are painted. Redactions, composite (Type0/CID) fonts, line captions (`/Cap`),
+  `/BE` clouds and `/NoZoom` are the next candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF

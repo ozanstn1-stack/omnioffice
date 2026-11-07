@@ -1644,7 +1644,24 @@ Type0/CID/Identity-H · Type3 · MacRoman/Standard/yerleşik kodlama · font dos
   yapıldı; `/BS /S /B/I/U` stilleri, `/Cap` caption ve `/NoZoom` sonraki
   dilimlere bırakıldı (Opus da üç ayrı commit/PR önermişti; `/Cap` ve stiller
   ayrı PR olarak planlanacak).
+- **PR #644 birleşti** (`e57e84a`), 18 kontrol yeşil, dal silindi; `target/`
+  temizlendi (4.8 GiB), disk %60.
+- **DURUM (Opus `f8a72fc4` §2.2–2.3):** uygulandı. `border.rs` **~250**
+  (`Edge { Plain, Beveled, Inset, Underline }`, `/S` ayrıştırma, `lighter`/
+  `darker`, `k = 0.25`), yeni `bevel.rs` **~250** (`rect_frame` Square+FreeText,
+  `ellipse_frame` Circle — 15°'lik yay segmentleri, `polygon_frame` Polygon —
+  shoelace ile normal, kenar başına ton; küçük şekil → Plain; Line/PolyLine/Ink
+  düz), `appearance.rs` **~300**, `paths.rs` **~310**, `freetext.rs` **~390**.
+  **9 yeni entegrasyon testi** (`nup_border_styles_test.rs`) + **7 birim testi**
+  (`bevel.rs`); lib 236 → **243**, N-up **133 → 142**. Kapılar: fmt, clippy
+  `-D warnings`, `files:check`/`files:update`, `docs:stats`, `claims:check`
+  (395 iddia / 521 işaret) temiz.
+  **Opus planından sapmalar:** (1) B/I bantları L-şekli yerine dört dikdörtgen
+  bandı olarak boyanıyor (aynı görünüm, daha az kod; köşe önceliği belgelendi);
+  (2) Circle bantları Bézier yerine 15°'lik poligon segmentleriyle (belgelendi);
+  (3) FreeText çerçevesi `bevel`'e taşındı ama metin iç boşluğu `2w` yerine
+  `w + 2` kaldı (davranış testle sabit).
 - **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki iki kalem: (1) `/BS /S /B/I/U` stilleri (bevel/inset/underline, iki
-  tonlu çerçeve) + `/Cap` caption; (2) **v7.12.0** sürüm treni (versionCode
-  **7012000**). `/NoZoom` ayrı PR.
+  Sonraki iki kalem: (1) `/Cap` caption (`/CP`, `/CO`) ya da doğrudan
+  **v7.12.0** sürüm treni — `[Unreleased]` şu an **iki** girdi taşıyor (leader +
+  kenar stilleri), versionCode **7012000**; (2) `/NoZoom` ayrı PR.

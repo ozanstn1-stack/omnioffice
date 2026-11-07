@@ -89,16 +89,20 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
         ops.push_str(&format!("{} {} {} {} re f\n", n(x0), n(y0), n(x1 - x0), n(y1 - y0)));
     }
     if border > 0.0 {
-        let half = border / 2.0;
-        ops.push_str(&style.colour.render(style.colour.stroke_op()));
-        stroke.ops(&mut ops);
-        ops.push_str(&format!(
-            "{} {} {} {} re S\n",
-            n(x0 + half),
-            n(y0 + half),
-            n(x1 - x0 - border),
-            n(y1 - y0 - border)
-        ));
+        if stroke.edge == super::border::Edge::Plain {
+            let half = border / 2.0;
+            ops.push_str(&style.colour.render(style.colour.stroke_op()));
+            stroke.ops(&mut ops);
+            ops.push_str(&format!(
+                "{} {} {} {} re S\n",
+                n(x0 + half),
+                n(y0 + half),
+                n(x1 - x0 - border),
+                n(y1 - y0 - border)
+            ));
+        } else {
+            super::bevel::rect_frame(&mut ops, [x0, y0, x1, y1], &stroke, &style.colour);
+        }
     }
     callout(doc, annot, &style, &stroke, &mut ops);
 

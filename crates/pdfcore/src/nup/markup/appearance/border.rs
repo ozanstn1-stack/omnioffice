@@ -9,11 +9,25 @@ use super::super::super::dests::resolve;
 use super::{number, number_text};
 use lopdf::{Dictionary, Document, Object};
 
-/// A border: its width and, when the style asks for one, a validated dash
-/// pattern.
+/// The `/BS /S` border style: how the frame is painted, not how thick it is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(super) enum Edge {
+    /// A single line, the default.
+    #[default]
+    Plain,
+    /// Two tones, light on the top and left, dark on the bottom and right.
+    Beveled,
+    /// The same two tones with the sides swapped, so the frame looks sunk.
+    Inset,
+    /// Only the bottom edge, the way a field underline is drawn.
+    Underline,
+}
+
+/// A border: its width, a validated dash pattern and the style.
 pub(super) struct Stroke {
     pub(super) width: f64,
     pub(super) dash: Option<Vec<f64>>,
+    pub(super) edge: Edge,
 }
 
 impl Stroke {
@@ -33,6 +47,43 @@ impl Stroke {
     }
 }
 
+/// How far a bevel tone moves away from the stroke colour.
+const BEVEL_TONE: f64 = 0.25;
+
+/// The lighter tone of a bevel: RGB channels move toward white, a CMYK colour
+/// is lightened by taking ink away.
+pub(super) fn lighter(colour: &super::Color) -> super::Color {
+    let values = colour
+        .values
+        .iter()
+        .map(
+            |value| {
+                if colour.values.len() == 4 {
+                    value * (1.0 - BEVEL_TONE)
+                } else {
+                    value + (1.0 - value) * BEVEL_TONE
+                }
+            },
+        )
+        .collect();
+    super::Color { values }
+}
+
+/// The darker tone: RGB channels move toward black, a CMYK colour is darkened
+/// by adding black ink only, which keeps the hue.
+pub(super) fn darker(colour: &super::Color) -> super::Color {
+    let mut values = colour.values.clone();
+    if values.len() == 4 {
+        let black = values[3];
+        values[3] = black + (1.0 - black) * BEVEL_TONE;
+    } else {
+        for value in &mut values {
+            *value *= 1.0 - BEVEL_TONE;
+        }
+    }
+    super::Color { values }
+}
+
 /// Reads the border of one annotation; `None` when the width is unusable.
 pub(super) fn stroke(doc: &Document, annot: &Dictionary) -> Option<Stroke> {
     let style = annot.get(b"BS").ok().map(|value| resolve(doc, value)).and_then(|value| value.as_dict().ok().cloned());
@@ -50,25 +101,26 @@ pub(super) fn stroke(doc: &Document, annot: &Dictionary) -> Option<Stroke> {
     if !width.is_finite() || !(0.0..=1_000.0).contains(&width) {
         return None;
     }
-    let dash = match &style {
-        Some(dict) => {
-            let dashed = dict.get(b"S").ok().and_then(|value| value.as_name().ok()).map(|name| name == b"D");
-            match dashed {
-                // A style other than dashed ignores a `/D` that may still be
-                // there, as the specification says.
-                Some(false) => None,
-                Some(true) => match dict.get(b"D").ok() {
-                    Some(pattern) => valid_dash(doc, pattern),
-                    // `/S /D` without `/D` uses the specification's default.
-                    None => Some(vec![3.0]),
-                },
-                None => None,
-            }
-        }
-        None => None,
+    let style_name =
+        style.as_ref().and_then(|dict| dict.get(b"S").ok().and_then(|value| value.as_name().ok()).map(<[u8]>::to_vec));
+    let edge = match style_name.as_deref() {
+        Some(b"B") => Edge::Beveled,
+        Some(b"I") => Edge::Inset,
+        Some(b"U") => Edge::Underline,
+        _ => Edge::Plain,
+    };
+    let dash = match style_name.as_deref() {
+        // A dashed frame; any other style ignores a `/D` that may still be
+        // there, as the specification says.
+        Some(b"D") => match style.as_ref().and_then(|dict| dict.get(b"D").ok()) {
+            Some(pattern) => valid_dash(doc, pattern),
+            // `/S /D` without `/D` uses the specification's default.
+            None => Some(vec![3.0]),
+        },
+        _ => None,
     };
     let dash = dash.or_else(|| legacy_dash(doc, annot));
-    Some(Stroke { width, dash })
+    Some(Stroke { width, dash, edge })
 }
 
 /// The fourth entry of a legacy `/Border [h v w dash]` array.
@@ -178,10 +230,10 @@ mod tests {
     #[test]
     fn the_operator_keeps_a_solid_border_byte_identical() {
         let mut out = String::new();
-        Stroke { width: 2.0, dash: None }.ops(&mut out);
+        Stroke { width: 2.0, dash: None, edge: Edge::Plain }.ops(&mut out);
         assert_eq!(out, "2 w\n");
         let mut out = String::new();
-        Stroke { width: 1.5, dash: Some(vec![3.0, 2.0]) }.ops(&mut out);
+        Stroke { width: 1.5, dash: Some(vec![3.0, 2.0]), edge: Edge::Plain }.ops(&mut out);
         assert_eq!(out, "1.5 w\n[3 2] 0 d\n");
     }
 }

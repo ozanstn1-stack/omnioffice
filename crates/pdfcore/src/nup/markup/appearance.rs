@@ -19,6 +19,7 @@ use super::super::links::number;
 use super::Synth;
 use lopdf::{Dictionary, Document};
 
+mod bevel;
 mod border;
 mod drfont;
 mod ends;
@@ -133,6 +134,33 @@ fn shape(doc: &Document, annot: &Dictionary, rect: [f64; 4], kind: ShapeKind) ->
     let (left, bottom, right, top) = (x0 + inner, y0 + inner, x1 - inner, y1 - inner);
     if right - left <= 1e-6 || top - bottom <= 1e-6 {
         return None;
+    }
+    // A styled frame (bevel, inset, underline) is painted by `bevel`; the
+    // plain path below is left untouched so its output stays byte-identical.
+    let edge = match kind {
+        // An underline means nothing on an ellipse; a viewer shows a plain one.
+        ShapeKind::Circle if border.edge == border::Edge::Underline => border::Edge::Plain,
+        _ => border.edge,
+    };
+    if edge != border::Edge::Plain {
+        let mut styled = String::new();
+        if let Some(fill) = &fill {
+            styled.push_str(&fill.render(fill.fill_op()));
+            styled.push_str(&format!(
+                "{} {} {} {} re f\n",
+                number_text(x0),
+                number_text(y0),
+                number_text(x1 - x0),
+                number_text(y1 - y0)
+            ));
+        }
+        if let (Some(outline), true) = (&stroke, has_stroke) {
+            match kind {
+                ShapeKind::Square => bevel::rect_frame(&mut styled, rect, &border, outline),
+                ShapeKind::Circle => bevel::ellipse_frame(&mut styled, rect, &border, outline),
+            }
+        }
+        return Some(Synth { ops: styled.into_bytes(), bbox: rect, multiply: false, font: None });
     }
     let mut ops = String::new();
     if has_stroke {

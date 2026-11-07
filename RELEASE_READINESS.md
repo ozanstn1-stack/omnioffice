@@ -142,6 +142,17 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_appearance_test.rs#ink_draws_every_stroke`
   `test:crates/pdfcore/tests/nup_appearance_test.rs#an_annotation_with_a_broken_appearance_is_not_synthesized`
 
+- **Border styles are synthesized:** `/BS /S` `B` paints a light top/left and a
+  dark bottom/right band inside the frame (tones a quarter toward white or
+  black from the stroke colour), `I` swaps them and `U` keeps only the bottom
+  edge. Squares, free-text notes, circles (two half-arcs) and polygons (one tone
+  per edge) follow; a shape smaller than four widths falls back to the plain
+  frame, and lines, polylines and ink keep a plain stroke.
+  `test:crates/pdfcore/tests/nup_border_styles_test.rs#a_beveled_square_paints_two_tones`
+  `test:crates/pdfcore/tests/nup_border_styles_test.rs#an_inset_square_swaps_the_tones`
+  `test:crates/pdfcore/tests/nup_border_styles_test.rs#an_underline_keeps_only_the_bottom_edge`
+  `test:crates/pdfcore/tests/nup_border_styles_test.rs#a_beveled_polygon_colours_each_edge`
+
 - **Line leaders are synthesized:** a `Line` with `/LL` is drawn beside its
   anchors with a leader from each one; `/LLE` extends the leader past the line,
   `/LLO` leaves a gap at the anchor, a negative `/LL` flips the side, `/LE`
