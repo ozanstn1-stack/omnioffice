@@ -2266,3 +2266,18 @@ ve `check-published` **eşleşti**. Docs: `SECURITY.md` "Verifying a download"
 tablosuna satır, CHANGELOG `### Security`. **Android** için aynı job ayrı dilim
 (kendi `*.intoto.jsonl`'i); asset sayısı 18 → **19** (desktop zarfı), Android
 zarfıyla 20.
+
+**PR #660 birleşti** (`f3e2cf5`), 19 kontrol yeşil. **İlk CI turunda
+`Frontend (tests, type check, build)` düştü:** `reproducibility.test.ts` her
+`uses:` için **commit SHA** istiyor, SLSA generator'ı ise kendi dokümanı gereği
+**tag** ile çağrılmalıydı. Çözüm: `check-reproducibility-inputs.mjs`'e tam ref
+adını veren bir allow-list (`PINNED_BY_TAG`) + `docs/reproducibility.md`'de
+"Action pinning, and the one exception" bölümü. İkinci turda hepsi yeşil.
+
+## Sıradaki: v7.17.0 (provenance'ın ilk gerçek testi) — ama önce bir kullanıcı dilimi
+Provenance job'ları **yalnız tag'de** koşuyor; Opus'un kuralı: sürüm yalnız build
+meta verisi içeriyorsa mağaza sürümü çıkarma. Bu yüzden **önce `/BE` bulut
+kenarlıklar** (küçük, kullanıcı-görünür, pdfcore içinde, yerelde doğrulanabilir),
+sonra v7.17.0: içinde hem `/BE` hem provenance olur → tag'de
+`omnioffice-v7.17.0-desktop.intoto.jsonl` (18 → **19** asset) ve
+`slsa-verifier`/`coverage` ile doğrulama.
