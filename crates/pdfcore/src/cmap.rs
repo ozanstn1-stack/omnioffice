@@ -14,6 +14,11 @@
 //! only a destination that decodes to exactly one Unicode scalar is kept - a
 //! ligature (`fi`) has no single character to map back to, and a lone surrogate
 //! is not text.
+//!
+//! `fontusage::parse_to_unicode` reads the same streams for the PDF/A
+//! substitute-font path, and it deliberately differs: it goes code to text, keeps
+//! ligature destinations, and refuses the whole stream on one malformed entry.
+//! Drawing needs the inverse and can use a partial map, hence a second reader.
 
 use std::collections::BTreeMap;
 
