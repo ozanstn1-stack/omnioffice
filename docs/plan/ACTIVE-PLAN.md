@@ -2354,3 +2354,23 @@ iki zarf birlikte verildiğinde `coverage` **0** dönmeli.
    CMap) — Opus'un 3-4 PR'lık serisi; sentez metninde CJK için son boşluk.
 3. `/NoZoom` (opt-in) ve redaksiyon düzleştirme (içerik kaldırmadan yapılmaz).
 4. OSV kalan uyarıları (çoğu unmaintained/GTK3) — gerekçeli `ignore` + izleme.
+
+---
+
+# PR #666: `/ToUnicode` okuyucusu (kompozit font serisinin ilk mekanizması)
+- `crates/pdfcore/src/cmap.rs` (311) + `cmap/tests.rs` (145, 14 test).
+  `cmap::read(&[u8]) -> ToUnicode`; `code(char) -> Option<u16>` (en küçük kod
+  kazanır), `covers(&str)`, `encode(&str) -> Option<Vec<u8>>` (iki bayt BE).
+  Güvensiz girdi: bozuk giriş yalnız kendini kaybeder, akış ve harita
+  sınırlanır (1 MiB / 65536), hedef tek kullanılabilir skaler değilse atlanır.
+- **Fuzz gerçek bir hata buldu** (ilk koşuda, 7 dk'da): `increment`
+  içinde, `bfrange` hedefi **sekiz baytın tamamını** kapladığında `u64`
+  kendi genişliği kadar sağa kaydırılıyordu → `attempt to shift right with
+  overflow`. Düzeltme: genişlik > 8 önce reddedilir, tam genişlikte uyum
+  kaydırması hiç yapılmaz. Regresyon testi 1..=8 bayt genişliklerini tarar ve
+  **hatalı kodla düştüğü doğrulandı** (`a_destination_of_any_width...`).
+- Doğrulama: lib **286** test, clippy `-D warnings` temiz, `files:check`
+  (yeni dosya 311 ≤ 400), `docs:stats`, `claims:check`, `release-guard`,
+  `reproducibility`, YAML parse.
+- **Opus planı `edaa33b8`** — uyum: birebir ("önce bağımsız ayrıştırıcı"
+  adımı; `pdfcore`'da ToUnicode ayrıştırıcısı yoktu, ölçüldü).
