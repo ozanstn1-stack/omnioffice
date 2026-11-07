@@ -10,6 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 officecore = { path = "../crates/officecore" }
+pdfcore = { path = "../crates/pdfcore" }
 lopdf = "0.46.0"
 
 [[bin]]
@@ -77,3 +78,10 @@ bench = false
 
 [patch.crates-io]
 calamine = { path = "../vendor/calamine" }
+
+[[bin]]
+name = "cmap"
+path = "fuzz_targets/cmap.rs"
+test = false
+doc = false
+bench = false

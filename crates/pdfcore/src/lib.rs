@@ -41,6 +41,7 @@
 pub mod annotate;
 pub mod attachment;
 pub mod certificate;
+pub mod cmap;
 pub mod compare;
 pub mod compress;
 pub mod content;
