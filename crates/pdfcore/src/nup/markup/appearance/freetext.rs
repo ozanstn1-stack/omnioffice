@@ -13,10 +13,12 @@
 
 use super::super::super::dests::resolve;
 use super::super::super::links::number;
+use super::super::FontSpec;
+use super::drfont::{self, DrFont};
 use super::std14::{Family, Std14};
-use super::textfit::{decode, encode, width, wrap};
+use super::textfit::{decode, encode, width_of, wrap_with, FontMetrics, Std14Metrics};
 use super::{color, Color, Synth};
-use lopdf::{Dictionary, Document};
+use lopdf::{Dictionary, Document, ObjectId};
 
 /// Space between the border and the text, in points.
 const PADDING: f64 = 2.0;
@@ -32,9 +34,40 @@ enum Align {
     Right,
 }
 
+/// Which font the note is set in.
+enum Face {
+    /// One of the standard 14, written by us.
+    Standard(Std14),
+    /// A simple font of the document, referenced as it already is.
+    Document { key: String, id: ObjectId, metrics: DrFont },
+}
+
+impl Face {
+    fn with_metrics<R>(&self, run: impl FnOnce(&dyn FontMetrics) -> R) -> R {
+        match self {
+            Face::Standard(font) => run(&Std14Metrics(*font)),
+            Face::Document { metrics, .. } => run(metrics),
+        }
+    }
+
+    fn resource_key(&self) -> String {
+        match self {
+            Face::Standard(_) => "FOmni0".to_string(),
+            Face::Document { key, .. } => key.clone(),
+        }
+    }
+
+    fn spec(&self) -> FontSpec {
+        match self {
+            Face::Standard(font) => FontSpec::Standard(*font),
+            Face::Document { key, id, .. } => FontSpec::Resource { key: key.as_bytes().to_vec(), id: *id },
+        }
+    }
+}
+
 /// What `/DA` says about the text: font, size and colour.
 struct Style {
-    font: Std14,
+    face: Face,
     size: f64,
     colour: Color,
 }
@@ -75,14 +108,28 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
         .map(|value| resolve(doc, value))
         .and_then(|value| value.as_str().ok())
         .and_then(decode);
+    let mut style = style;
     if let Some(text) = text.filter(|text| !text.trim().is_empty()) {
-        // A character the standard fonts cannot show would print as a blank or
-        // a guess; dropping the note is the honest choice.
-        encode(&text)?;
+        // A document font is used only when it can show every character; a
+        // missing glyph would print as a blank, so the note as a whole falls
+        // back to a standard face.
+        let usable = match &style.face {
+            Face::Document { metrics, .. } => metrics.can_show(&text),
+            Face::Standard(_) => true,
+        };
+        if !usable {
+            style.face = Face::Standard(Std14 { family: Family::Helvetica, bold: false, italic: false });
+        }
+        // A character no font can show drops the note rather than printing a
+        // guess; the standard font is the last word on that.
+        if matches!(style.face, Face::Standard(_)) {
+            encode(&text)?;
+        }
         layout(&style, align, border, [x0, y0, x1, y1], &text, &mut ops);
     }
+    let spec = style.face.spec();
     ops.push_str("Q\n");
-    Some(Synth { ops: ops.into_bytes(), bbox: rect, multiply: false, font: Some(style.font) })
+    Some(Synth { ops: ops.into_bytes(), bbox: rect, multiply: false, font: Some(spec) })
 }
 
 /// The box after `/RD` and the border are taken off.
@@ -154,24 +201,31 @@ fn layout(style: &Style, align: Align, border: f64, box_: [f64; 4], text: &str, 
     if max_width <= size || ty1 - ty0 < size {
         return;
     }
-    let lines = wrap(style.font, size as f32, text, max_width as f32, MAX_LINES);
-    let lead = LEADING * size;
-    let first = ty1 - size * f64::from(style.font.ascent()) / 1000.0;
-    ops.push_str(&format!("BT\n/FOmni0 {} Tf\n{}\n", n(size), style.colour.render(style.colour.fill_op()).trim_end()));
-    for (index, line) in lines.iter().enumerate() {
-        let baseline = first - index as f64 * lead;
-        if baseline < ty0 - size {
-            break;
+    style.face.with_metrics(|metrics| {
+        let lines = wrap_with(metrics, size as f32, text, max_width as f32, MAX_LINES);
+        let lead = LEADING * size;
+        let first = ty1 - size * f64::from(metrics.ascent()) / 1000.0;
+        ops.push_str(&format!(
+            "BT\n/{} {} Tf\n{}\n",
+            style.face.resource_key(),
+            n(size),
+            style.colour.render(style.colour.fill_op()).trim_end()
+        ));
+        for (index, line) in lines.iter().enumerate() {
+            let baseline = first - index as f64 * lead;
+            if baseline < ty0 - size {
+                break;
+            }
+            let line_width = f64::from(width_of(metrics, line)) * size / 1000.0;
+            let x = match align {
+                Align::Left => tx0,
+                Align::Center => tx0 + (max_width - line_width) / 2.0,
+                Align::Right => tx1 - line_width,
+            };
+            ops.push_str(&format!("1 0 0 1 {} {} Tm\n<{}> Tj\n", n(x), n(baseline), hex(line)));
         }
-        let line_width = f64::from(width(style.font, line)) * size / 1000.0;
-        let x = match align {
-            Align::Left => tx0,
-            Align::Center => tx0 + (max_width - line_width) / 2.0,
-            Align::Right => tx1 - line_width,
-        };
-        ops.push_str(&format!("1 0 0 1 {} {} Tm\n<{}> Tj\n", n(x), n(baseline), hex(line)));
-    }
-    ops.push_str("ET\n");
+        ops.push_str("ET\n");
+    });
 }
 /// The `/DA` chain: the annotation's own, then the form's, then a default.
 fn style_of(doc: &Document, annot: &Dictionary) -> Option<Style> {
@@ -187,13 +241,16 @@ fn style_of(doc: &Document, annot: &Dictionary) -> Option<Style> {
         .and_then(|form| resolve(doc, &form).as_dict().ok().cloned())
         .and_then(|form| form.get(b"DA").ok().and_then(|value| value.as_str().ok()).map(<[u8]>::to_vec));
     let parsed = own.as_deref().and_then(parse_da).or_else(|| form.as_deref().and_then(parse_da)).unwrap_or_default();
-    let font = font_of(doc, &parsed.font_name);
+    let face = match drfont::resolve_font(doc, annot, &parsed.font_name) {
+        Some(metrics) => Face::Document { key: parsed.font_name.clone(), id: metrics.id, metrics },
+        None => Face::Standard(font_of(doc, &parsed.font_name)),
+    };
     let size = parsed.size.unwrap_or(12.0);
     if !size.is_finite() || size <= 0.0 || size > 1000.0 {
         return None;
     }
     let colour = parsed.colour.unwrap_or(Color { values: vec![0.0] });
-    Some(Style { font, size, colour })
+    Some(Style { face, size, colour })
 }
 
 #[derive(Default)]

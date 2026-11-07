@@ -142,6 +142,17 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_appearance_test.rs#ink_draws_every_stroke`
   `test:crates/pdfcore/tests/nup_appearance_test.rs#an_annotation_with_a_broken_appearance_is_not_synthesized`
 
+- **Free-text notes reuse the document's simple font:** a note whose `/DA` names
+  a `/DR` Type1, MMType1 or TrueType font with `/Widths` is set in that font,
+  with the encoding read from WinAnsi and any `/Differences`; advances come from
+  the font's own widths, so line breaking matches the document. A composite or
+  Type3 font, a symbolic TrueType without an encoding, a font without widths and
+  a glyph the font cannot show all fall back to the standard-14 path as a whole.
+  `test:crates/pdfcore/tests/nup_freetext_dr.rs#a_document_font_is_referenced_instead_of_a_standard_one`
+  `test:crates/pdfcore/tests/nup_freetext_dr.rs#narrow_widths_change_the_line_breaking`
+  `test:crates/pdfcore/tests/nup_freetext_dr.rs#differences_carry_turkish_characters_through_the_document_font`
+  `test:crates/pdfcore/tests/nup_freetext_dr.rs#a_composite_font_is_refused`
+
 - **Line endings are synthesized:** a `Line`, `PolyLine` or free-text callout
   honours `/LE` - open/closed arrows in both directions, square, circle,
   diamond, butt and slash - drawn at `max(6, 3w)` with the line's own width and

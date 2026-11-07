@@ -1598,11 +1598,34 @@ otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
   işaret) temiz.
 - **PR #641 birleşti** (`67faa4c`), 18 kontrol yeşil, dal silindi; `target/`
   temizlendi (4.6 GiB), disk %60.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `chore/release-v7.11.0` açıldı.
-  Sıradaki iş **v7.11.0 sürüm treni** — `[Unreleased]` **üç** girdi taşıyor
-  (poligon/kesikli kenar #640, FreeText #639, `/LE` uçları #641). Adımlar
-  v7.10.0 ile aynı: sürüm 7.11.0 (`Cargo.toml`/lock, `package.json`/lock,
-  `tauri.conf.json`), `tauri.properties` versionCode **7011000**, CHANGELOG
-  `[Unreleased]` → `[7.11.0] - 2026-11-07`, README + indirme bağlantıları,
-  `RELEASE_READINESS` başlığı, fastlane `en-US/7011000.txt` + `tr-TR`, PR →
-  merge → auto-tag → 18 asset doğrulaması.
+- **v7.11.0 YAYINLANDI ve doğrulandı** (2026-11-07): PR #642 → `38a5bbe`, tag
+  `v7.11.0` → `38a5bbe`, Release + Android + auto-tag yeşil, **18 varlık**,
+  `SHA256SUMS.txt` 8 satır, `latest.json` sürüm **7.11.0** + imza dolu, release
+  gövdesi CHANGELOG `[7.11.0]` bölümüyle **birebir** (1983 karakter), Android
+  `versionName 7.11.0` / `versionCode **7011000**`.
+
+---
+
+# Seçilen iş kalemi: FreeText B dilimi — `/DR` basit font yeniden kullanımı — **Opus planı `c8a4bbba`**
+
+Gömülü fontlu formlarda N-up çıktısı Helvetica'ya düşüyor; hem görünüm hem satır
+kırma ölçüsü bozuluyor. B dilimi `/DR`'deki **basit fontları** (Type1/TrueType,
+`/Widths` + WinAnsi/`/Differences`) yeniden kullanır; Type0/CID, Type3,
+MacRoman/Standard kodlamalar kapsam dışı. Her belirsizlikte A dilimine
+(standart 14) düşülür — bugünkü çıktıdan kötü sonuç çıkmaz.
+
+## Plan
+1. **Ölçüm arayüzü** (`textfit.rs`, +~30): `trait FontMetrics { encode(char) -> Option<u8>, width(u8) -> f32, ascent() -> f32, descent() -> f32 }`; `Std14Metrics` mevcut davranışı birebir sarar (113 test değişmeden). Ölçüm: `size/1000 · Σ width(code)`.
+2. **`appearance/drfont.rs`** (≤400, hedef ~260): `resolve_dr_font(doc, da_name)` — `Catalog /AcroForm /DR /Font /<ad>` (önce annotation `/DR`); kabul: `/Subtype` Type1|MMType1|TrueType, `/Widths` + `/FirstChar`, kodlama WinAnsi ya da `/Differences`'lı sözlük; Type0/Type3/MacRoman/Standard/symbolic-TrueType → `None`. `DrFont { name, widths, first_char, missing_width, fwd[256], rev, ascent, descent }`; genişlik `W[c-FC]` (aralık dışı → `MissingWidth`), `LastChar` üst sınır; glyph adı → Unicode (`AGL` alt kümesi, `uniXXXX`, `uXXXX`), ters tabloda en küçük kod; `w==0` (boşluk hariç) = "glif yok" → A yolu; ascent/descent `/FontDescriptor`'dan, makul değilse Helvetica.
+3. **`freetext.rs`** (+~25): `/DA` adı → `resolve_dr_font`; tüm karakterler kodlanabiliyor ve `w>0` ise B yolu, değilse **tamamen** A yolu (karakter bazında karıştırma yok); içerik akışında kaynak adı `/DA`'daki ad, metin hex `<…> Tj`; `/Q`, `/RD`, callout, `/LE` aynı `&dyn FontMetrics` üzerinden.
+4. **Font nesnesi**: sentez aynı belgede yapılıyorsa `/DR` referansı doğrudan `/Resources /Font`'a; değilse mevcut kopyalayıcı + oturum önbelleği; `install.rs` ≤+15 satır, `nup.rs` 360 (değişmez).
+5. **Testler**: yeni `tests/nup_freetext_dr.rs` (~14 vaka): `/DR` Type1 WinAnsi çizilir + doğru hex · dar `/Widths` satır kırmayı değiştirir · `/Differences` ile Türkçe · kodlanamayan karakter → A yolu · `w==0` → A · Type0/Type3 → A · `/Widths` yok → A · `/DA` adı yok → A · bozuk `FontDescriptor` → güvenli çıktı · iki sayfada aynı font tek nesne · `0 Tf` kutuya sığar · callout/`/LE` gerilemez · `/AP` varsa dokunulmaz. + `drfont` birim testleri (~8). Hedef: lib ~237, N-up **127**.
+6. **Bütçe**: `drfont.rs` yeni · `freetext.rs` 332 → ~357 · `textfit.rs` 242 → ~272 · `std14.rs` 197 → ~210 · `install.rs` ≤176 · `appearance.rs` +1 (`mod`).
+7. **Kapılar**: fmt, clippy `-D warnings`, `cargo test -p pdfcore`, `files:check`/`update`, `docs:stats`, `claims:check`; sonunda `cargo clean` + `df -h /`. Tek PR `feat/nup-freetext-dr`.
+
+## Kapsam dışı
+Type0/CID/Identity-H · Type3 · MacRoman/Standard/yerleşik kodlama · font dosyasını ayrıştırıp glif doğrulama · karakter bazında font karıştırma · `/RC`, `/DS` · font gömme/alt kümeleme.
+
+- **DURUM:** uygulandı. `textfit.rs` **308** (`FontMetrics` trait + `Std14Metrics` + `wrap_with` + `win_ansi_symbol` + `glyph_symbol`), yeni `drfont.rs` **305** (`DrFont`, `resolve_font`, `/Widths`+`/FirstChar`, WinAnsi + `/Differences`, `uniXXXX`/`uXXXX`, `can_show`, `/FontDescriptor` ascent, reddetme kuralları), `freetext.rs` **383** (`Face { Standard, Document }`, B→A tam düşüş, kaynak adı `/DA`'dan), `markup.rs` **271** (`FontSpec { Standard, Resource }`), `install.rs` **?** (Resource font sözlüğü). Testler: **10 entegrasyon** (`nup_freetext_dr.rs`) + **4 birim** (`drfont`); lib **233**, N-up testi **123**. Kapılar: fmt, clippy `-D warnings`, `files:check`/`files:update`, `docs:stats`, `claims:check` (393 iddia / 513 işaret) temiz.
+  **Opus planından sapmalar:** (1) font nesnesi kopyalanmıyor — `/DR`'deki **referans** doğrudan forma yazılıyor (sentez aynı belgede yapılıyor), bu yüzden kopyalama/önbellek adımı gerekmedi; (2) inline (dolaylı olmayan) font sözlüğü reddedilip A yoluna düşülüyor; (3) `descent` trait'ten çıkarıldı (kullanılmıyor).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge. Sonraki iki kalem (Opus): (1) N-up rötuş dilimi (`/LL` leader, `/BS /S /B/I/U`, `/NoZoom`), (2) v7.12.0 sürümü; ardından Calc spill tasarım dilimi.

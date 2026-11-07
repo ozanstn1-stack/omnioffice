@@ -876,7 +876,8 @@ These are real and honest:
   their border width), and a
   free-text note is set with a standard font referenced by name
   (Turkish and the other Latin-A glyphs ride a fixed `/Differences` table, so no
-  font program is embedded); an annotation that does ship one is never
+  font program is embedded), or in the form's own simple `/DR` font when it has
+  `/Widths` and a WinAnsi encoding; an annotation that does ship one is never
   re-synthesized. Redactions
   are still dropped, and the old page objects are left unreferenced.
 - **PPTX**: programmatic animations are simplified to what the model
@@ -978,7 +979,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1586 |
+| Rust tests | 1600 |
 | TypeScript test files | 231 |
 | TypeScript test cases (approx.) | 2641 |
 <!-- stats:end -->
