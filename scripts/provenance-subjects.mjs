@@ -245,20 +245,28 @@ async function commandCoverage(argv) {
       if (line === "") {
         continue;
       }
-      let bundle;
+      let entry;
       try {
-        bundle = JSON.parse(line);
+        entry = JSON.parse(line);
       } catch {
         return fail(`${file}:${index + 1}: not a JSON line`);
       }
-      if (bundle.payloadType !== "application/vnd.in-toto+json") {
-        return fail(`${file}:${index + 1}: not an in-toto envelope`);
-      }
+      // Three shapes are in the wild: a bare DSSE envelope, a Sigstore bundle
+      // wrapping one (what the SLSA generator publishes today), and the
+      // statement on its own.
+      const dsse = entry.dsseEnvelope ?? entry;
       let statement;
-      try {
-        statement = JSON.parse(Buffer.from(bundle.payload, "base64").toString("utf8"));
-      } catch {
-        return fail(`${file}:${index + 1}: the payload is not base64 JSON`);
+      if (dsse.payloadType === undefined && dsse._type !== undefined) {
+        statement = dsse;
+      } else {
+        if (dsse.payloadType !== "application/vnd.in-toto+json") {
+          return fail(`${file}:${index + 1}: not an in-toto envelope`);
+        }
+        try {
+          statement = JSON.parse(Buffer.from(dsse.payload, "base64").toString("utf8"));
+        } catch {
+          return fail(`${file}:${index + 1}: the payload is not base64 JSON`);
+        }
       }
       const type = statement._type;
       if (type !== "https://in-toto.io/Statement/v0.1" && type !== "https://in-toto.io/Statement/v1") {
