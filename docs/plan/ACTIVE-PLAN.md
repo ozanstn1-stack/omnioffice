@@ -1584,8 +1584,14 @@ otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
   **Opus planından sapma:** `/LE` çizgi uçları bu PR'a alınmadı (Opus'un önerisi
   gibi ikinci PR'a bırakıldı); `callout()` `freetext.rs`'te kaldı (ends.rs
   açılmadı).
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dilim 1 PR'ı açılıyor; CI yeşilse squash
-  merge. Sıradaki iki kalem: (1) **dilim 2** — `/LE` çizgi uçları (`/L`,
-  `PolyLine`, FreeText callout; OpenArrow/ClosedArrow/R*Arrow/Square/Circle/
-  Diamond/Butt/Slash) + bbox payı; (2) v7.11.0 sürüm treni (versionCode
-  **7011000**).
+- **PR #640 birleşti** (`7c98fa5`), 18 kontrol yeşil, dal silindi; `target/`
+  temizlendi (4.5 GiB), disk %60.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-line-ends` açıldı. Sıradaki
+  kalem **dilim 2: `/LE` çizgi uçları** — plan Opus `4a676a26` §5: `/L` ve
+  `/PolyLine` için iki uç (`/LE [a b]`), `FreeText` callout'ta tek uç (`/LE`
+  adı, yalnız `/CL`'nin ilk noktası). Türler: `None`, `Butt`, `Square`,
+  `Circle`, `Diamond`, `OpenArrow`, `ClosedArrow`, `ROpenArrow`, `RClosedArrow`,
+  `Slash`. Yön `u` çizgiden dışarı, `n` dik; `L = max(6, 3w)`; kapalı türler
+  `/IC` (yoksa dış hat) ile `b`/`s`, açık türler `S`; uç bloğu `q [] 0 d … Q`.
+  bbox payı `L + w`. Yeni `appearance/ends.rs` (≤400) + 10-12 test; sonra
+  v7.11.0 sürüm treni (versionCode **7011000**).
