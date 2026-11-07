@@ -2130,3 +2130,28 @@ değil) elendi.
 - Kapılar: fmt, clippy `-D warnings`, `cargo test -p pdfcore`, files:check
   (yeni modül ≤400, `textfont.rs` bütçede), docs:stats, claims:check,
   release-guard.
+
+## Adım 0-bis (dosya/bütçe ölçümü — uygulama için kesinleşti)
+- Bütçeler: `textfont.rs` **418** (tavan), `nup/markup.rs` **269** (tavan),
+  `nup/markup/install.rs` **169** (izlenmiyor → büyüyebilir),
+  `appearance/caption.rs` **399** (yeni dosya tavanı 400).
+- **Seam:** `textfont.rs` içindeki `parse_cmap`/`parse_metrics`/`write_font`/
+  `FontMetrics` yeni **`crates/pdfcore/src/textfont/subset.rs`**'ye taşınır
+  (~60 satır çıkar → `textfont.rs` küçülür, `mod subset;` + `pub use` eklenir);
+  orada **`SubsetFace`** doğar: `bundled()`, `can_encode(&str)`, `encode(&str)
+  -> String` (`<hex>`, 2 bayt glyph id), `measure(&str, size)`, ve
+  `write(doc, &BTreeSet<char>) -> PdfResult<ObjectId>` (alt küme fontu).
+  `TextFont` mevcut genel API'sini korur, içini `SubsetFace`'e devreder
+  (başlık/altbilgi, Bates, form görünümleri etkilenmez).
+- **Oluşturma fazı:** `install::synthesized_form(doc, synth)` (imza `doc` alır;
+  `install.rs` izlenmiyor) — `FontSpec::Subset { chars: BTreeSet<char> }`
+  görürse sayfa başına `BTreeMap<BTreeSet<char>, ObjectId>` önbelleğiyle
+  fontu **bir kez** yazar, formun `/Resources /Font`'una `/OmniTr <ref>`
+  koyar. Kodsuz metin (WinAnsi) yolu değişmez.
+- **Okuma fazı:** `SubsetFace::bundled()` saf (doc istemez) → caption/FreeText
+  ölçü ve kodlamayı okuma fazında yapar; `FontSpec::Subset` yalnız "bu metin
+  alt küme fontuyla yazıldı" işaretidir, deterministik (aynı karakter kümesi →
+  aynı font).
+- **Bu PR'ın kapsamı:** mekanizma + **caption** (`/Cap`), FreeText sonraki PR
+  (skill: bir PR'da tek mekanizma). `caption.rs` 399'da olduğu için testler
+  `appearance/caption_tests.rs`'ye taşınır (`read`/`offset_of` `pub(super)`).
