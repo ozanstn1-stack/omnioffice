@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A line's caption survives an imposition:** a `Line` annotation with
+  `/Cap true` and no appearance stream used to lose the text it carries. The
+  synthesized appearance now sets it - `/CP /Inline` (the default) puts the
+  caption on the line and breaks the stroke around it, `/CP /Top` puts it above,
+  and `/CO` moves it along and across the line - in Helvetica, filled with the
+  line's own colour, with the appearance box grown to contain it. The caption is
+  one line of `/Contents`; a character the standard font cannot show means no
+  caption at all rather than replacement glyphs, and an annotation that already
+  has an appearance stream is never touched.
+
 ## [7.13.0] - 2026-11-07
 
 ### Security

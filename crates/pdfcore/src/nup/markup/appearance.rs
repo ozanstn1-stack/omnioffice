@@ -8,11 +8,9 @@
 //! line kinds), so the placement matrix that already maps page space onto the
 //! sheet applies unchanged.
 //!
-//! Slice one covers the kinds whose appearance needs no font: the quad-point
-//! markup (`Highlight`, `Underline`, `Squiggly`, `StrikeOut`) and the shapes
-//! (`Square`, `Circle`, `Line`, `Ink`). `FreeText`, `Stamp` and the text-note
-//! icon stay out of scope; `/LE`, `/BE`, dashed borders and ink smoothing are
-//! documented as known simplifications.
+//! The quad-point markup (`Highlight`, `Underline`, `Squiggly`, `StrikeOut`),
+//! the shapes (`Square`, `Circle`, `Line`, `Ink`), `FreeText` and widgets are
+//! covered; `Stamp` and the text-note icon stay out of scope.
 
 use super::super::dests::resolve;
 use super::super::links::number;
@@ -21,6 +19,7 @@ use lopdf::{Dictionary, Document};
 
 mod bevel;
 mod border;
+mod caption;
 mod drfont;
 mod ends;
 mod freetext;
@@ -32,7 +31,7 @@ mod textfit;
 pub(crate) use std14::Std14;
 pub(super) use textfit::{differences, extra_base};
 
-/// A Bézier constant for a quarter circle.
+/// Bézier constant for a quarter circle.
 const KAPPA: f64 = 0.552_284_749_8;
 /// Builds the appearance of one annotation, or `None` when it cannot be drawn.
 pub(super) fn synthesize(doc: &Document, annot: &Dictionary, subtype: &[u8], rect: [f64; 4]) -> Option<Synth> {

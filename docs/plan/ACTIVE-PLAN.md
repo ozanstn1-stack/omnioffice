@@ -2000,3 +2000,72 @@ yazar). lib **111 → 118**, toplam Rust **1650 → 1657**. `lan.rs` bütçede
 kaldı (1254 → **1252**, başlık yorumları sıkıştırıldı), yeni dosya <400.
 Kapılar: fmt, clippy `-D warnings`, `cargo test -p synccore`, `files:check`,
 `docs:stats`, `claims:check` (395/521), `release-guard` (7.13.0 OK).
+
+**PR #652 birleşti** (`cf90af3`), 17 kontrol yeşil + 2 beklenen skip. İlk CI
+turunda yalnız `rustfmt` düştü (modül bildirimlerinin sırası) → `cargo fmt` +
+tek satırlık düzeltme commit'i.
+
+---
+
+# SÜRÜM: v7.13.0 yayınlandı ve doğrulandı (2026-11-07)
+
+- Tag **`v7.13.0` → `e690063`**; `Release` + `Android` **başarılı**, **18 asset**.
+- `latest.json` **7.13.0**, `windows-x86_64` platformunda **444 baytlık imza** ve
+  imzalı `OmniOffice_7.13.0_x64-setup.exe` bağlantısı; `SHA256SUMS.txt` **8 satır**;
+  `release body` == CHANGELOG `[7.13.0]` bölümü (2648 = 2648 karakter).
+- Android versionCode **7013000**; `release-guard` ilk kez gerçek sürümde koştu
+  (auto-tag tag'den önce) ve PR aşamasında eksik fastlane dosyasını yakaladı.
+- README indirme bağlantıları düzeltildi: `v7.7.0` tag'ini gösteriyorlardı
+  (7.12.0 assetleri için kırıktı) → artık `v7.13.0` + 7.13.0 dosya adları.
+- README Rust testi 1650 → **1657**; `target/` temizlendi, disk %60.
+
+## Sıradaki adaylar
+1. **`/Cap` caption** (Opus `c853876e`'nin ilk önerisi; sig-v2 test koşulu
+   artık karşılandı) — yalnız `/Cap true` + `/AP`'siz Line'da, Helvetica/WinAnsi.
+2. Sig-v2 **dilim B**: `protocol_version` artışı yerine isteğe bağlı zorunlu v2
+   (birkaç sürüm sonra, UI "yeniden eşleşin" mesajıyla).
+3. Sürüm sonrası bakım: Scorecard/Renovate düşük kontrolleri.
+
+---
+
+# Seçilen iş kalemi: Line `/Cap` caption'ı N-up sentezinde — **Opus `c853876e` §2/§4**
+
+## Adım 0 (ölçüldü)
+- `/Cap`, `/CP`, `/CO` `crates/pdfcore/src/**` içinde **hiç işlenmiyor** ✔.
+- Line sentezleyicisi: `crates/pdfcore/src/nup/markup/appearance/paths.rs`
+  `line()`; `/LL` sonrası çizilen uç noktalar `Leaders { start, end, legs }`.
+- `Synth { ops, bbox, multiply, font }`; metin fontu `FontSpec::Standard`
+  (`install.rs` `/FOmni0` kaynağını yazıyor), hazır altyapı:
+  `std14.rs` (Helvetica AFM + WinAnsi + Türkçe `/Differences`, `ascent()`),
+  `textfit::encode(&str) -> Option<Vec<u8>>` (kodlanamayan karakter → `None`),
+  `textfit::width_of`, `number_text`, `union`, `padded`, `Color::fill_op`.
+- `/Contents` çözücü hazır: `docutil::pdf_text_value` (UTF-16BE/LE + UTF-8).
+- `paths.rs` bütçesi **327**; skill "tavanı yükseltme, alt modüle taşı" diyor →
+  yeni `appearance/caption.rs`, `paths.rs`'te yalnız ~9 satır bağlama ve
+  karşılığında yorum sıkıştırma.
+
+## Tasarım
+- **Yalnız** `/Cap` `true` **ve** `/AP` yokken (bu fonksiyon zaten yalnız o
+  durumda çağrılıyor) caption çizilir; diğer her durumda çıktı **bayt bayt
+  aynı** (golden test).
+- Metin: `/Contents` → düz tek satır (kontrol karakterleri → boşluk, boşluklar
+  tek); `textfit::encode` `None` dönerse **caption çizilmez** (skill: yerine
+  `?` basma) — Türkçe harfler `/Differences` ile kodlanabildiği için kaybolmaz.
+- Font: Helvetica (standart-14), boyut **9 pt** (Line'da `/DA` yok, spec boyut
+  vermiyor → sabit, belgelenir); renk: çizginin `/C` dolgu rengi.
+- `/CP`: `Top` ise çizginin üstünde (baseline = çizgi + `stroke/2 + descent +
+  1pt`), değilse `Inline`: metin çizgiye dikey ortalı, çizgi metin genişliği +
+  `2·1pt` kadar **kesilir** (iki segment); metin çizgiden uzunsa kesme yok.
+- `/CO` `[h v]`: orta noktadan itibaren `u·h + n·v`; bozuk/eksik → `(0,0)`,
+  `±14400`'e kırpılır.
+- `/BBox`: caption kuadı (baseline ± ascent/descent) çizgi/leader/uç kutusuyla
+  birleştirilir → hiçbir şey kırpılmaz.
+- Sıfır uzunluklu çizgi veya `|/CO|` taşması → caption yok.
+
+## Testler (caption.rs içinde)
+golden "caption yok → aynı baytlar" · `/Cap false` ve `1` (bool değil) · `/CP`
+bilinmeyen → Inline · `/CO` bozuk biçimler → (0,0) ve kırpma · `/Contents` boş →
+None · kodlanamayan karakter → None · WinAnsi/Türkçe kodlama · genişlik
+("Hello" = 20.502) · Inline kesme aralığı · Top baseline · diyagonal `Tm` ·
+`/CO` kaydırması · çizgiden uzun metin → kesme yok · sıfır uzunluk → None ·
+BBox kuadı kapsıyor · `/AP` varsa dokunulmaz (mevcut yol) · 2-up entegrasyon.

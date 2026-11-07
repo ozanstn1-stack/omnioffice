@@ -1,35 +1,33 @@
 //! Path-shaped annotations: lines, ink and the polygon kinds.
 //!
 //! All three are the same geometry with different bookkeeping - `/L` is one
-//! segment, `/InkList` is a list of polylines, `/Vertices` one polygon or
-//! polyline. The operators are emitted in page space, like every other
-//! synthesized appearance.
+//! segment, `/InkList` a list of polylines, `/Vertices` one polygon - drawn in
+//! page space like every other synthesized appearance.
 
 use super::super::super::dests::resolve;
+use super::super::FontSpec;
 use super::border::stroke;
+use super::caption;
 use super::{ends, number, number_text, union, Color, Synth};
 use lopdf::{Dictionary, Document, Object};
 
 /// A point in page space.
 pub(super) type Point = (f64, f64);
 
-/// Guards against absurd input rather than for a real document.
+/// Guards against absurd input, not a real document.
 const MAX_POINTS: usize = 20_000;
 const MAX_STROKES: usize = 1_000;
 
-/// Which side a positive `/LL` moves the line to: the left normal, as the
-/// viewers in the wild draw it rather than the specification's prose.
+/// A positive `/LL` moves the line to the left normal, as viewers draw it.
 const LEADER_SIDE: f64 = 1.0;
 
-/// The shifted line and its two leaders.
 struct Leaders {
     start: Point,
     end: Point,
     legs: Option<[(Point, Point); 2]>,
 }
 
-/// A line with a leader is drawn beside its anchors: `/LL` shifts it sideways,
-/// `/LLO` leaves a gap at each anchor and `/LLE` runs past the line.
+/// A line with a leader: `/LL` shifts it, `/LLO` gaps the anchors, `/LLE` runs on.
 fn leaders(start: Point, end: Point, offset: f64, extension: f64, gap: f64) -> Option<Leaders> {
     let (dx, dy) = (end.0 - start.0, end.1 - start.1);
     let length = dx.hypot(dy);
@@ -73,12 +71,18 @@ pub(super) fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option
     let read =
         |key: &[u8]| annot.get(key).ok().and_then(number).filter(|value| value.is_finite()).map(|value| value.max(0.0));
     let offset = annot.get(b"LL").ok().and_then(number).filter(|value| value.is_finite()).unwrap_or(0.0);
-    let extension = read(b"LLE").unwrap_or(0.0);
-    let gap = read(b"LLO").unwrap_or(0.0);
+    let (extension, gap) = (read(b"LLE").unwrap_or(0.0), read(b"LLO").unwrap_or(0.0));
     let drawn = leaders(anchors[0], anchors[1], offset, extension, gap)?;
+    let captioned = caption::synthesize(doc, annot, drawn.start, drawn.end, border.width, &colour);
     let mut ops = colour.render(colour.stroke_op());
     border.ops(&mut ops);
-    path_ops(&mut ops, &[drawn.start, drawn.end], false);
+    match captioned.as_ref().and_then(|captioned| captioned.gap) {
+        Some((from, to)) => {
+            path_ops(&mut ops, &[drawn.start, from], false);
+            path_ops(&mut ops, &[to, drawn.end], false);
+        }
+        None => path_ops(&mut ops, &[drawn.start, drawn.end], false),
+    }
     if let Some(legs) = drawn.legs {
         for (from, to) in legs {
             path_ops(&mut ops, &[from, to], false);
@@ -86,19 +90,15 @@ pub(super) fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option
     }
     ops.push_str("S\n");
     let mut reach = vec![drawn.start, drawn.end];
-    if let Some(legs) = drawn.legs {
-        for (from, to) in legs {
-            reach.push(from);
-            reach.push(to);
-        }
-    }
+    reach.extend(drawn.legs.iter().flatten().flat_map(|(from, to)| [*from, *to]));
     let pad = paint_ends(doc, annot, &mut ops, &[drawn.start, drawn.end], border.width)?;
-    Some(Synth {
-        ops: ops.into_bytes(),
-        bbox: padded(rect, &reach, border.width / 2.0 + pad),
-        multiply: false,
-        font: None,
-    })
+    let (mut bbox, mut font) = (padded(rect, &reach, border.width / 2.0 + pad), None);
+    if let Some(captioned) = &captioned {
+        ops.push_str(&captioned.ops);
+        bbox = caption::union_with(bbox, captioned);
+        font = Some(FontSpec::Standard(caption::HELVETICA));
+    }
+    Some(Synth { ops: ops.into_bytes(), bbox, multiply: false, font })
 }
 
 /// Builds an `Ink` annotation (`/InkList`).
