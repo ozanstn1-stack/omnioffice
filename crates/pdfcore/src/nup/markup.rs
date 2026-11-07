@@ -1,30 +1,28 @@
 //! Flattens printable annotations onto the imposed sheets.
 //!
 //! A sheet paints its source pages as Form XObjects, and an annotation cannot
-//! live inside a form: it belongs to a page. Links and the outline are carried
-//! separately (`links`, `outline`); the markup kinds that are meant to reach
-//! paper - notes, highlights, ink, stamps, shapes - are painted here.
+//! live inside a form: it belongs to a page. Links and the outline travel
+//! separately (`links`, `outline`); the markup meant to reach paper is painted
+//! here: notes, highlights, ink, stamps and the shapes.
 //!
-//! The appearance stream is **referenced, never copied**: it is added to the
-//! sheet's `/XObject` resources under a fresh name and drawn with a `Do`, with
-//! the transformation that takes the stream's own box to the annotation
-//! rectangle and then into the sheet. An annotation whose appearance is missing
-//! or unreadable is skipped; it never fails the imposition.
+//! The appearance stream is **referenced, never copied**: it goes into the
+//! sheet's `/XObject` resources under a fresh name and is drawn with a `Do`
+//! through the transform from its own box to the annotation rectangle. An
+//! annotation whose appearance is missing or unreadable is skipped.
 //!
 //! Widgets are painted when `widget::classify` trusts their appearance; popups,
-//! links, redactions and the printing-production kinds are left alone: a
-//! flattened redaction would look redacted while the text is still there.
+//! links, redactions and print-production kinds are left alone.
 
 use super::dests::resolve;
 use super::links::{clip_rect, map_rect, number, read_rect, source_annotations};
 use super::sheet::Placement;
 use crate::docutil::{page_rotation, Matrix};
 use lopdf::{Dictionary, Document, Object, ObjectId};
+use std::collections::BTreeSet;
 
 mod appearance;
 mod install;
 mod widget;
-
 use install::install;
 
 /// `/Hidden`: a hidden annotation is not printed even when Print is set.
@@ -81,6 +79,8 @@ pub(super) enum FontSpec {
     Standard(appearance::Std14),
     /// A font of the document, referenced as it already is.
     Resource { key: Vec<u8>, id: ObjectId },
+    /// A subset of the bundled face, for text WinAnsi cannot carry.
+    Subset(BTreeSet<char>),
 }
 
 /// One annotation ready to be painted on a sheet.

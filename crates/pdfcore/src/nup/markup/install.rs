@@ -2,6 +2,7 @@
 
 use super::{Alpha, Draw, FontSpec, Look, Synth};
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) {
     let Some(resources_id) = resources_id(doc, sheet_id) else { return };
@@ -10,11 +11,17 @@ pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) 
     let mut graphics = sub(&resources, b"ExtGState");
     let mut properties = sub(&resources, b"Properties");
     let mut body = String::from("\n");
+    // One subset font per distinct character set on this sheet: the bundled
+    // face is parsed once and the font object written once.
+    let mut fonts: BTreeMap<BTreeSet<char>, Option<ObjectId>> = BTreeMap::new();
     for (index, draw) in draws.iter().enumerate() {
         let name = format!("AnX{}", index);
         let xobject = match &draw.look {
             Look::Stream(id) => *id,
-            Look::Synth(synth) => doc.add_object(Object::Stream(synthesized_form(synth))),
+            Look::Synth(synth) => {
+                let form = synthesized_form(doc, synth, &mut fonts);
+                doc.add_object(Object::Stream(form))
+            }
         };
         xobjects.set(name.as_str(), Object::Reference(xobject));
         let [x0, y0, x1, y1] = draw.clip;
@@ -54,7 +61,11 @@ pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) 
 /// The form XObject that carries a synthesized appearance. Its content is in
 /// page space, so the block's placement matrix is all that is needed; the box
 /// only bounds the content.
-fn synthesized_form(synth: &Synth) -> Stream {
+fn synthesized_form(
+    doc: &mut Document,
+    synth: &Synth,
+    fonts: &mut BTreeMap<BTreeSet<char>, Option<ObjectId>>,
+) -> Stream {
     let mut dict = Dictionary::new();
     dict.set("Type", Object::Name(b"XObject".to_vec()));
     dict.set("Subtype", Object::Name(b"Form".to_vec()));
@@ -67,7 +78,9 @@ fn synthesized_form(synth: &Synth) -> Stream {
         content.extend_from_slice(b"/H0 gs\n");
     }
     if let Some(font) = &synth.font {
-        dict.set("Resources", Object::Dictionary(font_resources(font)));
+        if let Some(resources) = font_resources(doc, font, fonts) {
+            dict.set("Resources", Object::Dictionary(resources));
+        }
     }
     content.extend_from_slice(&synth.ops);
     Stream::new(dict, content)
@@ -75,14 +88,22 @@ fn synthesized_form(synth: &Synth) -> Stream {
 
 /// The form resources for synthesized text: one standard font referenced by
 /// name, with the glyphs WinAnsi lacks declared through `/Differences`.
-fn font_resources(font: &FontSpec) -> Dictionary {
+fn font_resources(
+    doc: &mut Document,
+    font: &FontSpec,
+    fonts: &mut BTreeMap<BTreeSet<char>, Option<ObjectId>>,
+) -> Option<Dictionary> {
     let FontSpec::Standard(font) = font else {
+        if let FontSpec::Subset(chars) = font {
+            let id = *fonts
+                .entry(chars.clone())
+                .or_insert_with(|| crate::textfont::SubsetFace::bundled()?.write(doc, chars).ok());
+            // A face that cannot be written leaves that caption without a
+            // resource; every other annotation on the sheet still paints.
+            return Some(named_font(crate::textfont::RESOURCE_NAME.as_bytes(), id?));
+        }
         let FontSpec::Resource { key, id } = font else { unreachable!() };
-        let mut fonts = Dictionary::new();
-        fonts.set(key.as_slice(), Object::Reference(*id));
-        let mut resources = Dictionary::new();
-        resources.set("Font", Object::Dictionary(fonts));
-        return resources;
+        return Some(named_font(key, *id));
     };
     let mut encoding = Dictionary::new();
     encoding.set("Type", Object::Name(b"Encoding".to_vec()));
@@ -101,6 +122,15 @@ fn font_resources(font: &FontSpec) -> Dictionary {
 
     let mut fonts = Dictionary::new();
     fonts.set("FOmni0", Object::Dictionary(font_dict));
+    let mut resources = Dictionary::new();
+    resources.set("Font", Object::Dictionary(fonts));
+    Some(resources)
+}
+
+/// `/Font << key <reference> >>`: the form resources of one referenced font.
+fn named_font(key: &[u8], id: ObjectId) -> Dictionary {
+    let mut fonts = Dictionary::new();
+    fonts.set(key, Object::Reference(id));
     let mut resources = Dictionary::new();
     resources.set("Font", Object::Dictionary(fonts));
     resources

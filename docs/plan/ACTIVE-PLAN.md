@@ -2073,3 +2073,85 @@ None · kodlanamayan karakter → None · WinAnsi/Türkçe kodlama · genişlik
 ("Hello" = 20.502) · Inline kesme aralığı · Top baseline · diyagonal `Tm` ·
 `/CO` kaydırması · çizgiden uzun metin → kesme yok · sıfır uzunluk → None ·
 BBox kuadı kapsıyor · `/AP` varsa dokunulmaz (mevcut yol) · 2-up entegrasyon.
+
+**PR #654 birleşti** (`ab45f4f`), 17 kontrol yeşil + 2 beklenen skip.
+
+## SÜRÜM: v7.14.0 yayınlandı ve doğrulandı (2026-11-07)
+- Tag **`v7.14.0` → `ab45f4f`** (auto-tag, guard tag'den **önce** koştu);
+  `Release` + `Android` başarılı, **18 asset**.
+- `latest.json` **7.14.0**, `windows-x86_64` girdisinde **444 baytlık imza**;
+  `SHA256SUMS.txt` **8 satır**; release gövdesi CHANGELOG `[7.14.0]` bölümüyle
+  **birebir** (705 = 705 karakter); Android versionCode **7014000**.
+- `target/` temizlendi (12.6 GiB), disk %60.
+- **Not:** `Scorecard` işi bu iki master commit'inde kırmızı; sebep bizim kod
+  değil — `rekor.sigstore.dev` 500 döndü ("error signing scorecard results"),
+  analiz tamamlanmış (skor 6.5). Dış servis kesintisi; tekrar denemek yeterli.
+  Skorcard'ın işaret ettiği gerçek kalemler (sonraki adaylar): 21 OSV uyarısı
+  (bağımlılık güncellemesi), "releases lack provenance" (attestation asset'i
+  yalnız bir dosya için), Code-Review 0/30 (insan onayı yok — yapısal).
+
+---
+
+# Sıradaki dilim: Type0/CID metin — **Opus kararı `f7f8ef5c`** + Adım 0 düzeltmesi
+
+Opus, N-up sentezinde WinAnsi dışı metnin (Türkçe ğ/ı/ş, CJK) **tamamen
+kaybolduğunu** gerekçesiyle Type0/CID metni seçti; `/BE` bulut kenarlık (kozmetik
+fallback), `/NoZoom` (çok küçük), redaksiyon düzleştirme (tek dilimde güvenli
+değil) elendi.
+
+## Adım 0 (ölçüldü) — planı değiştiren bulgu
+- **ToUnicode okuyucusu yok** (`ToUnicode`/`bfrange` yalnız testlerde) → Opus'un
+  önerdiği "belgenin Type0 fontunu `/ToUnicode`'dan ters çevir, `/W` ile
+  ölç, referansla" yolu ~700 satır yeni ayrıştırıcı demek.
+- **Ama yazıcı zaten var:** `crates/pdfcore/src/textfont.rs` (**418**)
+  `TextFont::create(&mut Document, &BTreeSet<char>)` — gömülü Liberation Sans'ı
+  Identity-H Type0 + `/ToUnicode` olarak **alt kümeleyip** yazıyor, Türkçe
+  repertoarın tamamı var; `encode()` hex üretiyor, `measure(text, size)` var,
+  `reference()` ve `ensure_page_font_named()` ile kaynak sözlüğüne giriyor.
+  (Başlık/altbilgi, Bates, form görünümleri bunu kullanıyor.)
+- Yani doğru dilim: **belgenin fontunu okumak değil, WinAnsi'ye sığmayan metni
+  kendi alt küme fontumuzla basmak** — mevcut ve test edilmiş kod yeniden
+  kullanılır, CMap ayrıştırıcısı gerekmez. Türkçe kazanç tam; CJK yalnız
+  Liberation Sans'ta varsa (yok → metin yine atlanır, kural korunur).
+
+## Tasarım taslağı (uygulanacak)
+- `Synth`/`FontSpec`'e üçüncü hal: `FontSpec::Embedded { key, id }` (zaten
+  `Resource{key,id}` var; ayrım yalnız belgeleme) veya `TextFont` referansı.
+- **İki faz sorunu:** `carry_markup` önce **okur** (`&Document`), sonra yazar;
+  `TextFont::create` ise `&mut Document` istiyor. Çözüm: `Draw`'a ertelenmiş
+  metin (`DeferredText { chars, template }`) ekle; `install` (yazma fazı) fontu
+  bir kez oluşturup (iş başına `BTreeMap<BTreeSet<char>, ObjectId>` önbelleği)
+  hex kodları yerleştirsin.
+- Uygulama sırası: (1) caption (en küçük, satır kaydırma yok), (2) FreeText
+  (sarma/auto-size için `FontMetrics` impl'i: `advances[glyph]·size/upem`).
+- Türkçe testi: caption/FreeText `Ölçüm ğ ş ı İ` → `BT … <…> Tj` çıkmalı ve
+  `/Resources /Font <key>` alt küme fontuna referans olmalı; WinAnsi yolu
+  **bayt bayt aynı** kalmalı (golden).
+- Kapılar: fmt, clippy `-D warnings`, `cargo test -p pdfcore`, files:check
+  (yeni modül ≤400, `textfont.rs` bütçede), docs:stats, claims:check,
+  release-guard.
+
+## Adım 0-bis (dosya/bütçe ölçümü — uygulama için kesinleşti)
+- Bütçeler: `textfont.rs` **418** (tavan), `nup/markup.rs` **269** (tavan),
+  `nup/markup/install.rs` **169** (izlenmiyor → büyüyebilir),
+  `appearance/caption.rs` **399** (yeni dosya tavanı 400).
+- **Seam:** `textfont.rs` içindeki `parse_cmap`/`parse_metrics`/`write_font`/
+  `FontMetrics` yeni **`crates/pdfcore/src/textfont/subset.rs`**'ye taşınır
+  (~60 satır çıkar → `textfont.rs` küçülür, `mod subset;` + `pub use` eklenir);
+  orada **`SubsetFace`** doğar: `bundled()`, `can_encode(&str)`, `encode(&str)
+  -> String` (`<hex>`, 2 bayt glyph id), `measure(&str, size)`, ve
+  `write(doc, &BTreeSet<char>) -> PdfResult<ObjectId>` (alt küme fontu).
+  `TextFont` mevcut genel API'sini korur, içini `SubsetFace`'e devreder
+  (başlık/altbilgi, Bates, form görünümleri etkilenmez).
+- **Oluşturma fazı:** `install::synthesized_form(doc, synth)` (imza `doc` alır;
+  `install.rs` izlenmiyor) — `FontSpec::Subset { chars: BTreeSet<char> }`
+  görürse sayfa başına `BTreeMap<BTreeSet<char>, ObjectId>` önbelleğiyle
+  fontu **bir kez** yazar, formun `/Resources /Font`'una `/OmniTr <ref>`
+  koyar. Kodsuz metin (WinAnsi) yolu değişmez.
+- **Okuma fazı:** `SubsetFace::bundled()` saf (doc istemez) → caption/FreeText
+  ölçü ve kodlamayı okuma fazında yapar; `FontSpec::Subset` yalnız "bu metin
+  alt küme fontuyla yazıldı" işaretidir, deterministik (aynı karakter kümesi →
+  aynı font).
+- **Bu PR'ın kapsamı:** mekanizma + **caption** (`/Cap`), FreeText sonraki PR
+  (skill: bir PR'da tek mekanizma). `caption.rs` 399'da olduğu için testler
+  `appearance/caption_tests.rs`'ye taşınır (`read`/`offset_of` `pub(super)`).
