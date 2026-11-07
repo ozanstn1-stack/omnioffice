@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Free-text notes reach the paper in N-up:** a note without an appearance
+  stream used to disappear, taking the user's own words with it. The text is
+  laid out now with a standard font referenced by name - Helvetica, Times or
+  Courier with the bold and italic members, chosen from `/DA` and the form's
+  `/DR` - and the glyphs WinAnsi lacks are declared through a fixed
+  `/Differences` table, so Turkish and the other Latin-A letters print
+  correctly without embedding a font program. `/Q` alignment, a `/C`
+  background, the `/BS` or legacy `/Border` frame, `/RD` insets and a `/CL`
+  callout are honoured. A character the standard fonts cannot show drops that
+  note instead of printing a guess, and an annotation that ships an `/AP` is
+  still never re-synthesized.
+
 ## [7.10.0] - 2026-11-06
 
 ### Added

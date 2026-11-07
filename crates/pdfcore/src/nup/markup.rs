@@ -71,6 +71,8 @@ pub(super) struct Synth {
     pub(super) bbox: [f64; 4],
     /// `/Highlight` blends, so its form needs a Multiply graphics state.
     pub(super) multiply: bool,
+    /// The standard font the content references by name, if it draws text.
+    pub(super) font: Option<appearance::Std14>,
 }
 
 /// One annotation ready to be painted on a sheet.

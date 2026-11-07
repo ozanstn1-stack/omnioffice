@@ -58,7 +58,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4], kin
             return None;
         }
         ops.push_str("f\n");
-        return Some(Synth { ops: ops.into_bytes(), bbox: bounds, multiply: true });
+        return Some(Synth { ops: ops.into_bytes(), bbox: bounds, multiply: true, font: None });
     }
     ops.push_str(&colour.render(colour.stroke_op()));
     let mut any = false;
@@ -80,7 +80,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4], kin
         return None;
     }
     ops.push_str("S\n");
-    Some(Synth { ops: ops.into_bytes(), bbox: bounds, multiply: false })
+    Some(Synth { ops: ops.into_bytes(), bbox: bounds, multiply: false, font: None })
 }
 
 /// Splits the flat `/QuadPoints` array into normalized quads, skipping
