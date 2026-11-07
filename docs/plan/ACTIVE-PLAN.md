@@ -1723,6 +1723,28 @@ dilimi olarak giriyor.
 Parça başına MAC, V1'in kaldırılması/zorunlu V2 (dilim B), anahtar döndürme,
 TLS sabitleme değişikliği, UI/ayar, `protocol_version` artışı.
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/lan-sig-v2` açıldı; sıradaki adım
-  1 (ön okuma) → 2 (`sig.rs`) → 3 → 4 → 6 → 8. Sonraki iki kalem (Opus):
-  (1) `/Cap` caption, (2) Calc dynamic-array spill tasarım dilimi.
+## Olay: v7.12.0 sürüm commit'inde CHANGELOG bölümü eksikti (2026-11-07)
+
+- Sürüm commit'i `bcffd8a` CHANGELOG'da `## [7.12.0]` bölümü **olmadan** çıktı
+  (düzenleme, sürüm hazırlığı sırasında kayboldu; aynı şekilde `en-US/7012000.txt`
+  fastlane dosyası da commit'e girmemişti).
+- Sonuç: `Verify and publish Android packages` "changelog-section: no
+  '## [7.12.0]'" ile düştü, APK/AAB yüklenmedi; Release işi de aynı adımda
+  düşecekti. Release sayfası hiç oluşmadı → kullanıcı etkilenmedi.
+- **Kurtarma (Opus `28ad3bf0` kararı, seçenek 1):** düzeltme PR #647
+  (`132c8e4` CHANGELOG + `c2d8978` fastlane) → master `f503e88`; **tag `v7.12.0`
+  bu commit'e taşındı** (`git tag -f` + force push, eski `bcffd8a`); tag push'u
+  Release + Android'i yeniden tetikledi. Doğrulama: tag → `f503e88`, **18 asset**,
+  `latest.json` **7.12.0** + imza, `SHA256SUMS.txt` 8 satır, release gövdesi
+  CHANGELOG `[7.12.0]` bölümüyle **birebir** (1233 karakter), Android
+  versionCode **7012000**.
+- **Önleyici (sıradaki kalem adayı):** `release-guard` işi — sürüm değişen her
+  PR'da `## [X.Y.Z]` bölümü var ve boş değil mi diye bakan zorunlu kontrol;
+  ayrıca auto-tag tag atmadan önce aynı kontrolü çalıştırsın ve
+  Release/Android'de bu adım derlemeden **önce** koşsun.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/lan-sig-v2` (master `f503e88`
+  üzerine rebase edildi). Sıradaki adım 1 (ön okuma) → 2 (`sig.rs`) → 3 → 4 → 6
+  → 8. Sonraki iki kalem (Opus): (1) `/Cap` caption, (2) Calc dynamic-array
+  spill tasarım dilimi; `release-guard` küçük ve önleyici olduğu için araya
+  alınabilir.
