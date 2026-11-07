@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.11.0] - 2026-11-07
+
 ### Added
 
 - **Lines and callouts get their ending marks in N-up:** a `Line` or `PolyLine`
