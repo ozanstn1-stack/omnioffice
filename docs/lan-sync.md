@@ -150,6 +150,21 @@ the residual risks for what an active attacker can still do.
   must sign with version 2) and `range-mismatch` (the range does not belong to
   the document the host holds). An older host leaves the field empty, so the
   caller falls back to the message.
+* **Every covered field is checked end to end.** `crates/synccore/src/lan/sig_tamper_tests.rs`
+  signs one request, changes one field and expects the host to refuse it:
+  `offset`, the chunk length, `total`, the document `sha256`, the path (which
+  is bound twice, literally and through the derived `transfer_id`), the
+  operation, the sender and receiver device ids, the nonce and the timestamp
+  all end in `bad-signature`, and a request signed for another receiver's
+  device id does not verify on this one even with the right key. The suite also
+  covers the shapes a broken sidecar can arrive in (not hex, too short, too
+  long, all zero, blank), a sidecar signed with a key that is not the pair's,
+  and a replay of a request that already succeeded ("the request was already
+  used"). A refused request changes nothing: a broken sidecar never pins the
+  pair, and only a verified version 2 request does. The chunk *length* is
+  compared against the body before the MAC, so a wrong length is a body-length
+  refusal rather than `bad-signature`; the canonical form still binds it, which
+  `sig_tests.rs` proves at the unit level.
 * Paths are validated: only relative paths, no `..`, no absolute paths, no
   hidden paths, and only document extensions (`docx`, `xlsx`, `pptx`, `odt`,
   `ods`, `odp`, `pdf`, `rtf`, `txt`, `csv`, `oswk`, `png`, `jpg`, `jpeg`).

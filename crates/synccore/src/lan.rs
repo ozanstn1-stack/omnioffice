@@ -7,9 +7,8 @@
 //! * **Pairing is explicit and short-lived.** The host shows a six-digit code
 //!   with a 120 s lifetime and five attempts; the code is consumed on the first
 //!   successful pairing. A device that never pairs gets nothing.
-//! * **Every later connection is pinned.** The client stores the SHA-256 of
-//!   the host's self-signed certificate and refuses any other certificate;
-//!   there is no CA and no trust-on-first-use after pairing.
+//! * **Every later connection is pinned.** The client stores the SHA-256 of the
+//!   host's certificate and refuses any other: no CA, no trust-on-first-use.
 //! * **Requests are authenticated.** Pairing establishes a 32-byte shared key;
 //!   every request carries an HMAC-SHA256 over device id, timestamp, nonce,
 //!   operation, path, body hash and - once both ends can - the range fields
@@ -24,9 +23,8 @@
 //!   `keep remote`).
 //!
 //! The transport is a TCP listener with a self-signed certificate per device
-//! (see [`transport`]); discovery is a UDP broadcast on the local subnet,
-//! because it needs no dependency and works on Android without a multicast
-//! lock. mDNS is the documented follow-up.
+//! (see [`transport`]); discovery is a UDP broadcast on the local subnet: no
+//! dependency, and it works on Android without a multicast lock.
 
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
@@ -58,6 +56,8 @@ mod sig;
 mod sig_negotiation_tests;
 #[cfg(test)]
 mod sig_tests;
+#[cfg(test)]
+mod sig_tamper_tests;
 #[cfg(test)]
 mod tests;
 mod transport;

@@ -1988,3 +1988,15 @@ Kod `crates/synccore` içinde → **C3 yapılacak**; `/Cap` sonraya kalır.
 - Kapılar: `cargo fmt`, `cargo clippy -p synccore --all-targets -D warnings`,
   `cargo test -p synccore`, `files:check` (yeni dosya <400 → bütçe yok),
   `docs:stats`, `claims:check`.
+
+**DURUM (uygulandı):** yeni `crates/synccore/src/lan/sig_tamper_tests.rs` **221**
+satır, 7 test: alan matrisi (offset/total/sha256/op/path), kimlik+nonce+tazelik
+(receiver bağı ayrı cihaz kimliğiyle imzalanan etiketle), replay ("already
+used"), bozuk sidecar biçimleri (hex değil/kısa/uzun/sıfır/boşluklu) →
+`bad-signature`, başka anahtarla imzalanmış sidecar → `bad-signature`, pinli
+eşten v1 → `sig-downgrade` + kurcalanmış v2 → `bad-signature`, ve reddedilen
+isteğin hiçbir şeyi değiştirmediği (bozuk sidecar pin yazmaz, geçerli olan
+yazar). lib **111 → 118**, toplam Rust **1650 → 1657**. `lan.rs` bütçede
+kaldı (1254 → **1252**, başlık yorumları sıkıştırıldı), yeni dosya <400.
+Kapılar: fmt, clippy `-D warnings`, `cargo test -p synccore`, `files:check`,
+`docs:stats`, `claims:check` (395/521), `release-guard` (7.13.0 OK).
