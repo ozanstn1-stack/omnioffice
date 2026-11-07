@@ -1,0 +1,1 @@
+7.17.0: İndirdiğiniz dosya artık doğrulanabilir — her masaüstü sürüm dosyası SLSA yapı kökeni (build provenance) ile birlikte yayınlanıyor; slsa-verifier ile dosyanın gerçekten bu sürümün derlemesinden çıktığını kontrol edebilirsiniz (komut SECURITY.md'de).
