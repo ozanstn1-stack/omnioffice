@@ -1769,7 +1769,100 @@ TLS sabitleme değişikliği, UI/ayar, `protocol_version` artışı.
   ayrı dosyaya taşındı; `files:update --allow-raise` ile 5 küçük bütçe
   yükseltildi (download +7, pairing +10, lan_sync +3, store +2, sync +4).
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dilim A PR'da; CI yeşilse squash merge.
-  Sonraki kalem (Opus'a sorulacak): (1) `release-guard` CI kontrolü (küçük,
-  v7.12.0 olayının önleyicisi), (2) `/Cap` caption, (3) sig-v2 **dilim B**
-  (eski çiftler için yükseltme yolu / V1'in zorunlu kılınması).
+- **PR #648 birleşti** (`6d497a3`), 17 kontrol yeşil + 2 beklenen skip
+  (Benchmarks, Fuzz), dal silindi; `target/` temizlendi (3.2 GiB), disk %60.
+  README Rust testi 1629 → **1646**; sürüm değişmedi (v7.12.0 güncel).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** sıradaki kalem için Opus kararı bekleniyor
+  (aday: `release-guard` CI kontrolü — v7.12.0 CHANGELOG olayının önleyicisi;
+  `/Cap` caption; sig-v2 dilim B).
+
+---
+
+# Seçilen iş kalemi: `release-guard` — sürüm notu olmayan sürümü CI'da durdurmak — **Opus kararı `fd9c9cc0`**
+
+Opus üç adayı karşılaştırdı ve `release-guard`'ı seçti (v7.12.0 olayının
+tekrarını önleyen tek kalem, VPS'te tamamen doğrulanabilir, ~1 CI turu).
+**Not:** Opus bu oturumda dosya okuyamadı (Bash/Read kapalı) → workflow
+ayrıntıları varsayımdı; aşağıdaki Adım 0 bulguları benim ölçümümdür.
+
+## Adım 0 — ölçülen gerçekler (varsayımlar düzeltildi)
+- Sürüm kaynakları: `package.json` `"version"`, `src-tauri/tauri.conf.json`
+  `"version"`, `Cargo.toml` `[package] version`; ayrıca **üretilen**
+  `src-tauri/gen/android/app/tauri.properties` (`versionName`, `versionCode`;
+  repoda izleniyor, auto-tag ondan okuyor). `src-tauri/Cargo.toml`
+  `version.workspace = true` → **guard bunu okumaz** (ek dolaylılık yok).
+- `versionCode` formülü yalnız `scripts/build-android.ps1:176` (PowerShell) ve
+  `scripts/fastlane-changelogs.mjs:38` içinde; **ikisi de export değil** ve
+  `fastlane-changelogs.mjs` modül yüklenirken `process.argv` okuyor → import
+  edilemez. Karar: formül guard'da kopyalanır ve testle sabitlenir
+  (7.12.0 → 7012000); kaynak yorumda gösterilir.
+- `scripts/changelog-section.mjs` fonksiyonu export etmiyor ve çıktısı release
+  gövdesini üretiyor → **refactor edilecek**: `export function
+  extractSection(text, version)` + `main` guard. CLI çıktısı bayt bayt aynı
+  kalmalı (`node scripts/changelog-section.mjs 7.12.0` önce/sonra diff).
+- `fastlane:check` `desktop.yml:65`'te (ESLint/claims/docs-stats/acl ile aynı,
+  ilk iş). Guard adımı **oraya**, fastlane adımının hemen arkasına girer;
+  yeni iş açılmaz (branch protection değişmesin).
+- `auto-tag.yml` **checkout yapmıyor** (Scorecard Dangerous-Workflow): 4 dosyayı
+  Contents API ile çekip bash'te sürüm + Android metadata karşılaştırıyor.
+  Guard oraya **fetch tabanlı** girer: `CHANGELOG.md`, `scripts/release-guard.mjs`
+  ve `fastlane/metadata/android/en-US/changelogs/<expected_code>.txt` de
+  çekilir, sonra `node scripts/release-guard.mjs --root . --tag "v$version"`
+  (kod `$((major*1000000+minor*1000+patch))` bash'te zaten var).
+- `release.yml` / `android.yml`: tag'de checkout var → tag'in ilk işinin ilk
+  adımı `node scripts/release-guard.mjs --tag "$TAG"` (env ile geçirilir),
+  böylece 1 saatlik derlemeden önce saniyede düşer.
+- Test koşucusu: `vite.config.ts` yalnız `src/**/*.test.ts(x)` topluyor →
+  `scripts/release-guard.test.mjs` vitest'e girmez. Karar: `node:test`
+  (`node --test scripts/release-guard.test.mjs`) ve **aynı CI adımında**
+  guard'la birlikte koşulur (`… && node scripts/release-guard.mjs`).
+
+## Dosyalar
+1. **`scripts/release-guard.mjs`** (yeni, ~180): `readVersions(root)`,
+   `versionCode(version)`, `sectionBody(changelog, version)`,
+   `isMeaningful(body)`, `checkRelease({root, tag})`; hataları toplar
+   (`::error file=…::…`), başarıda tek satır
+   `release-guard: 7.12.0 (versionCode 7012000) OK`. Kontroller:
+   (1) üç sürüm dosyası + `tauri.properties` versionName/versionCode aynı,
+   (2) `X.Y.Z` biçimi, (3) `## [X.Y.Z]` bölümü var (changelog-section ile aynı
+   ileti), (4) bölüm anlamlı (yalnız `###` başlık / `<!-- -->` / `TBD` değil),
+   (5) `en-US/changelogs/<code>.txt` var ve boş değil, (6) `--tag` verilirse
+   `v` soyulmuş hâli sürüme eşit.
+2. **`scripts/changelog-section.mjs`** (+6): `extractSection` export + main
+   guard; CLI davranışı aynı.
+3. **`scripts/release-guard.test.mjs`** (yeni, ~200, `node:test`): normal
+   geçiş; v7.12.0 bölümü yok (olay tekrarı, ileti `no '## [7.12.0]' section`);
+   yalnız boş `###`; yalnız yorum/`TBD`; `[7.1.0]` ≠ `[7.1.10]`; bölüm bir
+   sonraki `##`de biter (`###` bitirmez); tarih son ekli başlık; `[Unreleased]`
+   yok sayılır; fastlane dosyası yok/boş; versionCode formülü; sürüm uyuşmazlığı
+   (her dosya adı geçer); tag uyuşmazlığı; `v` öneki; **gerçek HEAD geçer**.
+4. **`desktop.yml`** (+3): fastlane adımından sonra
+   `run: node --test scripts/release-guard.test.mjs && node scripts/release-guard.mjs`.
+5. **`auto-tag.yml`** (+8): fazladan üç `fetch` + tag'den önce guard adımı.
+6. **`release.yml` / `android.yml`** (+4 each): ilk işte, checkout'tan sonra
+   `release-guard --tag`, `TAG` env ile.
+7. **CHANGELOG** `[Unreleased]` (CI/güvenilirlik girdisi) + sürüm belgesi
+   (`grep -rln "changelog-section" docs/`): "sürüm PR'ı `## [X.Y.Z]` bölümünü
+   ve `en-US/<code>.txt` dosyasını aynı PR'da getirmeli".
+
+## Kabul / doğrulama
+- `node scripts/release-guard.mjs` HEAD'de 0; `--tag v7.12.0` 0;
+  `--tag v7.12.1` 1.
+- Olay tekrarı: `git archive bcffd8a` (CHANGELOG bölümü yok) → 1 ve **iki**
+  hata; `git archive f503e88` → 0.
+- `changelog-section.mjs 7.12.0` çıktısı refactor öncesi/sonrası diff boş.
+- `node --test scripts/release-guard.test.mjs` yeşil; `files:check`,
+  `docs:stats:check`, `claims:check` (395/521), `fastlane:check` temiz.
+- Rust'a dokunulmuyor → cargo derlemesi yok; yine de tur sonunda `df -h /`.
+
+## Kapsam dışı
+Sürüm yükseltme script'inin CHANGELOG bölümünü kendiliğinden üretmesi;
+`release.yml`/`android.yml`/`auto-tag` adımlarının PR CI'da denenmesi (tag
+yok); sig-v2 dilim B; `/Cap` caption.
+
+## Riskler
+- `auto-tag`/`release`/`android` adımları yalnız sürümde koşar: aynı tek satır
+  çağrı ve **işin en başı** → kırılırsa yayın sessizce değil, hemen durur
+  (force push gerekmez).
+- Guard, master'da gerçek bir sürüm uyuşmazlığı bulursa düzeltme `src-tauri`
+  gerektirir → o zaman genişletme yapılmaz, rapor edilir.
