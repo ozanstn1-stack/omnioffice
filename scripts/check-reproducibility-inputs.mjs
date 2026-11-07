@@ -40,6 +40,14 @@ for (const relative of ["src-tauri/Cargo.toml", ...crates]) {
   check(!/^version\s*=\s*"/m.test(manifest), `${relative} carries its own version`);
 }
 
+// The one action that must be referenced by tag: SLSA's reusable generator
+// verifies the ref it was called with against its own released tags and refuses
+// a commit SHA, and its repository is immutable, so the tag is the intended
+// reference (docs/reproducibility.md records the exception).
+const PINNED_BY_TAG = new Set([
+  "slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0",
+]);
+
 // 3. Every GitHub action is pinned to a commit, and builds use the committed lockfiles.
 const workflows = readdirSync(join(root, ".github", "workflows")).filter((name) => name.endsWith(".yml"));
 for (const name of workflows) {
@@ -47,6 +55,7 @@ for (const name of workflows) {
   for (const match of text.matchAll(/uses:\s*([^\s#]+)/g)) {
     const action = match[1];
     if (action.startsWith("./")) continue;
+    if (PINNED_BY_TAG.has(action)) continue;
     check(/@[0-9a-f]{40}$/.test(action), `${name}: action ${action} is not pinned to a commit SHA`);
   }
   check(!/npm install(?!\s)/.test(text), `${name}: use npm ci instead of npm install`);

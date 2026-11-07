@@ -73,6 +73,7 @@ section prepares everything that can live in the repository.
 | Listing text and changelogs are in `fastlane/metadata/android/<locale>/` | `npm run fastlane:check` in the Lint job |
 | A version has its `## [X.Y.Z]` CHANGELOG section and its `en-US/changelogs/<versionCode>.txt` before it is tagged | `scripts/release-guard.mjs` in pull-request CI, in `auto-tag.yml` before the tag, and as the first step of `release.yml` / `android.yml` |
 | No tracking, no proprietary dependencies, source available | the build is public in `.github/workflows/android.yml`; no Play Services in the dependency tree |
+| Desktop assets ship SLSA build provenance (`omnioffice-<tag>-desktop.intoto.jsonl`) | the `provenance` and `provenance-asset` jobs in `release.yml`; `scripts/provenance-subjects.mjs` hashes the build output and proves it matches the published bytes; `SECURITY.md` gives the `slsa-verifier` command |
 
 If the signing key is ever lost, every installed app is stranded: the key is
 the identity. It lives in the `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD`

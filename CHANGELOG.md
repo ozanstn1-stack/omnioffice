@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Release assets now carry SLSA build provenance:** every desktop file the
+  release publishes is named by `omnioffice-<tag>-desktop.intoto.jsonl`, which
+  records the SHA-256 of each asset and the workflow run that built it, so a
+  download can be verified offline with `slsa-verifier verify-artifact` (the
+  command is in `SECURITY.md`). The repository already attested the same builds
+  into GitHub's attestation store; this publishes the statement as a release
+  asset as well, and a new `scripts/provenance-subjects.mjs` hash-then-check step
+  refuses to publish an envelope when the bytes on the release differ from the
+  ones the build produced. `latest.json` is excluded on purpose: several jobs
+  rewrite it, and its own updater signature protects it.
+
 ## [7.16.0] - 2026-11-07
 
 ### Security

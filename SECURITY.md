@@ -45,6 +45,39 @@ report it if one of them turns out to be worse than described here.
   fonts are downloaded at build time and pinned by SHA-256 in
   `scripts/engines.lock.json`; they are not rebuilt from source here.
 
+## Verifying a download
+
+Every release ships three independent handles on the same bytes:
+
+- `SHA256SUMS.txt` (and the per-platform `SHA256SUMS-windows.txt`,
+  `SHA256SUMS-linux.txt`, `SHA256SUMS-android.txt`): compare a file's SHA-256
+  against it. The Windows installers are unsigned (`docs/signing.md`), so this is
+  the check that matters for a SmartScreen "unknown publisher" prompt.
+- `latest.json` for the updater, whose `signature` is verified inside the app
+  with the updater public key.
+- `omnioffice-<tag>-desktop.intoto.jsonl`: **SLSA build provenance** naming each
+  desktop asset's SHA-256 and the workflow run that produced it. Verify offline
+  with [`slsa-verifier`](https://github.com/slsa-framework/slsa-verifier):
+
+  ```
+  slsa-verifier verify-artifact <downloaded file> \
+    --provenance-path omnioffice-<tag>-desktop.intoto.jsonl \
+    --source-uri github.com/ozanstn1-stack/omnioffice --source-tag <tag>
+  ```
+
+  The same attestations are also in GitHub's attestation store; where the `gh`
+  CLI is available, `gh attestation verify <file> --repo
+  ozanstn1-stack/omnioffice` checks them without downloading the envelope.
+  Android assets are published by their own workflow and are not named by the
+  desktop envelope.
+
+`latest.json` is deliberately not a provenance subject: it is rewritten by more
+than one build job, so its content is a race rather than a build output, and the
+updater signature above is what protects it. The release tooling enforces the
+rest: a release whose published bytes differ from the ones the build produced
+fails before the envelope is published
+(`scripts/provenance-subjects.mjs check-published`).
+
 ## Scope
 
 In scope: the desktop and Android applications in this repository, the release
