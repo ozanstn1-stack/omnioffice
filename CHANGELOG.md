@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **A version cannot be tagged without its release notes:** a new
+  `scripts/release-guard.mjs` runs in pull-request CI, in the auto-tag job
+  before the tag is created, and as the first step of the release and Android
+  builds. It fails when the `## [X.Y.Z]` CHANGELOG section is missing or empty,
+  when `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` is
+  missing or empty, or when `package.json`, `tauri.conf.json`, `Cargo.toml` and
+  the Android metadata disagree (the tag has to match the version too). The
+  v7.12.0 release was tagged without both files, the Android publish job failed
+  with the tag already pushed and the release page was never created, so the
+  tag had to be moved with a force push; this makes that mistake cost a red
+  pull request instead.
+
 ### Security
 
 - **LAN requests can bind the range they ask for:** the request signature has a
