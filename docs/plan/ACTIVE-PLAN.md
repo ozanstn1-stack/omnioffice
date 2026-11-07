@@ -2001,6 +2001,10 @@ kaldı (1254 → **1252**, başlık yorumları sıkıştırıldı), yeni dosya <
 Kapılar: fmt, clippy `-D warnings`, `cargo test -p synccore`, `files:check`,
 `docs:stats`, `claims:check` (395/521), `release-guard` (7.13.0 OK).
 
+**PR #653 birleşti** (`8ffebca`), 20 kontrol (18 yeşil + 2 beklenen skip; pdfcore
+değiştiği için `Fuzz changed parsers` de koştu ve yeşil), dal silindi.
+README Rust testi 1657 → **1678**. Sürüm 7.14.0 treni açıldı.
+
 **PR #652 birleşti** (`cf90af3`), 17 kontrol yeşil + 2 beklenen skip. İlk CI
 turunda yalnız `rustfmt` düştü (modül bildirimlerinin sırası) → `cargo fmt` +
 tek satırlık düzeltme commit'i.

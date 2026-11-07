@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.14.0] - 2026-11-07
+
 ### Added
 
 - **A line's caption survives an imposition:** a `Line` annotation with
