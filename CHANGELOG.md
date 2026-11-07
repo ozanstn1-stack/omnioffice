@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A cloudy border reaches the paper:** a square or circle annotation without
+  an appearance stream that asks for `/BE << /S /C >>` now draws the revision
+  cloud its dictionary describes - a chain of outward scallops around the box,
+  stroked with `/C` and filled with `/IC` on the same path - with `/I` (0 to 2)
+  deciding how coarse the bumps are. A shape smaller than its own bumps, a
+  perimeter too short for three of them, or a non-cloudy `/S` keeps the plain
+  frame, and an annotation with an appearance stream is never touched.
+
 ## [7.17.0] - 2026-11-07
 
 ### Security

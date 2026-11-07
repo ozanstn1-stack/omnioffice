@@ -98,7 +98,6 @@
     "crates/pdfcore/src/nup/dests.rs": 265,
     "crates/pdfcore/src/nup/links.rs": 201,
     "crates/pdfcore/src/nup/markup.rs": 269,
-    "crates/pdfcore/src/nup/markup/appearance.rs": 282,
     "crates/pdfcore/src/nup/markup/appearance/bevel.rs": 240,
     "crates/pdfcore/src/nup/markup/appearance/border.rs": 239,
     "crates/pdfcore/src/nup/markup/appearance/caption_tests.rs": 230,

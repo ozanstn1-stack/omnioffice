@@ -302,9 +302,11 @@ Effort estimates assume a single developer.
   subset of the bundled face for anything else the face covers, so a caption or
   a free-text note in Cyrillic, Greek or the wider Latin ranges is printed
   instead of being dropped; text no face can show still means no text rather
-  than replacement glyphs. Reading a *document's* composite font (Identity-V,
-  predefined CMaps, an embedded CMap stream) is still open, as are redactions,
-  `/BE` clouds and `/NoZoom`.
+  than replacement glyphs. A square or circle that asks for a cloudy border
+  (`/BE /S /C`, with `/I` setting how coarse it is) is drawn as a chain of
+  outward scallops, and a shape too small for its own bumps keeps the plain
+  frame. Reading a *document's* composite font (Identity-V, predefined CMaps,
+  an embedded CMap stream) is still open, as are redactions and `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF
