@@ -267,7 +267,7 @@ fn a_line_follows_its_endpoints() {
 }
 
 #[test]
-fn a_line_with_a_leader_is_skipped() {
+fn a_line_with_a_leader_is_drawn_beside_it() {
     let dir = TestDir::new();
     let mut fixture = Fixture::new(&page_specs(2));
     let mut line = annot("Line", [50.0, 50.0, 250.0, 120.0]);
@@ -281,7 +281,7 @@ fn a_line_with_a_leader_is_skipped() {
     let out = dir.path("leader-out.pdf");
     impose(&input, &out, &NupOptions::default());
     let doc = Document::load(&out).expect("load output");
-    assert!(painted(&doc, sheets(&doc)[0].1).is_empty(), "a leader line would move the stroke");
+    assert_eq!(painted(&doc, sheets(&doc)[0].1).len(), 1, "the leader is drawn, not dropped");
 }
 
 #[test]

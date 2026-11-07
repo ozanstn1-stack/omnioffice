@@ -1629,4 +1629,22 @@ Type0/CID/Identity-H · Type3 · MacRoman/Standard/yerleşik kodlama · font dos
 - **DURUM:** uygulandı. `textfit.rs` **308** (`FontMetrics` trait + `Std14Metrics` + `wrap_with` + `win_ansi_symbol` + `glyph_symbol`), yeni `drfont.rs` **305** (`DrFont`, `resolve_font`, `/Widths`+`/FirstChar`, WinAnsi + `/Differences`, `uniXXXX`/`uXXXX`, `can_show`, `/FontDescriptor` ascent, reddetme kuralları), `freetext.rs` **383** (`Face { Standard, Document }`, B→A tam düşüş, kaynak adı `/DA`'dan), `markup.rs` **271** (`FontSpec { Standard, Resource }`), `install.rs` **?** (Resource font sözlüğü). Testler: **10 entegrasyon** (`nup_freetext_dr.rs`) + **4 birim** (`drfont`); lib **233**, N-up testi **123**. Kapılar: fmt, clippy `-D warnings`, `files:check`/`files:update`, `docs:stats`, `claims:check` (393 iddia / 513 işaret) temiz.
   **Opus planından sapmalar:** (1) font nesnesi kopyalanmıyor — `/DR`'deki **referans** doğrudan forma yazılıyor (sentez aynı belgede yapılıyor), bu yüzden kopyalama/önbellek adımı gerekmedi; (2) inline (dolaylı olmayan) font sözlüğü reddedilip A yoluna düşülüyor; (3) `descent` trait'ten çıkarıldı (kullanılmıyor).
 - **PR #643 birleşti** (`336d7ce`), 18 kontrol yeşil (coverage dahil), dal silindi; `target/` temizlendi (5.3 GiB), disk %60.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-polish` açıldı. Sıradaki kalem (Opus `c8a4bbba` sıralaması): **N-up rötuş dilimi** — `Line` için `/LL` (leader) ve `/LLE` desteği, `/BS /S /B/I/U` stilleri (bevel/inset iki ton, underline yalnız alt kenar), `/NoZoom` bayrağı (açıklama sayfa ölçeğinden bağımsız sabit boyutta). `/BE` bulut ayrı dilime bırakılabilir. Ardından **v7.12.0** sürüm treni (versionCode **7012000**).
+- **DURUM (Opus planı `f8a72fc4`, PR-A'nın leader kısmı):** uygulandı.
+  `paths.rs` **~300**: `LEADER_SIDE` (sol normal), `leaders()` (`/LL` kaydırma,
+  `/LLE` uzatma, `/LLO` boşluk, negatif `/LL` taraf değiştirir), `line()`
+  artık leader'lı çizgiyi **atlamıyor** — kaydırılmış çizgi + iki bacak tek
+  yolda, `/LE` uçları kaydırılmış çizgiye, bbox bacakları kapsıyor, dash
+  bacaklara da uygulanıyor; çakışık uçlu (yönsüz) çizgi atlanıyor.
+  **10 yeni entegrasyon testi** (`nup_polish_test.rs`) + **3 birim testi**;
+  `nup_appearance_test::a_line_with_a_leader_is_skipped` davranış değişikliği
+  nedeniyle `a_line_with_a_leader_is_drawn_beside_it` oldu. lib 233 → **236**,
+  N-up testi **123 → 133**. Kapılar: fmt, clippy `-D warnings`, `files:check`/
+  `files:update`, `docs:stats`, `claims:check` (394 iddia / 517 işaret) temiz.
+  **Opus planından sapma (bilinçli bölme):** PR-A'nın yalnız **leader** kısmı
+  yapıldı; `/BS /S /B/I/U` stilleri, `/Cap` caption ve `/NoZoom` sonraki
+  dilimlere bırakıldı (Opus da üç ayrı commit/PR önermişti; `/Cap` ve stiller
+  ayrı PR olarak planlanacak).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
+  Sonraki iki kalem: (1) `/BS /S /B/I/U` stilleri (bevel/inset/underline, iki
+  tonlu çerçeve) + `/Cap` caption; (2) **v7.12.0** sürüm treni (versionCode
+  **7012000**). `/NoZoom` ayrı PR.

@@ -17,15 +17,52 @@ pub(super) type Point = (f64, f64);
 const MAX_POINTS: usize = 20_000;
 const MAX_STROKES: usize = 1_000;
 
-/// Builds a `Line` annotation (`/L`), honouring the strike width.
-pub(super) fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
-    // A leader line shifts the stroke sideways; ignoring it would put the line
-    // in the wrong place.
-    if annot.get(b"LL").ok().and_then(number).is_some_and(|value| value != 0.0) {
+/// Which side a positive `/LL` moves the line to: the left normal, as the
+/// viewers in the wild draw it rather than the specification's prose.
+const LEADER_SIDE: f64 = 1.0;
+
+/// The shifted line and its two leaders.
+struct Leaders {
+    start: Point,
+    end: Point,
+    legs: Option<[(Point, Point); 2]>,
+}
+
+/// A line with a leader is drawn beside its anchors: `/LL` shifts it sideways,
+/// `/LLO` leaves a gap at each anchor and `/LLE` runs past the line.
+fn leaders(start: Point, end: Point, offset: f64, extension: f64, gap: f64) -> Option<Leaders> {
+    let (dx, dy) = (end.0 - start.0, end.1 - start.1);
+    let length = dx.hypot(dy);
+    if length < 1e-9 {
         return None;
     }
-    let points = points(doc, annot.get(b"L").ok()?)?;
-    if points.len() != 2 {
+    let (ux, uy) = (dx / length, dy / length);
+    let (nx, ny) = (LEADER_SIDE * -uy, LEADER_SIDE * ux);
+    let side = if offset < 0.0 { -1.0 } else { 1.0 };
+    let shift = offset.abs();
+    if shift < 1e-9 {
+        return Some(Leaders { start, end, legs: None });
+    }
+    let moved = |point: Point| (point.0 + nx * offset, point.1 + ny * offset);
+    let leg = |point: Point| {
+        let from = (point.0 + nx * side * gap, point.1 + ny * side * gap);
+        let to = (point.0 + nx * side * (shift + extension), point.1 + ny * side * (shift + extension));
+        let travelled = (to.0 - from.0).hypot(to.1 - from.1);
+        (travelled > 1e-9).then_some((from, to))
+    };
+    let start_shifted = moved(start);
+    let end_shifted = moved(end);
+    let legs = match (leg(start), leg(end)) {
+        (Some(first), Some(second)) => Some([first, second]),
+        _ => None,
+    };
+    Some(Leaders { start: start_shifted, end: end_shifted, legs })
+}
+
+/// Builds a `Line` annotation (`/L`), honouring the strike width and leaders.
+pub(super) fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
+    let anchors = points(doc, annot.get(b"L").ok()?)?;
+    if anchors.len() != 2 {
         return None;
     }
     let colour = super::color(doc, annot, b"C")??;
@@ -33,14 +70,32 @@ pub(super) fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option
     if border.width <= 0.0 {
         return None;
     }
+    let read =
+        |key: &[u8]| annot.get(key).ok().and_then(number).filter(|value| value.is_finite()).map(|value| value.max(0.0));
+    let offset = annot.get(b"LL").ok().and_then(number).filter(|value| value.is_finite()).unwrap_or(0.0);
+    let extension = read(b"LLE").unwrap_or(0.0);
+    let gap = read(b"LLO").unwrap_or(0.0);
+    let drawn = leaders(anchors[0], anchors[1], offset, extension, gap)?;
     let mut ops = colour.render(colour.stroke_op());
     border.ops(&mut ops);
-    path_ops(&mut ops, &points, false);
+    path_ops(&mut ops, &[drawn.start, drawn.end], false);
+    if let Some(legs) = drawn.legs {
+        for (from, to) in legs {
+            path_ops(&mut ops, &[from, to], false);
+        }
+    }
     ops.push_str("S\n");
-    let pad = paint_ends(doc, annot, &mut ops, &points, border.width)?;
+    let mut reach = vec![drawn.start, drawn.end];
+    if let Some(legs) = drawn.legs {
+        for (from, to) in legs {
+            reach.push(from);
+            reach.push(to);
+        }
+    }
+    let pad = paint_ends(doc, annot, &mut ops, &[drawn.start, drawn.end], border.width)?;
     Some(Synth {
         ops: ops.into_bytes(),
-        bbox: padded(rect, &points, border.width / 2.0 + pad),
+        bbox: padded(rect, &reach, border.width / 2.0 + pad),
         multiply: false,
         font: None,
     })
@@ -210,6 +265,33 @@ mod tests {
         let mut closed = String::new();
         path_ops(&mut closed, &points, true);
         assert_eq!(closed, "10 20 m\n30 40 l\nh\n");
+    }
+
+    #[test]
+    fn a_positive_leader_moves_the_line_to_the_left_normal() {
+        let drawn = leaders((100.0, 100.0), (200.0, 100.0), 20.0, 5.0, 3.0).expect("leaders");
+        assert_eq!(drawn.start, (100.0, 120.0));
+        assert_eq!(drawn.end, (200.0, 120.0));
+        let legs = drawn.legs.expect("legs");
+        assert_eq!(legs[0], ((100.0, 103.0), (100.0, 125.0)));
+        assert_eq!(legs[1], ((200.0, 103.0), (200.0, 125.0)));
+    }
+
+    #[test]
+    fn a_negative_leader_flips_the_side() {
+        let drawn = leaders((100.0, 100.0), (200.0, 100.0), -20.0, 0.0, 0.0).expect("leaders");
+        assert_eq!(drawn.start, (100.0, 80.0));
+        let legs = drawn.legs.expect("legs");
+        assert_eq!(legs[0], ((100.0, 100.0), (100.0, 80.0)));
+    }
+
+    #[test]
+    fn no_offset_draws_the_line_where_it_is() {
+        let drawn = leaders((0.0, 0.0), (0.0, 100.0), 0.0, 5.0, 5.0).expect("leaders");
+        assert_eq!(drawn.start, (0.0, 0.0));
+        assert_eq!(drawn.end, (0.0, 100.0));
+        assert!(drawn.legs.is_none(), "an offset of zero has no leaders");
+        assert!(leaders((5.0, 5.0), (5.0, 5.0), 10.0, 0.0, 0.0).is_none(), "no direction, no line");
     }
 
     #[test]

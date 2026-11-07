@@ -142,6 +142,17 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_appearance_test.rs#ink_draws_every_stroke`
   `test:crates/pdfcore/tests/nup_appearance_test.rs#an_annotation_with_a_broken_appearance_is_not_synthesized`
 
+- **Line leaders are synthesized:** a `Line` with `/LL` is drawn beside its
+  anchors with a leader from each one; `/LLE` extends the leader past the line,
+  `/LLO` leaves a gap at the anchor, a negative `/LL` flips the side, `/LE`
+  endings attach to the shifted line, the box covers the leaders and a dashed
+  line dashes them too. A collapsed line (both anchors equal) has no direction
+  and is skipped.
+  `test:crates/pdfcore/tests/nup_polish_test.rs#a_positive_leader_draws_the_line_beside_its_anchors`
+  `test:crates/pdfcore/tests/nup_polish_test.rs#a_leader_extension_runs_past_the_line`
+  `test:crates/pdfcore/tests/nup_polish_test.rs#a_leader_offset_leaves_a_gap_at_the_anchor`
+  `test:crates/pdfcore/tests/nup_polish_test.rs#line_ends_sit_on_the_shifted_line`
+
 - **Free-text notes reuse the document's simple font:** a note whose `/DA` names
   a `/DR` Type1, MMType1 or TrueType font with `/Widths` is set in that font,
   with the encoding read from WinAnsi and any `/Differences`; advances come from
