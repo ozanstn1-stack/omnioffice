@@ -114,13 +114,40 @@ fn a_download_chunk_checks_offsets_sizes_and_paths() {
 
     let size = body.len() as u64;
     // An offset past the end is refused instead of returning an empty body.
-    assert!(client.request(&peer, "get_chunk", "kucuk.pdf", None, size + 1, size, "").is_err());
+    let past_end = client.request(&peer, "get_chunk", "kucuk.pdf", None, size + 1, size, "").expect_err("past end");
+    assert!(
+        matches!(past_end, crate::SyncError::RangeMismatch),
+        "the caller can tell a range problem from a signature one: {past_end:?}"
+    );
     // A size the client believes but the host does not share is refused.
-    assert!(client.request(&peer, "get_chunk", "kucuk.pdf", None, 0, size + 10, "").is_err());
+    let wrong_total = client.request(&peer, "get_chunk", "kucuk.pdf", None, 0, size + 10, "").expect_err("wrong total");
+    assert!(matches!(wrong_total, crate::SyncError::RangeMismatch), "got {wrong_total:?}");
     // The path rules still apply to the new operations.
     assert!(client.request(&peer, "begin_get", "../gizli.pdf", None, 0, 0, "").is_err());
     assert!(client.request(&peer, "begin_get", ".parts/x.get", None, 0, 0, "").is_err());
     assert!(client.request(&peer, "begin_get", "kurulum.exe", None, 0, 0, "").is_err());
+}
+
+#[test]
+fn a_chunk_for_another_document_version_is_refused() {
+    let root = folder();
+    let body = vec![3u8; 8_192];
+    write_doc(root.path(), "surum.pdf", &body);
+    let (_host, client, peer) = paired(root.path());
+    let size = body.len() as u64;
+
+    // The first chunk names the version it expects; a hash the host does not
+    // hold means the document changed under the caller.
+    let wrong = "0".repeat(63) + "1";
+    let error = client.request(&peer, "get_chunk", "surum.pdf", None, 0, size, &wrong).expect_err("wrong version");
+    assert!(matches!(error, crate::SyncError::RangeMismatch), "got {error:?}");
+    // The announced version, or none at all (an older caller), is served.
+    let (response, bytes) = client
+        .request(&peer, "get_chunk", "surum.pdf", None, 0, size, &hex_encode(&Sha256::digest(&body)))
+        .expect("known version");
+    assert_eq!(bytes, body);
+    assert_eq!(response.offset, size);
+    assert!(client.request(&peer, "get_chunk", "surum.pdf", None, 0, size, "").is_ok(), "no announced version");
 }
 
 #[test]

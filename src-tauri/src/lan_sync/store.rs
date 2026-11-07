@@ -190,6 +190,8 @@ mod tests {
             shared_key: "cd".repeat(32),
             paired_at: "2026-10-30T12:00:00Z".into(),
             host_side: false,
+            features: Vec::new(),
+            min_sig: 0,
         });
         save(dir.path(), &store).expect("save");
         let loaded = load(dir.path()).expect("load");

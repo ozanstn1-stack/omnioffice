@@ -1671,3 +1671,105 @@ Type0/CID/Identity-H · Type3 · MacRoman/Standard/yerleşik kodlama · font dos
   `RELEASE_READINESS` başlığı, fastlane `en-US/7012000.txt` + `tr-TR`, PR →
   merge → auto-tag → 18 asset doğrulaması. Sonra `/Cap` caption ya da
   `/NoZoom` dilimi (Opus'a sorulacak).
+
+---
+
+# Seçilen iş kalemi: LAN istek imzası v2 (`offset`/`total`/`sha256`) + features anlaşması — **Opus planı `f6a28999`**
+
+`canonical()` imzası bugün `offset`, `total` ve `sha256` alanlarını kapsamıyor;
+`get_chunk` isteği hangi aralığın ve hangi dosya sürümünün istendiğini
+bağlamıyor. TLS sabitleme ve tekrar koruması riski düşürüyor ama bu, savunmayı
+tek katmana bırakmak demek. Chief'in açık talebi; v7.13.0'a sessiz bir güvenlik
+dilimi olarak giriyor.
+
+## Plan (dilim A — v1 açık kalır)
+1. **Ön okuma:** `crates/synccore/src/lan.rs` (`canonical`/`sign`/`verify`
+   kapsamı), imza algoritması (Ed25519 mi HMAC-SHA256 mi — mevcut bağımlılık),
+   `lan_sync.rs` el sıkışması (`protocol_version`, `deny_unknown_fields` yok mu),
+   `begin_get`/`get_chunk` (`begin_put`/`put_chunk` da kapsama), eşleştirilmiş
+   cihaz kaydının yeri.
+2. **`crates/synccore/src/lan/sig.rs` (≤220):** `SigVersion { V1, V2 }`;
+   `canonical_v1` bugünkü baytları **birebir** korur; `canonical_v2` alan
+   ayrımı önekiyle (`b"omnioffice-lan-sig/v2\0"`) ve **uzunluk önekli/sabit
+   genişlikli** alanlarla: op, sender_id, receiver_id, transfer_id, file_id,
+   offset (u64be), length (u64be), total (u64be; bilinmiyorsa `u64::MAX`),
+   sha256 (32 bayt; bilinmiyorsa sıfır), nonce, timestamp (i64be).
+3. **Kablo (geriye uyumlu):** isteklere `#[serde(default)] sig_v: u8` (yoksa 1);
+   `get_chunk`, `begin_get` yanıtındaki `total`+`sha256`'yı geri yollar ve
+   imzalar; sunucu oturumla karşılaştırır. El sıkışmaya
+   `#[serde(default)] features: Vec<String>`; yeni cihaz `"sig-v2"` ilan eder.
+   `protocol_version` **artırılmaz**.
+4. **Anlaşma:** kesişim V2 ise V2; `features` el sıkışma transkriptine girer
+   (düşürme engeli). **TOFU sabitleme:** bir eşten bir kez geçerli V2 gelirse
+   kayda `min_sig: 2` yazılır, o eşten sonraki V1 reddedilir.
+5. **Hata politikası:** imza tutmazsa `BadSignature` (hangi alan olduğu karşıya
+   söylenmez, `debug`); `offset > total` / `offset+length > total` /
+   oturumla uyuşmayan `total`/`sha256` → `RangeMismatch` (imza doğrulandıktan
+   sonra); sürüm düşürme → `SigDowngrade` + bağlantı kapanır; V1 eşle sessizce
+   devam (`info`, oturum başına bir kez).
+6. **Testler (34 → ~52 `lan::`):** golden v1 (değişmedi) + golden v2, alan
+   mutasyonları (offset/length/total/sha256/transfer/receiver/op/nonce/ts),
+   uzunluk-öneki belirsizliği, v1↔v2 ayrımı; anlaşma matrisi (yeni/yeni,
+   yeni/eski, eski/yeni, sabitlenmiş eş, bilinmeyen özellik, eski JSON);
+   indirme: tam, devam, offset/total/sha kurcalama, eski eş V1, tekrar.
+7. **Bütçe:** `sig.rs` ≤220; `lan.rs` net ≤+40; `lan_sync.rs` ≤+60; test sayısı
+   ratchet'i güncellenir.
+8. **Kapılar:** `cargo fmt`, `cargo clippy -p synccore -- -D warnings`,
+   `cargo test -p synccore` + CI tamamı; protokol belgesi (v2 biçimi + golden
+   vektör + anlaşma tablosu) ve CHANGELOG "Güvenlik"; sonunda `cargo clean` +
+   `df -h /`. Tek PR: `feat(synccore): LAN istek imzası v2`.
+
+## Kapsam dışı
+Parça başına MAC, V1'in kaldırılması/zorunlu V2 (dilim B), anahtar döndürme,
+TLS sabitleme değişikliği, UI/ayar, `protocol_version` artışı.
+
+## Olay: v7.12.0 sürüm commit'inde CHANGELOG bölümü eksikti (2026-11-07)
+
+- Sürüm commit'i `bcffd8a` CHANGELOG'da `## [7.12.0]` bölümü **olmadan** çıktı
+  (düzenleme, sürüm hazırlığı sırasında kayboldu; aynı şekilde `en-US/7012000.txt`
+  fastlane dosyası da commit'e girmemişti).
+- Sonuç: `Verify and publish Android packages` "changelog-section: no
+  '## [7.12.0]'" ile düştü, APK/AAB yüklenmedi; Release işi de aynı adımda
+  düşecekti. Release sayfası hiç oluşmadı → kullanıcı etkilenmedi.
+- **Kurtarma (Opus `28ad3bf0` kararı, seçenek 1):** düzeltme PR #647
+  (`132c8e4` CHANGELOG + `c2d8978` fastlane) → master `f503e88`; **tag `v7.12.0`
+  bu commit'e taşındı** (`git tag -f` + force push, eski `bcffd8a`); tag push'u
+  Release + Android'i yeniden tetikledi. Doğrulama: tag → `f503e88`, **18 asset**,
+  `latest.json` **7.12.0** + imza, `SHA256SUMS.txt` 8 satır, release gövdesi
+  CHANGELOG `[7.12.0]` bölümüyle **birebir** (1233 karakter), Android
+  versionCode **7012000**.
+- **Önleyici (sıradaki kalem adayı):** `release-guard` işi — sürüm değişen her
+  PR'da `## [X.Y.Z]` bölümü var ve boş değil mi diye bakan zorunlu kontrol;
+  ayrıca auto-tag tag atmadan önce aynı kontrolü çalıştırsın ve
+  Release/Android'de bu adım derlemeden **önce** koşsun.
+
+- **DURUM (Opus `f6a28999`, dilim A):** uygulandı. Yeni `lan/sig.rs` **230**
+  (`SigVersion{V1,V2}`, `canonical_v1` bayt bayt aynı, `canonical_v2` önek +
+  uzunluk-önekli alanlar: op/sender/receiver/transfer_id/path/offset/length/
+  body_hash/total/sha256/nonce/timestamp, `sign`/`verify`, `features`
+  temizleme) + `lan/auth.rs` **120** (`authenticated` buraya taşındı: sürüm
+  seçimi, TOFU `min_sig=2` sabitleme, `bad-signature`/`sig-downgrade`/
+  `range-mismatch` kodları, `refusal_error`) + `lan/sig_tests.rs` **230**
+  (11 birim: v1/v2 golden vektörleri, alan mutasyonları, uzunluk-öneki
+  belirsizliği, anlaşma matrisi) + `lan/sig_negotiation_tests.rs` **113**
+  (4 loopback: özellik alışverişi, eski çift V1, düşürme reddi, pin).
+  Kablo: `Request.sig_v`+`features`, `Response.code`+`features`,
+  `PairedPeer.features`+`min_sig` (`#[serde(default)]`), `protocol_version`
+  artmadı; `get_chunk` artık `total`+`sha256` yolluyor ve sunucu ilk parçada
+  hash'i doğruluyor. `SyncError::{BadSignature,SigDowngrade,RangeMismatch}`
+  eklendi. lib testi 91 → **107**, toplam Rust testi 1629 → 1646.
+  **Opus planından sapmalar:** (1) `features` SPAKE2 transkriptine
+  **katılmadı** — katılsaydı eski sürümle eşleşme ("the code does not match")
+  kırılırdı; kanal zaten TLS pinle ve anahtar iki sertifikaya bağlı, düşürme
+  engeli TOFU pini + `sig-downgrade` ile sağlanıyor (belgelendi);
+  (2) `transfer_id` telde ayrı alan değil, `path`+`total`+`sha256`'dan türetilen
+  32 bayt (yeni kablo yüzeyi açmamak için); (3) `length` = istek gövde uzunluğu;
+  (4) sunucu `sha256`'yı her parçada değil yalnız ilk parçada doğruluyor (tam
+  okuma maliyeti); (5) dosya bütçesi: `lan.rs` bölündü (1270 → 1252) ve testler
+  ayrı dosyaya taşındı; `files:update --allow-raise` ile 5 küçük bütçe
+  yükseltildi (download +7, pairing +10, lan_sync +3, store +2, sync +4).
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dilim A PR'da; CI yeşilse squash merge.
+  Sonraki kalem (Opus'a sorulacak): (1) `release-guard` CI kontrolü (küçük,
+  v7.12.0 olayının önleyicisi), (2) `/Cap` caption, (3) sig-v2 **dilim B**
+  (eski çiftler için yükseltme yolu / V1'in zorunlu kılınması).

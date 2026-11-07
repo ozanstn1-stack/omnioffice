@@ -136,6 +136,8 @@ struct Pending {
     port: u16,
     /// The client's claimed certificate fingerprint, bound into the key.
     fingerprint: String,
+    /// Capabilities the client announced in the first round, cleaned up.
+    features: Vec<String>,
     created_at: u64,
 }
 
@@ -221,6 +223,7 @@ pub(super) fn handle_begin(state: &Arc<HostState>, request: &Request) -> Result<
         name: request.name.clone(),
         port: request.port,
         fingerprint: request.fingerprint.clone(),
+        features: super::sig::sanitize_features(&request.features),
         created_at: now_unix(),
     };
     if !state.pairing.insert(request.session.clone(), pending, now_unix()) {
@@ -233,6 +236,7 @@ pub(super) fn handle_begin(state: &Arc<HostState>, request: &Request) -> Result<
         device_id: state.identity.device_id.clone(),
         name: state.identity.name.clone(),
         confirm,
+        features: super::sig::advertised(),
         ..Response::default()
     })
 }
@@ -304,6 +308,8 @@ pub(super) fn handle_finish(
         shared_key: hex_encode(&pending.key),
         paired_at: now_rfc3339_utc(),
         host_side: true,
+        features: pending.features.clone(),
+        min_sig: 0,
     };
     let mut peers = state.peers.lock().map_err(|_| refusal("pairing state is unavailable"))?;
     peers.retain(|known| known.device_id != peer.device_id);
@@ -313,6 +319,7 @@ pub(super) fn handle_finish(
         device_id: state.identity.device_id.clone(),
         name: state.identity.name.clone(),
         fingerprint: host_fingerprint,
+        features: super::sig::advertised(),
         ..Response::default()
     })
 }
@@ -334,6 +341,7 @@ pub(super) fn pair(client: &LanClient, address: &str, code: &str) -> Result<Pair
         name: client.name.clone(),
         fingerprint: client.fingerprint.clone(),
         port: client.port,
+        features: super::sig::advertised(),
         ..Request::default()
     };
     let (response, _) = connection.request::<_, Response>(&request, None)?;
@@ -376,5 +384,7 @@ pub(super) fn pair(client: &LanClient, address: &str, code: &str) -> Result<Pair
         shared_key: hex_encode(&key),
         paired_at: now_rfc3339_utc(),
         host_side: false,
+        features: super::sig::sanitize_features(&response.features),
+        min_sig: 0,
     })
 }

@@ -22,8 +22,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::{
-    file_modified, hex_encode, parts_dir, refusal, resolve_path, Failure, HostState, LanClient, PairedPeer, RemoteFile,
-    Request, Response, MAX_CHUNK_BYTES, PART_MAX_AGE_SECS,
+    file_modified, hex_encode, parts_dir, refusal, refuse, resolve_path, Failure, HostState, LanClient, PairedPeer,
+    RemoteFile, Request, Response, CODE_RANGE_MISMATCH, MAX_CHUNK_BYTES, PART_MAX_AGE_SECS,
 };
 use crate::SyncError;
 
@@ -87,11 +87,18 @@ pub(super) fn handle_get_chunk(
     let target = resolve_path(&state.root, &request.path).map_err(|error| refusal(error.to_string()))?;
     let size =
         std::fs::metadata(&target).map_err(|error| refusal(format!("the document is unreadable: {error}")))?.len();
+    // The signature proved the caller asked for this range; these checks prove
+    // the host can serve it, and say so with a kind the caller can restart on.
     if request.total != 0 && request.total != size {
-        return Err(refusal("the document changed; start the download again"));
+        return Err(refuse(CODE_RANGE_MISMATCH, "the document changed; start the download again"));
     }
     if request.offset > size {
-        return Err(refusal("the requested offset is past the end of the document"));
+        return Err(refuse(CODE_RANGE_MISMATCH, "the requested offset is past the end of the document"));
+    }
+    // Hashing costs a full read, so the announced version is checked once, on
+    // the first chunk: from then on `total` and the signature hold the rest.
+    if request.offset == 0 && !request.sha256.is_empty() && hash_file(&target)? != request.sha256 {
+        return Err(refuse(CODE_RANGE_MISMATCH, "the document changed; start the download again"));
     }
     let window = (size - request.offset).min(MAX_CHUNK_BYTES as u64) as usize;
     let mut file =
@@ -242,7 +249,7 @@ impl LanClient {
                 .open(partial)
                 .map_err(|error| SyncError::Network(error.to_string()))?;
             while have < total {
-                let (response, body) = self.request(peer, "get_chunk", path, None, have, total, "")?;
+                let (response, body) = self.request(peer, "get_chunk", path, None, have, total, &announce.sha256)?;
                 if body.is_empty() {
                     return Err(SyncError::Network("the peer sent an empty chunk".into()));
                 }

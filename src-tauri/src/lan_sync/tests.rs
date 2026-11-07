@@ -14,6 +14,8 @@ fn peer(fingerprint: &str, shared_key: &str) -> PairedPeer {
         shared_key: shared_key.to_string(),
         paired_at: "2026-10-30T12:00:00Z".into(),
         host_side: fingerprint.is_empty(),
+        features: Vec::new(),
+        min_sig: 0,
     }
 }
 

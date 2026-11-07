@@ -230,6 +230,9 @@ fn sync_error(error: SyncError) -> PdfError {
         SyncError::Network(message) | SyncError::Protocol(message) => PdfError::ProcessingFailed(message),
         SyncError::TooLarge(limit) => PdfError::InvalidInput(format!("the document is larger than {limit} bytes")),
         SyncError::NotFound(name) => PdfError::NotFound(name),
+        SyncError::BadSignature => PdfError::PermissionDenied("the request signature was refused".into()),
+        SyncError::SigDowngrade => PdfError::PermissionDenied("the other device needs the updated app".into()),
+        SyncError::RangeMismatch => PdfError::ProcessingFailed("the document changed on the other device".into()),
         other => PdfError::Internal(other.to_string()),
     }
 }

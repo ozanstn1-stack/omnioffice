@@ -85,6 +85,18 @@ pub enum SyncError {
     Protocol(String),
     #[error("invalid input: {0}")]
     InvalidInput(String),
+    /// A LAN request's MAC did not check out. The message never says which
+    /// field was wrong: a forger learns nothing from it.
+    #[error("the request signature is not valid")]
+    BadSignature,
+    /// A peer that must sign with version 2 sent a version 1 request. The
+    /// connection is dropped; an older build never sees this.
+    #[error("this peer must sign its requests with version 2")]
+    SigDowngrade,
+    /// The range a transfer asked for does not belong to the document the host
+    /// holds (the file changed under the caller, or the range is past its end).
+    #[error("the requested range does not match the document")]
+    RangeMismatch,
     #[error("I/O error: {0}")]
     Io(String),
     #[error("internal sync error: {0}")]

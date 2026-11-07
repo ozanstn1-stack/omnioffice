@@ -13,8 +13,8 @@ use std::time::SystemTime;
 use sha2::{Digest, Sha256};
 
 use super::{
-    file_modified, hex_encode, parts_dir, refusal, resolve_path, Failure, HostState, Request, Response,
-    MAX_CHUNK_BYTES, PART_MAX_AGE_SECS,
+    file_modified, hex_encode, parts_dir, refusal, refuse, resolve_path, Failure, HostState, Request, Response,
+    CODE_RANGE_MISMATCH, MAX_CHUNK_BYTES, PART_MAX_AGE_SECS,
 };
 
 // ---------------------------------------------------------------------------
@@ -66,11 +66,11 @@ pub(super) fn handle_put_chunk(state: &Arc<HostState>, request: &Request, body: 
     let part = part_path(&state.root, &request.path)?;
     let current = std::fs::metadata(&part).map(|metadata| metadata.len()).unwrap_or(0);
     if current != request.offset {
-        return Err(refusal(format!("the upload is at offset {current}, not {}", request.offset)));
+        return Err(refuse(CODE_RANGE_MISMATCH, format!("the upload is at offset {current}, not {}", request.offset)));
     }
     let total = request.total.max(current);
     if current + body.len() as u64 > total {
-        return Err(refusal("the chunk exceeds the announced document size"));
+        return Err(refuse(CODE_RANGE_MISMATCH, "the chunk exceeds the announced document size"));
     }
     let mut file = std::fs::OpenOptions::new()
         .append(true)
