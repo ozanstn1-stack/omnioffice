@@ -1644,7 +1644,14 @@ Type0/CID/Identity-H · Type3 · MacRoman/Standard/yerleşik kodlama · font dos
   yapıldı; `/BS /S /B/I/U` stilleri, `/Cap` caption ve `/NoZoom` sonraki
   dilimlere bırakıldı (Opus da üç ayrı commit/PR önermişti; `/Cap` ve stiller
   ayrı PR olarak planlanacak).
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki iki kalem: (1) `/BS /S /B/I/U` stilleri (bevel/inset/underline, iki
-  tonlu çerçeve) + `/Cap` caption; (2) **v7.12.0** sürüm treni (versionCode
-  **7012000**). `/NoZoom` ayrı PR.
+- **PR #644 birleşti** (`e57e84a`), 18 kontrol yeşil, dal silindi; `target/`
+  temizlendi (4.8 GiB), disk %60.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-border-styles` açıldı.
+  Sıradaki kalem: **`/BS /S /B/I/U` kenar stilleri** (Opus `f8a72fc4` §2.2–2.3):
+  `border::Edge { Plain, Beveled, Inset, Underline }`, `/S` ayrıştırma,
+  `lighter`/`darker` tonları (`k = 0.25`; Gray/RGB kanal başına, CMYK yalnız K),
+  yeni `appearance/bevel.rs` — `rect_frame` (Square + FreeText), `ellipse_frame`
+  (Circle, 45° oktant yayları), `polygon_frame` (Polygon kenar başına iki ton);
+  Underline yalnız alt kenar, küçük şekilde (`≤4w` / `≤2w`) Plain'e düşüş,
+  PolyLine/Line/Ink B/I/U'yu yok sayar. `/Cap` caption ve `/NoZoom` sonraki
+  dilimlere. Ardından **v7.12.0** (versionCode **7012000**).
