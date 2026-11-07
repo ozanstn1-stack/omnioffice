@@ -1944,3 +1944,59 @@ ayrıca yeni `release-guard` ilk kez gerçek bir sürümde çalışacak.
   `release-guard: 7.13.0 (versionCode 7013000) OK`.
 - Kapılar: `release-guard`, `fastlane:check` (26 changelog), `docs:stats:check`,
   `claims:check` (395/521, döngü 7.13.0), `files:check` (bütçe değişmedi).
+
+**PR #651 birleşti** (`e690063`), 17 kontrol yeşil + 2 beklenen skip. Auto-tag
+`v7.13.0`'ı Desktop yeşile dönünce atacak (guard tag'den önce koşuyor), ardından
+Release + Android. Doğrulanacak: 18 asset, `latest.json` 7.13.0 + imza,
+`SHA256SUMS.txt` 8 satır, release gövdesi `[7.13.0]` bölümüyle birebir,
+versionCode 7013000.
+
+---
+
+# Sıradaki dilim adayı: sig-v2 kurcalama matrisi — **Opus kararı `c853876e` (koşullu dönüş)**
+
+Opus sıradaki kalem olarak `/Cap` caption'ı önerdi, **ama** şu koşulla: "kanonik
+v2 alanlarının her biri için uçtan uca kurcalama testi (offset/length/total/
+sha256/transfer_id/receiver → `bad-signature`) ve bozuk `sig_v2` / `min_sig=2`
+düşürme yolu testleri eksikse ve kod `synccore`'da ise, o zaman C3'e (test
+sıkılaştırma) dön."
+
+**Ölçüm (Q14):** eksik. Bugün `sig_tests.rs` alan bağlamasını **birim**
+düzeyinde kanıtlıyor (`version_two_binds_*` mutasyonları), ama *uçtan uca*
+(matris + host'un `bad-signature` yanıtı) yok; `download_tests` yalnız
+sha256/total yolunu, `sig_negotiation_tests` yalnız bozuk sidecar'ı kapsıyor.
+Kod `crates/synccore` içinde → **C3 yapılacak**; `/Cap` sonraya kalır.
+
+## Plan (dilim: yalnız test + belge, davranış değişmez)
+- Yeni `crates/synccore/tests/sig_v2_tamper.rs` (yeni dosya, <400 satır):
+  - tablo güdümlü matris: imzalandıktan sonra **her alan** değiştirildiğinde
+    (offset, `body_len`/length, total, sha256, path/transfer_id, op, sender,
+    receiver, nonce, timestamp) host `bad-signature` döndürmeli ve istek
+    işlenmemeli (dosya yazılmamalı/okunmamalı);
+  - bozuk `sig_v2` biçimleri: boş olmayan çöp, tek karakter eksik, `sig_v2`
+    varken `sig_v=2` (iki şekil aynı anda), sidecar'ı başka eşin anahtarıyla
+    imzalanmış;
+  - sidecar'sız v1 + pinli eş → `sig-downgrade`; v1 → v2 yükselmesi sonrası
+    aynı istek reddedilmeli;
+  - receiver bağı: X için imzalanmış v2, Y'ye gönderilince reddedilmeli;
+  - replay: aynı nonce iki kez reddedilmeli (v2 ve sidecar yollarında).
+- `docs/lan-sync.md`'ye tek paragraf: "hangi alanlar bağlı, kurcalanırsa ne
+  olur" tablosu (testlerin adlarıyla).
+- CHANGELOG `[Unreleased] ### Security`: "isteğe bağlı: kurcalama matrisi ile
+  doğrulanıyor" cümlesi **yok** — kullanıcıya görünen bir değişiklik olmadığı
+  için CHANGELOG'a yazılmaz; yalnız plan + doküman güncellenir.
+- Kapılar: `cargo fmt`, `cargo clippy -p synccore --all-targets -D warnings`,
+  `cargo test -p synccore`, `files:check` (yeni dosya <400 → bütçe yok),
+  `docs:stats`, `claims:check`.
+
+**DURUM (uygulandı):** yeni `crates/synccore/src/lan/sig_tamper_tests.rs` **221**
+satır, 7 test: alan matrisi (offset/total/sha256/op/path), kimlik+nonce+tazelik
+(receiver bağı ayrı cihaz kimliğiyle imzalanan etiketle), replay ("already
+used"), bozuk sidecar biçimleri (hex değil/kısa/uzun/sıfır/boşluklu) →
+`bad-signature`, başka anahtarla imzalanmış sidecar → `bad-signature`, pinli
+eşten v1 → `sig-downgrade` + kurcalanmış v2 → `bad-signature`, ve reddedilen
+isteğin hiçbir şeyi değiştirmediği (bozuk sidecar pin yazmaz, geçerli olan
+yazar). lib **111 → 118**, toplam Rust **1650 → 1657**. `lan.rs` bütçede
+kaldı (1254 → **1252**, başlık yorumları sıkıştırıldı), yeni dosya <400.
+Kapılar: fmt, clippy `-D warnings`, `cargo test -p synccore`, `files:check`,
+`docs:stats`, `claims:check` (395/521), `release-guard` (7.13.0 OK).

@@ -8,7 +8,7 @@ use super::*;
 /// A host that already holds one peer, so the version rules are checked without
 /// a pairing handshake in the way. Returns the address and the fingerprint the
 /// client has to pin.
-fn seeded_host(root: &Path, peer: PairedPeer) -> (LanHost, String, String) {
+pub(super) fn seeded_host(root: &Path, peer: PairedPeer) -> (LanHost, String, String) {
     let identity = LanIdentity::generate("host-seeded", "Atölye PC").expect("identity");
     let fingerprint = identity.fingerprint.clone();
     let host =
@@ -19,7 +19,7 @@ fn seeded_host(root: &Path, peer: PairedPeer) -> (LanHost, String, String) {
 }
 
 /// The host's record of the client: what the client announced while pairing.
-fn host_side_peer(features: &[&str], min_sig: u8) -> PairedPeer {
+pub(super) fn host_side_peer(features: &[&str], min_sig: u8) -> PairedPeer {
     PairedPeer {
         device_id: "client-seeded".into(),
         name: "Telefon".into(),
@@ -34,7 +34,7 @@ fn host_side_peer(features: &[&str], min_sig: u8) -> PairedPeer {
 }
 
 /// The client's record of the host.
-fn client_side_peer(address: &str, fingerprint: &str, features: &[&str], min_sig: u8) -> PairedPeer {
+pub(super) fn client_side_peer(address: &str, fingerprint: &str, features: &[&str], min_sig: u8) -> PairedPeer {
     PairedPeer {
         device_id: "host-seeded".into(),
         name: "Atölye PC".into(),
@@ -94,7 +94,7 @@ fn raw_request(peer: &PairedPeer, op: &str, version1_only: bool) -> Request {
 }
 
 /// One request over a fresh pinned connection, answered as the host answered it.
-fn send(address: &str, fingerprint: &str, request: &Request) -> Response {
+pub(super) fn send(address: &str, fingerprint: &str, request: &Request) -> Response {
     let mut connection = transport::Client::connect(address, Some(fingerprint)).expect("connect");
     connection.request::<Request, Response>(request, None).expect("send").0
 }
