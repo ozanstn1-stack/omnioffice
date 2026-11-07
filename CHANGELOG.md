@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A document's own `/ToUnicode` map can now be read:** the first piece of the
+  composite-font work is a reader for the CMap a Type0 font uses to map its
+  glyph codes back to characters (`pdfcore::cmap`). It inverts the map so text
+  can be drawn the other way round, keeps the lowest code when a character is
+  listed twice (so the result does not depend on entry order), and treats the
+  stream as untrusted input: a broken entry costs only itself, a destination
+  that is not exactly one character (a ligature, a lone surrogate) is skipped,
+  placeholders and private-use codes never become drawable, and the stream is
+  bounded before anything is allocated. Nothing draws with it yet - the next
+  step wires it into synthesized annotation text, which is what CJK notes need.
+
 ## [7.18.0] - 2026-11-07
 
 ### Added

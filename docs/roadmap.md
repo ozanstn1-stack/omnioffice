@@ -306,7 +306,9 @@ Effort estimates assume a single developer.
   (`/BE /S /C`, with `/I` setting how coarse it is) is drawn as a chain of
   outward scallops, and a shape too small for its own bumps keeps the plain
   frame. Reading a *document's* composite font (Identity-V, predefined CMaps,
-  an embedded CMap stream) is still open, as are redactions and `/NoZoom`.
+  an embedded CMap stream) is still open, as are redactions and `/NoZoom`; the
+  first piece landed as `pdfcore::cmap`, a reader for a Type0 font's
+  `/ToUnicode` map, which the synthesized-text paths do not use yet.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF

@@ -2327,3 +2327,50 @@ iki zarf birlikte verildiğinde `coverage` **0** dönmeli.
    yol ve `/Rect` içinde kalma, dilim sayısı, `/I` kırpma, dejenere, tavan,
    `/IC` dolgusu.
 3. Docs `docs/roadmap.md` + CHANGELOG `[Unreleased] Added`; kapılar + PR.
+
+---
+
+# SÜRÜM: v7.18.0 yayınlandı ve doğrulandı (2026-11-07) — iki zarf, tam kapsama
+- Tag **`v7.18.0` → `9cc3115`**, **20 asset** (`-desktop` + `-android` zarfları).
+  Provenance job'ları **iki workflow'da da** yeşil (Release: `Build provenance
+  (desktop assets)` + 4 generator adımı; Android: `Build provenance (Android
+  assets)` + 4 adım).
+- **Zarf içerikleri (ölçüldü):** desktop **12 subject**, android **5 subject**;
+  `Statement/v0.1` + `slsa.dev/provenance/v0.2`. Birlikte **17 = 20 −
+  `latest.json` − 2 zarf**, ve subject listesi yayınlanan asset'lerle **birebir**
+  (`missing: none`, `named but not published: none`).
+- **Tüketici doğrulaması:** `node scripts/provenance-subjects.mjs coverage
+  --release-dir /tmp/rel18 omnioffice-v7.18.0-desktop.intoto.jsonl
+  omnioffice-v7.18.0-android.intoto.jsonl` → *"every published asset is covered
+  by 2 envelope(s)"*, exit 0.
+- Release gövdesi CHANGELOG `[7.18.0]` ile **birebir** (576/576); `latest.json`
+  7.18.0 + **444 baytlık imza**; `SHA256SUMS.txt` **8 satır**; versionCode
+  **7018000**.
+- `target/` temizlendi (12.8 GiB), disk %61.
+
+## Sıradaki adaylar
+1. **Android zarfı için de `check-published`** zaten var; kalan iş yok.
+2. Belgenin Type0/CID fontunu **okumak** (Identity-V, predefined CMaps, gömülü
+   CMap) — Opus'un 3-4 PR'lık serisi; sentez metninde CJK için son boşluk.
+3. `/NoZoom` (opt-in) ve redaksiyon düzleştirme (içerik kaldırmadan yapılmaz).
+4. OSV kalan uyarıları (çoğu unmaintained/GTK3) — gerekçeli `ignore` + izleme.
+
+---
+
+# PR #666: `/ToUnicode` okuyucusu (kompozit font serisinin ilk mekanizması)
+- `crates/pdfcore/src/cmap.rs` (311) + `cmap/tests.rs` (145, 14 test).
+  `cmap::read(&[u8]) -> ToUnicode`; `code(char) -> Option<u16>` (en küçük kod
+  kazanır), `covers(&str)`, `encode(&str) -> Option<Vec<u8>>` (iki bayt BE).
+  Güvensiz girdi: bozuk giriş yalnız kendini kaybeder, akış ve harita
+  sınırlanır (1 MiB / 65536), hedef tek kullanılabilir skaler değilse atlanır.
+- **Fuzz gerçek bir hata buldu** (ilk koşuda, 7 dk'da): `increment`
+  içinde, `bfrange` hedefi **sekiz baytın tamamını** kapladığında `u64`
+  kendi genişliği kadar sağa kaydırılıyordu → `attempt to shift right with
+  overflow`. Düzeltme: genişlik > 8 önce reddedilir, tam genişlikte uyum
+  kaydırması hiç yapılmaz. Regresyon testi 1..=8 bayt genişliklerini tarar ve
+  **hatalı kodla düştüğü doğrulandı** (`a_destination_of_any_width...`).
+- Doğrulama: lib **286** test, clippy `-D warnings` temiz, `files:check`
+  (yeni dosya 311 ≤ 400), `docs:stats`, `claims:check`, `release-guard`,
+  `reproducibility`, YAML parse.
+- **Opus planı `edaa33b8`** — uyum: birebir ("önce bağımsız ayrıştırıcı"
+  adımı; `pdfcore`'da ToUnicode ayrıştırıcısı yoktu, ölçüldü).
