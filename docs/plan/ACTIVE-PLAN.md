@@ -1569,7 +1569,23 @@ otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
   üretildi (uydurma genişlik yok); (2) `wrap`/`encode` ayrı `textfit.rs`'te,
   callout ve `/RD` `freetext.rs` içinde; (3) kodlanamayan karakter **tüm
   açıklamayı** düşürüyor (plan gereği), test bunu sabitliyor.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki iki kalem (Opus): (1) N-up geometri rötuşları — `Polygon`/`PolyLine`
-  (`/Vertices`), kesikli kenar `/BS /S /D`, `/LE` çizgi uçları; (2) v7.11.0
-  sürümü (versionCode 7011000).
+- **PR #639 birleşti** (`37a0c8c`), 18 kontrol yeşil (coverage dahil), dal
+  silindi; `target/` temizlendi (4.8 GiB), disk %60.
+- **DURUM (dilim 1, Opus planı `4a676a26`):** uygulandı. Yeni
+  `appearance/border.rs` **187** (`Stroke { width, dash }`, `/BS /S /D` +
+  varsayılan `[3]`, eski `/Border` 4. elemanı, bozuk desen → düz) ve
+  `appearance/paths.rs` **208** (`/L`, `/InkList`, `/Vertices`; `polygon`
+  kapalı/açık, `Polyline`'da `/IC` yol dolgusu değil); `appearance.rs` 371 →
+  **253** (line/ink/border taşındı), `freetext.rs` **316** (çerçeve ve callout
+  artık dash taşıyor). **11 yeni entegrasyon testi**
+  (`nup_shape_polish_test.rs`) + border/paths birim testleri; lib 211 → **219**,
+  N-up testi **102**. Kapılar: fmt, clippy `-D warnings`, `files:check`/
+  `files:update`, `docs:stats`, `claims:check` (391 iddia / 505 işaret) temiz.
+  **Opus planından sapma:** `/LE` çizgi uçları bu PR'a alınmadı (Opus'un önerisi
+  gibi ikinci PR'a bırakıldı); `callout()` `freetext.rs`'te kaldı (ends.rs
+  açılmadı).
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dilim 1 PR'ı açılıyor; CI yeşilse squash
+  merge. Sıradaki iki kalem: (1) **dilim 2** — `/LE` çizgi uçları (`/L`,
+  `PolyLine`, FreeText callout; OpenArrow/ClosedArrow/R*Arrow/Square/Circle/
+  Diamond/Butt/Slash) + bbox payı; (2) v7.11.0 sürüm treni (versionCode
+  **7011000**).

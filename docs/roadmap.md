@@ -288,10 +288,10 @@ Effort estimates assume a single developer.
   their field type says the appearance is current (buttons, current text fields,
   signed signature fields), while `NeedAppearances` holds text back. A mark
   without an appearance stream is synthesized from its geometry (the quad-point
-  marks and square/circle/line/ink shapes), and a free-text note is set with a
-  standard font by name (`/Differences` carries the Turkish and Latin-A glyphs).
-  Redactions, embedded/CID fonts, callout line ends and `/NoZoom` are the next
-  candidates.
+  marks and square/circle/line/polygon/ink shapes, dashed borders included), and
+  a free-text note is set with a standard font by name (`/Differences` carries
+  the Turkish and Latin-A glyphs). Redactions, embedded/CID fonts, callout line
+  ends (`/LE`), `/BE` clouds and `/NoZoom` are the next candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF

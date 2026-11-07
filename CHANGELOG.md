@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Polygons, polylines and dashed borders arrive in N-up:** a `Polygon` or
+  `PolyLine` without an appearance stream is drawn from its `/Vertices` now -
+  the closed path filled with `/IC` and stroked with `/C`, the open one only
+  stroked, exactly as the annotation describes. A border can also be dashed:
+  `/BS << /S /D /D [...] >>` writes the `d` operator before the shape, the
+  specification's `[3]` applies when the pattern is missing, and a malformed
+  pattern falls back to a solid line rather than losing the annotation. A solid
+  style still ignores a stray `/D`, and a legacy `/Border`'s fourth entry works
+  as the pattern too.
 - **Free-text notes reach the paper in N-up:** a note without an appearance
   stream used to disappear, taking the user's own words with it. The text is
   laid out now with a standard font referenced by name - Helvetica, Times or

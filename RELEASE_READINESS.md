@@ -142,6 +142,16 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_appearance_test.rs#ink_draws_every_stroke`
   `test:crates/pdfcore/tests/nup_appearance_test.rs#an_annotation_with_a_broken_appearance_is_not_synthesized`
 
+- **Polygons, polylines and dashed borders are synthesized:** a `Polygon` or
+  `PolyLine` without an `/AP` is drawn from `/Vertices` (the closed one filled
+  with `/IC` and stroked with `/C`, the open one only stroked), and `/BS /S /D`
+  writes a `d` operator before the shape. A broken pattern or a solid style
+  falls back to a solid line, and a legacy `/Border`'s fourth entry is read too.
+  `test:crates/pdfcore/tests/nup_shape_polish_test.rs#a_polygon_is_filled_and_stroked`
+  `test:crates/pdfcore/tests/nup_shape_polish_test.rs#a_polyline_stays_open_and_is_never_filled`
+  `test:crates/pdfcore/tests/nup_shape_polish_test.rs#a_dashed_border_is_written_before_the_shape`
+  `test:crates/pdfcore/tests/nup_shape_polish_test.rs#a_broken_pattern_draws_a_solid_border`
+
 - **Free-text notes are synthesized with a standard font:** a `FreeText`
   annotation without an `/AP` is laid out from `/Contents`, `/DA` (falling back
   to `/AcroForm /DA`), `/Q`, `/C`, `/RD` and `/CL`, using a Helvetica, Times or
