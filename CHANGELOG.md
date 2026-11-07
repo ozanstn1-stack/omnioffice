@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.12.0] - 2026-11-07
+
+### Added
+
+- **Border styles arrive in N-up:** a synthesized frame now honours `/BS /S`:
+  `B` bevels it with a light top/left and a dark bottom/right (tones derived
+  from the stroke colour, a quarter toward white or black), `I` swaps those
+  tones so the frame looks sunk, and `U` keeps only the bottom edge the way a
+  field underline is drawn. Squares, free-text notes, circles (two half-arcs)
+  and polygons (one tone per edge) follow; a shape too small for a band falls
+  back to the plain frame, and a line, polyline or ink stroke has no inside to
+  bevel, so it stays plain. The bands are painted inside the frame, so the
+  form's box does not grow.
+- **A line with a leader is drawn instead of dropped:** a `Line` annotation
+  whose `/LL` moves it beside its anchors used to disappear from an imposition,
+  because a viewer draws the shifted line plus a short leader from each anchor
+  and the synthesized appearance did not. It does now: `/LL` sets the sideways
+  offset (negative flips the side), `/LLE` runs the leader past the line and
+  `/LLO` leaves a gap at the anchor, `/LE` endings attach to the shifted line,
+  and the box grows to cover the leaders. A dashed line dashes its leaders too.
+
 ## [7.11.0] - 2026-11-07
 
 ### Added
