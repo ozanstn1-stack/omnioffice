@@ -71,8 +71,16 @@ pub(super) struct Synth {
     pub(super) bbox: [f64; 4],
     /// `/Highlight` blends, so its form needs a Multiply graphics state.
     pub(super) multiply: bool,
-    /// The standard font the content references by name, if it draws text.
-    pub(super) font: Option<appearance::Std14>,
+    /// The font the content references, if it draws text.
+    pub(super) font: Option<FontSpec>,
+}
+
+/// How a synthesized appearance names its font.
+pub(super) enum FontSpec {
+    /// One of the standard 14, written as a font dictionary of our own.
+    Standard(appearance::Std14),
+    /// A font of the document, referenced as it already is.
+    Resource { key: Vec<u8>, id: ObjectId },
 }
 
 /// One annotation ready to be painted on a sheet.

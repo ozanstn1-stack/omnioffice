@@ -50,6 +50,44 @@ pub(super) fn decode(raw: &[u8]) -> Option<String> {
     Some(out)
 }
 
+/// The character a WinAnsi code stands for, when it stands for one.
+pub(crate) fn win_ansi_symbol(code: u8) -> Option<char> {
+    if (0x20..=0x7E).contains(&code) {
+        return Some(char::from(code));
+    }
+    match code {
+        0x80 => Some('€'),
+        0x82 => Some('‚'),
+        0x83 => Some('ƒ'),
+        0x84 => Some('„'),
+        0x85 => Some('…'),
+        0x86 => Some('†'),
+        0x87 => Some('‡'),
+        0x88 => Some('ˆ'),
+        0x89 => Some('‰'),
+        0x8A => Some('Š'),
+        0x8B => Some('‹'),
+        0x8C => Some('Œ'),
+        0x8E => Some('Ž'),
+        0x91 => Some('‘'),
+        0x92 => Some('’'),
+        0x93 => Some('“'),
+        0x94 => Some('”'),
+        0x95 => Some('•'),
+        0x96 => Some('–'),
+        0x97 => Some('—'),
+        0x98 => Some('˜'),
+        0x99 => Some('™'),
+        0x9A => Some('š'),
+        0x9B => Some('›'),
+        0x9C => Some('œ'),
+        0x9E => Some('ž'),
+        0x9F => Some('Ÿ'),
+        0xA0..=0xFF if code != 0xAD => Some(char::from(code)),
+        _ => None,
+    }
+}
+
 /// Encodes text in WinAnsi plus the private extra codes; `None` when a
 /// character has no representation.
 pub(super) fn encode(text: &str) -> Option<Vec<u8>> {
@@ -107,9 +145,48 @@ fn win_ansi(symbol: char) -> Option<u8> {
     })
 }
 
-/// Width of encoded text in 1/1000 em units.
-pub(super) fn width(font: Std14, bytes: &[u8]) -> f32 {
-    bytes.iter().map(|code| f32::from(font.width(*code))).sum()
+/// What line breaking needs from a font: a code per character, a width per
+/// code and the two vertical metrics.
+///
+/// The standard 14 fonts implement it from their AFM tables; a `/DR` font of
+/// the document implements it from its `/Widths` and encoding.
+pub(crate) trait FontMetrics {
+    fn encode(&self, symbol: char) -> Option<u8>;
+    fn width(&self, code: u8) -> f32;
+    /// Ascender in 1/1000 em (positive).
+    fn ascent(&self) -> f32;
+}
+
+/// The standard 14 fonts as a [`FontMetrics`] source.
+pub(crate) struct Std14Metrics(pub(crate) Std14);
+
+impl FontMetrics for Std14Metrics {
+    fn encode(&self, symbol: char) -> Option<u8> {
+        encode(&symbol.to_string()).and_then(|bytes| bytes.first().copied())
+    }
+
+    fn width(&self, code: u8) -> f32 {
+        f32::from(self.0.width(code))
+    }
+
+    fn ascent(&self) -> f32 {
+        f32::from(self.0.ascent())
+    }
+}
+
+/// Width with any metrics source.
+pub(crate) fn width_of(metrics: &dyn FontMetrics, bytes: &[u8]) -> f32 {
+    bytes.iter().map(|code| metrics.width(*code)).sum()
+}
+
+/// Encodes one word through the metrics; `None` when a character has no code.
+fn encode_word(metrics: &dyn FontMetrics, word: &str) -> Option<Vec<u8>> {
+    word.chars().map(|symbol| metrics.encode(symbol)).collect()
+}
+
+/// The character a glyph name stands for, when it is one of the extra glyphs.
+pub(crate) fn glyph_symbol(name: &str) -> Option<char> {
+    EXTRA_GLYPHS.iter().position(|(glyph, _)| *glyph == name).map(|index| EXTRA_SYMBOLS[index])
 }
 
 /// The glyph names the font dictionary must declare through `/Differences`,
@@ -122,7 +199,19 @@ pub(crate) fn differences() -> Vec<&'static str> {
 ///
 /// Greedy word wrapping; a single word wider than the box is broken by
 /// character. An empty paragraph keeps its empty line.
+#[cfg(test)]
 pub(super) fn wrap(font: Std14, size: f32, text: &str, max_width: f32, max_lines: usize) -> Vec<Vec<u8>> {
+    wrap_with(&Std14Metrics(font), size, text, max_width, max_lines)
+}
+
+/// The same wrapping over any metrics source.
+pub(crate) fn wrap_with(
+    metrics: &dyn FontMetrics,
+    size: f32,
+    text: &str,
+    max_width: f32,
+    max_lines: usize,
+) -> Vec<Vec<u8>> {
     let mut lines: Vec<Vec<u8>> = Vec::new();
     for paragraph in text.split(['\n', '\r', '\u{2028}']) {
         if lines.len() >= max_lines {
@@ -131,14 +220,14 @@ pub(super) fn wrap(font: Std14, size: f32, text: &str, max_width: f32, max_lines
         let paragraph = paragraph.replace('\t', " ");
         let mut current: Vec<u8> = Vec::new();
         for word in paragraph.split(' ') {
-            let encoded = encode(word);
+            let encoded = encode_word(metrics, word);
             let Some(encoded) = encoded else { continue };
             let mut candidate = current.clone();
             if !candidate.is_empty() {
                 candidate.push(b' ');
             }
             candidate.extend_from_slice(&encoded);
-            if width(font, &candidate) * size / 1000.0 <= max_width {
+            if width_of(metrics, &candidate) * size / 1000.0 <= max_width {
                 current = candidate;
                 continue;
             }
@@ -148,19 +237,19 @@ pub(super) fn wrap(font: Std14, size: f32, text: &str, max_width: f32, max_lines
                     return lines;
                 }
             }
-            if width(font, &encoded) * size / 1000.0 <= max_width {
+            if width_of(metrics, &encoded) * size / 1000.0 <= max_width {
                 current = encoded;
                 continue;
             }
             // A single word wider than the box: break it by character.
             for symbol in word.chars() {
-                let piece = match encode(&symbol.to_string()) {
-                    Some(piece) => piece,
+                let piece = match metrics.encode(symbol) {
+                    Some(code) => vec![code],
                     None => continue,
                 };
                 let mut grown = current.clone();
                 grown.extend_from_slice(&piece);
-                if width(font, &grown) * size / 1000.0 > max_width && !current.is_empty() {
+                if width_of(metrics, &grown) * size / 1000.0 > max_width && !current.is_empty() {
                     lines.push(std::mem::take(&mut current));
                     if lines.len() >= max_lines {
                         return lines;
@@ -204,7 +293,8 @@ mod tests {
     fn widths_match_the_afm() {
         let font = Std14 { family: Family::Helvetica, bold: false, italic: false };
         let bytes = encode("Hello").unwrap();
-        assert!((width(font, &bytes) - 2278.0).abs() < 0.01, "Helvetica 10pt: {}", width(font, &bytes));
+        let metrics = super::Std14Metrics(font);
+        assert!((width_of(&metrics, &bytes) - 2278.0).abs() < 0.01, "Helvetica 10pt: {}", width_of(&metrics, &bytes));
         assert_eq!(font.width(b' '), 278);
         assert_eq!(font.width(b'i'), 222);
         assert_eq!(font.width(b'm'), 833);
@@ -216,7 +306,10 @@ mod tests {
         let lines = wrap(font, 10.0, "hello world again", 40.0, 10);
         assert!(lines.len() > 1, "the text does not fit one line: {lines:?}");
         for line in &lines {
-            assert!(width(font, line) * 10.0 / 1000.0 <= 40.0 + 0.01, "line {line:?} is too wide");
+            assert!(
+                width_of(&super::Std14Metrics(font), line) * 10.0 / 1000.0 <= 40.0 + 0.01,
+                "line {line:?} is too wide"
+            );
         }
         let joined: String =
             lines.iter().map(|line| String::from_utf8_lossy(line).to_string()).collect::<Vec<_>>().join(" ");

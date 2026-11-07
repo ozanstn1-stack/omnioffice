@@ -1,6 +1,6 @@
 //! Paints the collected draws into a sheet's content stream and resources.
 
-use super::{Alpha, Draw, Look, Synth};
+use super::{Alpha, Draw, FontSpec, Look, Synth};
 use lopdf::{Dictionary, Document, Object, ObjectId, Stream};
 
 pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) {
@@ -66,7 +66,7 @@ fn synthesized_form(synth: &Synth) -> Stream {
         dict.set("Resources", Object::Dictionary(multiply_resources()));
         content.extend_from_slice(b"/H0 gs\n");
     }
-    if let Some(font) = synth.font {
+    if let Some(font) = &synth.font {
         dict.set("Resources", Object::Dictionary(font_resources(font)));
     }
     content.extend_from_slice(&synth.ops);
@@ -75,7 +75,15 @@ fn synthesized_form(synth: &Synth) -> Stream {
 
 /// The form resources for synthesized text: one standard font referenced by
 /// name, with the glyphs WinAnsi lacks declared through `/Differences`.
-fn font_resources(font: super::appearance::Std14) -> Dictionary {
+fn font_resources(font: &FontSpec) -> Dictionary {
+    let FontSpec::Standard(font) = font else {
+        let FontSpec::Resource { key, id } = font else { unreachable!() };
+        let mut fonts = Dictionary::new();
+        fonts.set(key.as_slice(), Object::Reference(*id));
+        let mut resources = Dictionary::new();
+        resources.set("Font", Object::Dictionary(fonts));
+        return resources;
+    };
     let mut encoding = Dictionary::new();
     encoding.set("Type", Object::Name(b"Encoding".to_vec()));
     encoding.set("BaseEncoding", Object::Name(b"WinAnsiEncoding".to_vec()));

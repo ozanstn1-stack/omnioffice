@@ -292,8 +292,9 @@ Effort estimates assume a single developer.
   a free-text note is set with a standard font by name (`/Differences` carries
   the Turkish and Latin-A glyphs). Line endings (`/LE` arrows, squares, circles,
   diamonds, caps and slashes) follow on lines, polylines and callouts.
-  Redactions, embedded/CID fonts, `/BE` clouds and `/NoZoom` are the next
-  candidates.
+  A note also uses the form's own simple `/DR` font when its metrics are
+  readable (WinAnsi and `/Widths`). Redactions, composite (Type0/CID) fonts,
+  `/BE` clouds and `/NoZoom` are the next candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF
