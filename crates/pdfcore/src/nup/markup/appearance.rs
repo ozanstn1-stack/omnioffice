@@ -19,7 +19,13 @@ use super::super::links::number;
 use super::Synth;
 use lopdf::{Dictionary, Document};
 
+mod freetext;
 mod quads;
+pub(crate) mod std14;
+mod textfit;
+
+pub(crate) use std14::Std14;
+pub(super) use textfit::{differences, extra_base};
 
 /// A Bézier constant for a quarter circle.
 const KAPPA: f64 = 0.552_284_749_8;
@@ -38,6 +44,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, subtype: &[u8], rec
         b"Circle" => shape(doc, annot, rect, ShapeKind::Circle),
         b"Line" => line(doc, annot, rect),
         b"Ink" => ink(doc, annot, rect),
+        b"FreeText" => freetext::synthesize(doc, annot, rect),
         _ => None,
     }
 }
@@ -169,7 +176,7 @@ fn shape(doc: &Document, annot: &Dictionary, rect: [f64; 4], kind: ShapeKind) ->
     } else {
         "f\n"
     });
-    Some(Synth { ops: ops.into_bytes(), bbox: rect, multiply: false })
+    Some(Synth { ops: ops.into_bytes(), bbox: rect, multiply: false, font: None })
 }
 
 fn ellipse(ops: &mut String, left: f64, bottom: f64, right: f64, top: f64) {
@@ -220,7 +227,7 @@ fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
             values[1].max(values[3]) + half,
         ],
     );
-    Some(Synth { ops: ops.into_bytes(), bbox: bounds, multiply: false })
+    Some(Synth { ops: ops.into_bytes(), bbox: bounds, multiply: false, font: None })
 }
 
 fn ink(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
@@ -267,6 +274,7 @@ fn ink(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
         ops: ops.into_bytes(),
         bbox: [bounds[0] - half, bounds[1] - half, bounds[2] + half, bounds[3] + half],
         multiply: false,
+        font: None,
     })
 }
 

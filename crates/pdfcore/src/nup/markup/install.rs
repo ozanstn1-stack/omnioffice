@@ -66,8 +66,36 @@ fn synthesized_form(synth: &Synth) -> Stream {
         dict.set("Resources", Object::Dictionary(multiply_resources()));
         content.extend_from_slice(b"/H0 gs\n");
     }
+    if let Some(font) = synth.font {
+        dict.set("Resources", Object::Dictionary(font_resources(font)));
+    }
     content.extend_from_slice(&synth.ops);
     Stream::new(dict, content)
+}
+
+/// The form resources for synthesized text: one standard font referenced by
+/// name, with the glyphs WinAnsi lacks declared through `/Differences`.
+fn font_resources(font: super::appearance::Std14) -> Dictionary {
+    let mut encoding = Dictionary::new();
+    encoding.set("Type", Object::Name(b"Encoding".to_vec()));
+    encoding.set("BaseEncoding", Object::Name(b"WinAnsiEncoding".to_vec()));
+    let mut differences: Vec<Object> = vec![Object::Integer(i64::from(super::appearance::extra_base()))];
+    for name in super::appearance::differences() {
+        differences.push(Object::Name(name.as_bytes().to_vec()));
+    }
+    encoding.set("Differences", Object::Array(differences));
+
+    let mut font_dict = Dictionary::new();
+    font_dict.set("Type", Object::Name(b"Font".to_vec()));
+    font_dict.set("Subtype", Object::Name(b"Type1".to_vec()));
+    font_dict.set("BaseFont", Object::Name(font.base_font().as_bytes().to_vec()));
+    font_dict.set("Encoding", Object::Dictionary(encoding));
+
+    let mut fonts = Dictionary::new();
+    fonts.set("FOmni0", Object::Dictionary(font_dict));
+    let mut resources = Dictionary::new();
+    resources.set("Font", Object::Dictionary(fonts));
+    resources
 }
 
 /// A highlight blends with what is underneath it.
