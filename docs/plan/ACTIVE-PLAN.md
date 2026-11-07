@@ -1596,6 +1596,13 @@ otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
   lib 219 → **229**, N-up testi **113**. Kapılar: fmt, clippy `-D warnings`,
   `files:check`/`files:update`, `docs:stats`, `claims:check` (392 iddia / 509
   işaret) temiz.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki: **v7.11.0 sürüm treni** — `[Unreleased]` üç girdi taşıyor (kesikli
-  kenar/poligon, FreeText, `/LE`); versionCode **7011000**.
+- **PR #641 birleşti** (`67faa4c`), 18 kontrol yeşil, dal silindi; `target/`
+  temizlendi (4.6 GiB), disk %60.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `chore/release-v7.11.0` açıldı.
+  Sıradaki iş **v7.11.0 sürüm treni** — `[Unreleased]` **üç** girdi taşıyor
+  (poligon/kesikli kenar #640, FreeText #639, `/LE` uçları #641). Adımlar
+  v7.10.0 ile aynı: sürüm 7.11.0 (`Cargo.toml`/lock, `package.json`/lock,
+  `tauri.conf.json`), `tauri.properties` versionCode **7011000**, CHANGELOG
+  `[Unreleased]` → `[7.11.0] - 2026-11-07`, README + indirme bağlantıları,
+  `RELEASE_READINESS` başlığı, fastlane `en-US/7011000.txt` + `tr-TR`, PR →
+  merge → auto-tag → 18 asset doğrulaması.
