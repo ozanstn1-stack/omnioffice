@@ -47,7 +47,8 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
         Some(2) => Align::Right,
         _ => Align::Left,
     };
-    let border = super::border_width(doc, annot)?;
+    let stroke = super::border::stroke(doc, annot)?;
+    let border = stroke.width;
     let [x0, y0, x1, y1] = inset(doc, annot, rect)?;
     let mut ops = String::from("q\n");
     if let Some(background) = color(doc, annot, b"C")? {
@@ -57,7 +58,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
     if border > 0.0 {
         let half = border / 2.0;
         ops.push_str(&style.colour.render(style.colour.stroke_op()));
-        ops.push_str(&format!("{} w\n", n(border)));
+        stroke.ops(&mut ops);
         ops.push_str(&format!(
             "{} {} {} {} re S\n",
             n(x0 + half),
@@ -66,7 +67,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
             n(y1 - y0 - border)
         ));
     }
-    callout(doc, annot, &style, border, &mut ops);
+    callout(doc, annot, &style, &stroke, &mut ops);
 
     let text = annot
         .get(b"Contents")
@@ -107,7 +108,7 @@ fn inset(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<[f64; 4]>
 }
 
 /// A callout line from `/CL` (four or six numbers).
-fn callout(doc: &Document, annot: &Dictionary, style: &Style, border: f64, ops: &mut String) {
+fn callout(doc: &Document, annot: &Dictionary, style: &Style, stroke: &super::border::Stroke, ops: &mut String) {
     let Ok(value) = annot.get(b"CL") else { return };
     let value = resolve(doc, value);
     let Ok(items) = value.as_array() else { return };
@@ -116,7 +117,7 @@ fn callout(doc: &Document, annot: &Dictionary, style: &Style, border: f64, ops: 
     }
     let Some(points) = items.iter().map(number).collect::<Option<Vec<f64>>>() else { return };
     ops.push_str(&style.colour.render(style.colour.stroke_op()));
-    ops.push_str(&format!("{} w\n", n(border.max(1.0))));
+    stroke.ops(ops);
     for pair in points.chunks(2) {
         let command = if pair.as_ptr() == points.as_ptr() { "m" } else { "l" };
         ops.push_str(&format!("{} {} {command}\n", n(pair[0]), n(pair[1])));
@@ -156,7 +157,6 @@ fn layout(style: &Style, align: Align, border: f64, box_: [f64; 4], text: &str, 
     }
     ops.push_str("ET\n");
 }
-
 /// The `/DA` chain: the annotation's own, then the form's, then a default.
 fn style_of(doc: &Document, annot: &Dictionary) -> Option<Style> {
     let own = annot

@@ -19,7 +19,9 @@ use super::super::links::number;
 use super::Synth;
 use lopdf::{Dictionary, Document};
 
+mod border;
 mod freetext;
+mod paths;
 mod quads;
 pub(crate) mod std14;
 mod textfit;
@@ -29,10 +31,6 @@ pub(super) use textfit::{differences, extra_base};
 
 /// A Bézier constant for a quarter circle.
 const KAPPA: f64 = 0.552_284_749_8;
-/// Guards against absurd inputs rather than for a real document.
-const MAX_INK_POINTS: usize = 20_000;
-const MAX_INK_STROKES: usize = 1_000;
-
 /// Builds the appearance of one annotation, or `None` when it cannot be drawn.
 pub(super) fn synthesize(doc: &Document, annot: &Dictionary, subtype: &[u8], rect: [f64; 4]) -> Option<Synth> {
     match subtype {
@@ -42,8 +40,10 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, subtype: &[u8], rec
         b"StrikeOut" => quads::synthesize(doc, annot, rect, quads::QuadKind::StrikeOut),
         b"Square" => shape(doc, annot, rect, ShapeKind::Square),
         b"Circle" => shape(doc, annot, rect, ShapeKind::Circle),
-        b"Line" => line(doc, annot, rect),
-        b"Ink" => ink(doc, annot, rect),
+        b"Line" => paths::line(doc, annot, rect),
+        b"Ink" => paths::ink(doc, annot, rect),
+        b"Polygon" => paths::polygon(doc, annot, rect, true),
+        b"PolyLine" => paths::polygon(doc, annot, rect, false),
         b"FreeText" => freetext::synthesize(doc, annot, rect),
         _ => None,
     }
@@ -107,24 +107,6 @@ pub(super) fn color(doc: &Document, annot: &Dictionary, key: &[u8]) -> Option<Op
     Some(Some(Color { values }))
 }
 
-/// `/BS /W`, then the legacy `/Border` third entry, then a hairline.
-pub(super) fn border_width(doc: &Document, annot: &Dictionary) -> Option<f64> {
-    let width = annot
-        .get(b"BS")
-        .ok()
-        .map(|value| resolve(doc, value))
-        .and_then(|value| value.as_dict().ok().and_then(|dict| dict.get(b"W").ok().and_then(number)))
-        .or_else(|| {
-            annot.get(b"Border").ok().and_then(|value| {
-                let value = resolve(doc, value);
-                let items = value.as_array().ok()?;
-                items.get(2).and_then(number)
-            })
-        })
-        .unwrap_or(1.0);
-    (width.is_finite() && (0.0..=1_000.0).contains(&width)).then_some(width)
-}
-
 // ---------------------------------------------------------------------------
 // Shapes
 // ---------------------------------------------------------------------------
@@ -138,7 +120,8 @@ enum ShapeKind {
 fn shape(doc: &Document, annot: &Dictionary, rect: [f64; 4], kind: ShapeKind) -> Option<Synth> {
     let stroke = color(doc, annot, b"C")?;
     let fill = color(doc, annot, b"IC")?;
-    let width = border_width(doc, annot)?;
+    let border = border::stroke(doc, annot)?;
+    let width = border.width;
     let has_stroke = stroke.is_some() && width > 0.0;
     if stroke.is_none() && fill.is_none() {
         return None;
@@ -154,7 +137,7 @@ fn shape(doc: &Document, annot: &Dictionary, rect: [f64; 4], kind: ShapeKind) ->
         if let Some(stroke) = &stroke {
             ops.push_str(&stroke.render(stroke.stroke_op()));
         }
-        ops.push_str(&format!("{} w\n", number_text(width)));
+        border.ops(&mut ops);
     }
     if let Some(fill) = &fill {
         ops.push_str(&fill.render(fill.fill_op()));
@@ -191,93 +174,6 @@ fn ellipse(ops: &mut String, left: f64, bottom: f64, right: f64, top: f64) {
     ops.push_str(&format!("{}{}{}c\nh\n", point(cx + kx, cy - ry), point(cx + rx, cy - ky), point(cx + rx, cy)));
 }
 
-fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
-    // A leader line shifts the stroke sideways; ignoring it would draw the
-    // line in the wrong place, so the annotation is skipped instead.
-    if annot.get(b"LL").ok().and_then(number).is_some_and(|value| value != 0.0) {
-        return None;
-    }
-    let points = resolve(doc, annot.get(b"L").ok()?);
-    let items = points.as_array().ok()?;
-    if items.len() != 4 {
-        return None;
-    }
-    let values: Vec<f64> = items.iter().map(number).collect::<Option<_>>()?;
-    let colour = color(doc, annot, b"C")??;
-    let width = border_width(doc, annot)?;
-    if width <= 0.0 {
-        return None;
-    }
-    let mut ops = colour.render(colour.stroke_op());
-    ops.push_str(&format!("{} w\n", number_text(width)));
-    ops.push_str(&format!(
-        "{} {} m\n{} {} l\nS\n",
-        number_text(values[0]),
-        number_text(values[1]),
-        number_text(values[2]),
-        number_text(values[3])
-    ));
-    let half = width / 2.0;
-    let bounds = union(
-        rect,
-        [
-            values[0].min(values[2]) - half,
-            values[1].min(values[3]) - half,
-            values[0].max(values[2]) + half,
-            values[1].max(values[3]) + half,
-        ],
-    );
-    Some(Synth { ops: ops.into_bytes(), bbox: bounds, multiply: false, font: None })
-}
-
-fn ink(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
-    let list = resolve(doc, annot.get(b"InkList").ok()?);
-    let strokes = list.as_array().ok()?;
-    if strokes.is_empty() || strokes.len() > MAX_INK_STROKES {
-        return None;
-    }
-    let colour = color(doc, annot, b"C")??;
-    let width = border_width(doc, annot)?;
-    if width <= 0.0 {
-        return None;
-    }
-    let mut ops = String::from("1 J\n1 j\n");
-    ops.push_str(&colour.render(colour.stroke_op()));
-    ops.push_str(&format!("{} w\n", number_text(width)));
-    let mut total = 0usize;
-    let mut bounds = rect;
-    for stroke in strokes {
-        let points = resolve(doc, stroke);
-        let items = points.as_array().ok()?;
-        if items.len() < 2 || !items.len().is_multiple_of(2) {
-            return None;
-        }
-        total += items.len() / 2;
-        if total > MAX_INK_POINTS {
-            return None;
-        }
-        let mut coordinates = Vec::with_capacity(items.len());
-        for item in items {
-            coordinates.push(number(item)?);
-        }
-        for (index, pair) in coordinates.chunks(2).enumerate() {
-            let command = if index == 0 { "m" } else { "l" };
-            ops.push_str(&format!("{} {} {command}\n", number_text(pair[0]), number_text(pair[1])));
-        }
-        for pair in coordinates.chunks(2) {
-            bounds = union(bounds, [pair[0], pair[1], pair[0], pair[1]]);
-        }
-    }
-    ops.push_str("S\n");
-    let half = width / 2.0;
-    Some(Synth {
-        ops: ops.into_bytes(),
-        bbox: [bounds[0] - half, bounds[1] - half, bounds[2] + half, bounds[3] + half],
-        multiply: false,
-        font: None,
-    })
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -302,7 +198,7 @@ pub(super) fn number_text(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lopdf::{dictionary, Object};
+    use lopdf::Object;
 
     fn doc() -> Document {
         Document::with_version("1.7")
@@ -348,20 +244,6 @@ mod tests {
         let loud = annot("C", Object::Array(vec![real(5.0), real(-2.0), real(0.0)]));
         let loud = color(&doc, &loud, b"C").unwrap().unwrap();
         assert_eq!(loud.values, vec![1.0, 0.0, 0.0]);
-    }
-
-    #[test]
-    fn the_border_width_falls_back_through_bs_and_border() {
-        let doc = doc();
-        assert_eq!(border_width(&doc, &Dictionary::new()), Some(1.0));
-        let bs = annot("BS", Object::Dictionary(dictionary! { "W" => 2i64 }));
-        assert_eq!(border_width(&doc, &bs), Some(2.0));
-        let legacy = annot("Border", Object::Array(vec![real(0.0), real(0.0), real(3.0)]));
-        assert_eq!(border_width(&doc, &legacy), Some(3.0));
-        let negative = annot("BS", Object::Dictionary(dictionary! { "W" => -1i64 }));
-        assert_eq!(border_width(&doc, &negative), None);
-        let absurd = annot("BS", Object::Dictionary(dictionary! { "W" => 5_000i64 }));
-        assert_eq!(border_width(&doc, &absurd), None);
     }
 
     #[test]

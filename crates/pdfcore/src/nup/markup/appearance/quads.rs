@@ -2,7 +2,7 @@
 
 use super::super::super::dests::resolve;
 use super::super::super::links::number;
-use super::{border_width, color, number_text, union, Synth};
+use super::{border, color, number_text, union, Synth};
 use lopdf::{Dictionary, Document};
 
 /// Guards against absurd inputs rather than for a real document.
@@ -42,7 +42,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4], kin
         values.push(number(item)?);
     }
     let colour = color(doc, annot, b"C")??;
-    let width = if kind == QuadKind::Highlight { 0.0 } else { border_width(doc, annot)? };
+    let width = if kind == QuadKind::Highlight { 0.0 } else { border::stroke(doc, annot)?.width };
     let mut ops = String::new();
     let mut bounds = rect;
     if kind == QuadKind::Highlight {
