@@ -1,5 +1,7 @@
-//! Host-side request authentication: which peer is asking, which signature
-//! version it may use, and what a refusal says.
+//! Request authentication in both directions: how a request to a peer is signed
+//! (version 2 alone once the pair is on it, version 1 plus a version 2 sidecar
+//! while it is not) and how a host checks what arrives, including the one-way
+//! upgrade a version 2 request from an older pair triggers.
 //!
 //! A request is authenticated twice over: the TLS connection is pinned to the
 //! peer's certificate (see [`super::transport`]), and the request itself
@@ -20,6 +22,20 @@ use crate::SyncError;
 /// Refusal kinds that travel in `Response::code`, so the caller can act on the
 /// reason instead of matching an English sentence. Only these are ever sent;
 /// an older host sends none, and an older client ignores the field.
+/// Fills a request's signature fields for a peer: version 2 alone once the pair
+/// is on it, version 1 plus a version 2 sidecar while it is not. The sidecar is
+/// what upgrades a pair formed before version 2 existed: the older end reads the
+/// field it knows and ignores the other, so one request serves both.
+pub(super) fn sign_for(peer: &super::PairedPeer, request: &mut Request, body_hash: &str) -> Result<(), SyncError> {
+    let version = sig::SigVersion::for_peer(&peer.features, peer.min_sig);
+    request.sig_v = version.to_wire();
+    request.mac = sig::sign(&peer.shared_key, request, body_hash, &peer.device_id, version)?;
+    if version == sig::SigVersion::V1 {
+        request.sig_v2 = sig::sign(&peer.shared_key, request, body_hash, &peer.device_id, sig::SigVersion::V2)?;
+    }
+    Ok(())
+}
+
 pub(super) const CODE_BAD_SIGNATURE: &str = "bad-signature";
 pub(super) const CODE_SIG_DOWNGRADE: &str = "sig-downgrade";
 pub(super) const CODE_RANGE_MISMATCH: &str = "range-mismatch";
@@ -85,21 +101,33 @@ pub(super) fn authenticated(state: &Arc<HostState>, request: &Request, body: &[u
     if request.body_len != body.len() as u64 {
         return Err(refusal("the request body length does not match"));
     }
-    // A version this build does not know is refused instead of guessed at, and
-    // a peer that negotiated version 2 may not send version 1: that is the
-    // downgrade the pin exists to stop.
-    let Some(version) = sig::SigVersion::from_wire(request.sig_v) else {
-        return Err(refuse(CODE_BAD_SIGNATURE, "the request signature is not valid"));
-    };
-    if version == sig::SigVersion::V1 && peer.negotiated == sig::SigVersion::V2 {
-        return Err(refuse(CODE_SIG_DOWNGRADE, "this peer must sign its requests with version 2"));
-    }
     let body_hash = hex_encode(&Sha256::digest(body));
-    if !sig::verify(&peer.key, request, &body_hash, &state.identity.device_id, version) {
-        return Err(refuse(CODE_BAD_SIGNATURE, "the request signature is not valid"));
-    }
-    // Trust on first use: a version 2 request is accepted even when the feature
-    // list is missing (an older store file), and the pin then keeps it 2.
+    let receiver = &state.identity.device_id;
+    // Two shapes arrive here. A pair that is on version 2 sends it alone
+    // (`sig_v`); one formed before version 2 sends version 1 with a version 2
+    // sidecar, so an older receiver that ignores the field still works. When the
+    // sidecar is present it is the tag that counts and it never falls back to
+    // version 1: a valid v1 beside a broken v2 is the tampered-range case.
+    let version = if request.sig_v2.is_empty() {
+        let Some(version) = sig::SigVersion::from_wire(request.sig_v) else {
+            return Err(refuse(CODE_BAD_SIGNATURE, "the request signature is not valid"));
+        };
+        if version == sig::SigVersion::V1 && peer.negotiated == sig::SigVersion::V2 {
+            return Err(refuse(CODE_SIG_DOWNGRADE, "this peer must sign its requests with version 2"));
+        }
+        if !sig::verify(&peer.key, request, &body_hash, receiver, version) {
+            return Err(refuse(CODE_BAD_SIGNATURE, "the request signature is not valid"));
+        }
+        version
+    } else {
+        let version = sig::SigVersion::V2;
+        if !sig::verify_tag(&peer.key, request, &body_hash, receiver, version, &request.sig_v2) {
+            return Err(refuse(CODE_BAD_SIGNATURE, "the request signature is not valid"));
+        }
+        version
+    };
+    // Trust on first use: a version 2 request - alone or as a sidecar - upgrades
+    // the pair for good, and a version 1 request from it is refused from then on.
     if version == sig::SigVersion::V2 {
         state.pin_min_sig(&request.device_id);
     }

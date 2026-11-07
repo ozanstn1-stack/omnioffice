@@ -128,13 +128,23 @@ the residual risks for what an active attacker can still do.
   (`Request::sig_v`) and `protocol_version` does not move, because an older
   host simply parses the unknown fields and answers "the request signature is
   not valid" - which is why a client only sends version 2 to a peer that said
-  it can check it. **A pair formed before this change keeps version 1**: the
-  capability is exchanged during pairing, and re-pairing is the upgrade path
-  for those two devices. A version 2 request accepted once is remembered as
-  `min_sig = 2` on the host (**trust on first use**); from then on a version 1
-  request from that peer is refused with `sig-downgrade` and the connection is
-  dropped, so a captured downgrade cannot undo the upgrade even if an older
-  store file lost the feature list.
+  it can check it.
+
+  **A pair formed before version 2 upgrades itself, without re-pairing.** While
+  neither record knows the capability the client sends both tags: version 1 in
+  `mac`, which an older receiver reads and the newer one would accept, plus a
+  version 2 sidecar in `sig_v2`. A host that verifies the sidecar records
+  `min_sig = 2` for that peer (**trust on first use**) and from then on sends
+  version 2 alone, which makes the other end pin it in turn; the pair converges
+  in one round trip and a version 1 request from an upgraded peer is refused
+  with `sig-downgrade` (the connection is dropped), so a captured downgrade
+  cannot undo the upgrade. A sidecar that does not verify is never rescued by
+  the version 1 tag beside it: that combination is exactly the tampered-range
+  case. A device on a build from before all this sends no sidecar and is
+  answered on version 1, unchanged. The one gap in-band upgrade cannot close
+  is the very first offer: an attacker on the network who can drop the sidecar
+  keeps the pair on version 1 until it is re-paired, which stays the strong
+  fix.
 * A refused request can name the kind: `bad-signature` (the MAC does not
   check out; the message never says which field), `sig-downgrade` (the peer
   must sign with version 2) and `range-mismatch` (the range does not belong to

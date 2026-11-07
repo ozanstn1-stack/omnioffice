@@ -1,18 +1,12 @@
-//! Request signatures: version 1 (the original six fields) and version 2,
-//! which binds the range a resumable transfer carries.
+//! Request signatures: version 1 (the original six fields) and version 2, which
+//! binds the range a resumable transfer carries.
 //!
 //! Version 1 signs `device_id`, timestamp, nonce, op, path and the body hash,
-//! newline separated. It cannot see `offset`, `total` or `sha256`, so the MAC
-//! of a `get_chunk` request does not say which range of which document version
-//! was asked for. Version 2 keeps every version 1 field, adds those three, and
-//! separates the fields by length so two different requests cannot produce the
-//! same bytes. The version is per request (`Request::sig_v`) and the two ends
-//! agree on it in the pairing handshake (`features`), so an older build keeps
-//! working: it never writes the field, which reads as version 1.
-//!
-//! Both versions are HMAC-SHA256 with the key pairing derived; the signature is
-//! over the canonical *bytes*, never over a JSON encoding (field order and
-//! escaping would then be part of the protocol).
+//! newline separated; it cannot see `offset`, `total` or `sha256`. Version 2
+//! keeps every version 1 field, adds those three, and separates the fields by
+//! length. The version travels per request (`Request::sig_v`), so an older build
+//! keeps working: it never writes the field, which reads as 1. Both versions are
+//! HMAC-SHA256 over the canonical *bytes*, never over JSON.
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
@@ -22,35 +16,31 @@ use crate::SyncError;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// The capability a device advertises in the pairing handshake when it can
-/// produce and check a version 2 signature.
+/// Advertised in the pairing handshake by a device that can sign and check
+/// version 2.
 pub(super) const FEATURE_SIG_V2: &str = "sig-v2";
 
-/// Domain separation, so a version 2 tag can never be read as a version 1 one
-/// (or as an HMAC of any other protocol on the same key).
+/// Domain separation: a version 2 tag never reads as a version 1 one.
 const V2_PREFIX: &[u8] = b"omnioffice-lan-sig/v2\0";
 
 /// Domain separation for the derived transfer id.
 const TRANSFER_PREFIX: &[u8] = b"omnioffice-lan-transfer/v2\0";
 
-/// A feature list arrives inside a pairing message, before anything is
-/// authenticated, so both ends cap it before storing or echoing it.
+/// A feature list arrives in a pairing message, so both ends cap it.
 pub(super) const MAX_FEATURES: usize = 8;
 pub(super) const MAX_FEATURE_LEN: usize = 32;
 
 /// Which canonical byte string a request's MAC covers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SigVersion {
-    /// The original form, kept byte for byte: a paired device on an older
-    /// build still verifies it.
+    /// The original form, kept byte for byte: an older build still verifies it.
     V1,
     /// The range-bound form (see [`canonical_v2`]).
     V2,
 }
 
 impl SigVersion {
-    /// The value on the wire. A build that predates the field writes nothing,
-    /// which serde reads as `0` - also version 1.
+    /// A build that predates the field writes nothing, which reads as `0`.
     pub(super) fn to_wire(self) -> u8 {
         match self {
             SigVersion::V1 => 1,
@@ -58,8 +48,7 @@ impl SigVersion {
         }
     }
 
-    /// `None` for a version this build does not know, so the caller refuses
-    /// the request instead of guessing which canonical form was signed.
+    /// `None` for a version this build does not know: refuse, never guess.
     pub(super) fn from_wire(byte: u8) -> Option<Self> {
         match byte {
             0 | 1 => Some(SigVersion::V1),
@@ -121,14 +110,12 @@ pub(super) fn canonical_v1(request: &Request, body_hash: &str) -> String {
 /// total sha256 nonce timestamp
 /// ```
 ///
-/// Every field is written as `u32be` length plus bytes, so a field boundary is
-/// never ambiguous (`("ab", "c")` and `("a", "bc")` sign differently). The
-/// numeric fields are their 8-byte big-endian form. `transfer_id` is derived
-/// from `path`, `total` and `sha256` (it is not a wire field), so the same
-/// transfer is one value on both ends; `total` is `u64::MAX` when the request
-/// does not know the size and `sha256` is 32 zero bytes when it does not know
-/// the hash. `length` is the request body length, which is the chunk length of
-/// an upload.
+/// Every field is written as `u32be` length plus bytes, so a boundary is never
+/// ambiguous (`("ab", "c")` and `("a", "bc")` sign differently); the numbers are
+/// their 8-byte big-endian form. `transfer_id` is derived from `path`, `total`
+/// and `sha256`; `total` is `u64::MAX` when the size is unknown and `sha256` is
+/// 32 zero bytes when the hash is. `length` is the request body length, which is
+/// the chunk length of an upload.
 pub(super) fn canonical_v2(request: &Request, body_hash: &str, receiver: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity(320);
     out.extend_from_slice(V2_PREFIX);
@@ -223,7 +210,19 @@ pub(super) fn sign_for_test(peer: &super::PairedPeer, request: &mut Request) {
 /// Checks the MAC a request carries. A malformed or missing MAC is simply a
 /// wrong one: the caller refuses without saying which part failed.
 pub(super) fn verify(key: &[u8], request: &Request, body_hash: &str, receiver: &str, version: SigVersion) -> bool {
-    let Some(signature) = hex_decode(&request.mac) else { return false };
+    verify_tag(key, request, body_hash, receiver, version, &request.mac)
+}
+
+/// Checks one tag of a request; the caller says which field it came from.
+pub(super) fn verify_tag(
+    key: &[u8],
+    request: &Request,
+    body_hash: &str,
+    receiver: &str,
+    version: SigVersion,
+    claimed: &str,
+) -> bool {
+    let Some(signature) = hex_decode(claimed) else { return false };
     let Ok(mut mac) = HmacSha256::new_from_slice(key) else { return false };
     mac.update(&message(request, body_hash, receiver, version));
     mac.verify_slice(&signature).is_ok()

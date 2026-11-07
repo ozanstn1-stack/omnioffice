@@ -71,43 +71,124 @@ fn pairing_exchanges_the_signature_capability_both_ways() {
     assert_eq!(host.peers()[0].min_sig, 2, "the first accepted version 2 request pins it");
 }
 
+/// A request built by hand, the way an older build or an attacker would send
+/// it: `version1_only` leaves the version 2 sidecar out entirely.
+fn raw_request(peer: &PairedPeer, op: &str, version1_only: bool) -> Request {
+    let mut request = Request {
+        op: op.to_string(),
+        device_id: "client-seeded".into(),
+        timestamp: now_unix(),
+        nonce: hex_encode(&random_bytes::<16>().expect("nonce")),
+        path: "rapor.docx".into(),
+        ..Request::default()
+    };
+    let body_hash = hex_encode(&Sha256::digest(b""));
+    if version1_only {
+        request.sig_v = 1;
+        request.mac =
+            sig::sign(&peer.shared_key, &request, &body_hash, &peer.device_id, sig::SigVersion::V1).expect("signature");
+    } else {
+        super::auth::sign_for(peer, &mut request, &body_hash).expect("signature");
+    }
+    request
+}
+
+/// One request over a fresh pinned connection, answered as the host answered it.
+fn send(address: &str, fingerprint: &str, request: &Request) -> Response {
+    let mut connection = transport::Client::connect(address, Some(fingerprint)).expect("connect");
+    connection.request::<Request, Response>(request, None).expect("send").0
+}
+
 #[test]
-fn two_records_without_the_capability_keep_signing_version_one() {
+fn a_pair_from_before_version_two_upgrades_itself() {
     let root = folder();
     write_doc(root.path(), "rapor.docx", b"x");
     let (host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&[], 0));
     let client = LanClient::new("client-seeded", "Telefon");
     let peer = client_side_peer(&address, &fingerprint, &[], 0);
+    // Neither record knows about version 2, so the client sends version 1 with
+    // a version 2 sidecar and the host believes the sidecar.
     assert_eq!(client.list(&peer).expect("list").len(), 1, "an older pair keeps working");
-    assert_eq!(host.peers()[0].min_sig, 0, "nothing is pinned without a version 2 request");
+    assert_eq!(host.peers()[0].min_sig, 2, "the first valid version 2 request pins the pair");
 }
 
 #[test]
-fn a_peer_that_negotiated_version_two_cannot_fall_back_to_version_one() {
+fn the_version_one_half_of_a_dual_request_is_still_readable() {
+    // What a receiver from before version 2 does with the same request: it
+    // ignores the sidecar and checks the version 1 tag, so mixed builds work.
     let root = folder();
-    write_doc(root.path(), "rapor.docx", b"x");
-    // The host recorded the client's capability; the client's own record lost
-    // it (an older store file), which is exactly the downgrade to refuse.
-    let (_host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&["sig-v2"], 0));
-    let client = LanClient::new("client-seeded", "Telefon");
+    let (_host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&[], 0));
     let peer = client_side_peer(&address, &fingerprint, &[], 0);
-    let error = client.ping(&peer).expect_err("a downgrade is refused");
-    assert!(matches!(error, SyncError::SigDowngrade), "got {error:?}");
+    let request = raw_request(&peer, "ping", false);
+    assert_eq!(request.sig_v, 1, "the compatibility shape carries version 1 in the main slot");
+    let key = hex_decode(&peer.shared_key).expect("key");
+    let body_hash = hex_encode(&Sha256::digest(b""));
+    assert!(sig::verify(&key, &request, &body_hash, &peer.device_id, sig::SigVersion::V1));
+    assert!(sig::verify_tag(&key, &request, &body_hash, &peer.device_id, sig::SigVersion::V2, &request.sig_v2));
+    assert!(!request.sig_v2.is_empty(), "the sidecar carries the range-bound tag");
 }
 
 #[test]
-fn a_pinned_peer_is_held_to_version_two_without_the_feature_list() {
+fn a_stale_version_one_request_is_refused_once_the_pair_upgraded() {
     let root = folder();
     write_doc(root.path(), "rapor.docx", b"x");
-    // Only the pin is left (`min_sig: 2`), no feature list: the host must still
-    // demand version 2, and a client that speaks it is accepted.
+    // The host already pinned the pair; a request without the sidecar is the
+    // downgrade the pin exists to stop - whether or not it claims a version.
+    let (_host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&[], 2));
+    let peer = client_side_peer(&address, &fingerprint, &[], 0);
+    let refused = send(&address, &fingerprint, &raw_request(&peer, "list", true));
+    assert!(!refused.ok, "a version 1 request is refused");
+    assert_eq!(refused.code, "sig-downgrade", "{}", refused.error);
+}
+
+#[test]
+fn a_pinned_peer_is_accepted_when_it_signs_version_two() {
+    let root = folder();
+    write_doc(root.path(), "rapor.docx", b"x");
     let (host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&[], 2));
     let client = LanClient::new("client-seeded", "Telefon");
     let pinned = client_side_peer(&address, &fingerprint, &["sig-v2"], 0);
     assert_eq!(client.list(&pinned).expect("list").len(), 1);
     assert_eq!(host.peers()[0].min_sig, 2);
-    // And a version 1 client behind the same pin is refused.
-    let stale = client_side_peer(&address, &fingerprint, &[], 0);
-    let error = client.ping(&stale).expect_err("a version 1 request is refused");
-    assert!(matches!(error, SyncError::SigDowngrade), "got {error:?}");
+}
+
+#[test]
+fn a_broken_sidecar_is_not_rescued_by_the_version_one_tag() {
+    let root = folder();
+    write_doc(root.path(), "rapor.docx", b"x");
+    let (_host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&[], 0));
+    let peer = client_side_peer(&address, &fingerprint, &[], 0);
+    let mut request = raw_request(&peer, "list", false);
+    // A valid version 1 tag next to a broken version 2 one is the tampered-range
+    // case: the sidecar is the tag that counts, and it does not fall back.
+    request.sig_v2 = "0".repeat(64);
+    let refused = send(&address, &fingerprint, &request);
+    assert!(!refused.ok, "the request is refused");
+    assert_eq!(refused.code, "bad-signature", "{}", refused.error);
+}
+
+#[test]
+fn a_version_one_only_pair_still_works_against_a_new_host() {
+    let root = folder();
+    write_doc(root.path(), "rapor.docx", b"x");
+    // A device on a build from before version 2 sends no sidecar at all.
+    let (host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&[], 0));
+    let peer = client_side_peer(&address, &fingerprint, &[], 0);
+    let accepted = send(&address, &fingerprint, &raw_request(&peer, "list", true));
+    assert!(accepted.ok, "an older build keeps working: {}", accepted.error);
+    assert_eq!(accepted.files.len(), 1);
+    assert_eq!(host.peers()[0].min_sig, 0, "a version 1 request never upgrades the pair");
+}
+
+#[test]
+fn an_upgraded_pair_signs_version_two_alone() {
+    let root = folder();
+    let (_host, address, fingerprint) = seeded_host(root.path(), host_side_peer(&["sig-v2"], 0));
+    let peer = client_side_peer(&address, &fingerprint, &["sig-v2"], 0);
+    let request = raw_request(&peer, "ping", false);
+    assert_eq!(request.sig_v, 2);
+    assert!(request.sig_v2.is_empty(), "no sidecar once the pair is on version 2");
+    let key = hex_decode(&peer.shared_key).expect("key");
+    let body_hash = hex_encode(&Sha256::digest(b""));
+    assert!(sig::verify(&key, &request, &body_hash, &peer.device_id, sig::SigVersion::V2));
 }
