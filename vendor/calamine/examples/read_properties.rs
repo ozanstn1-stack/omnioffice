@@ -2,10 +2,10 @@
 //
 // Copyright 2016-2026, Johann Tuffe.
 
-//! Demonstrates reading workbook properties from an XLSX or XLSB file.
+//! Demonstrates reading workbook properties from an XLS, XLSX, XLSB or ODS file.
 //!
-//! This example reads the document properties (such as
-//! creator, application, and company) from a workbook.
+//! This example reads the document properties (such as creator, application,
+//! and company) as well as any custom document properties.
 //!
 //! Run the example like this:
 //!
@@ -23,6 +23,10 @@
 //!   company: Some("Contoso & Co")
 //!   template: Some("Book.xltx")
 //!   manager: Some("Jane Doe")
+//!
+//! Custom properties:
+//!   Department: Finance
+//!   Reviewed: true
 //! ```
 
 use calamine::open_workbook_auto;
@@ -32,7 +36,7 @@ use std::process::exit;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: {} <xlsx/xlsb path>", args[0]);
+        eprintln!("Usage: {} <xls/xlsx/xlsb/ods path>", args[0]);
         exit(1);
     }
 
@@ -64,4 +68,13 @@ fn main() {
     println!("  company: {:?}", props.company);
     println!("  template: {:?}", props.template);
     println!("  manager: {:?}", props.manager);
+
+    if props.custom_properties.is_empty() {
+        println!("\nNo custom properties.");
+    } else {
+        println!("\nCustom properties:");
+        for (name, value) in &props.custom_properties {
+            println!("  {name}: {value}");
+        }
+    }
 }
