@@ -3929,7 +3929,7 @@ dependencies = [
  "rxing",
  "serde",
  "serde_json",
- "sha1",
+ "sha1 0.11.0",
  "sha2 0.10.9",
  "specta",
  "specta-typescript",
@@ -4106,7 +4106,7 @@ dependencies = [
  "des 0.8.1",
  "pbkdf2 0.12.2",
  "scrypt",
- "sha1",
+ "sha1 0.10.7",
  "sha2 0.10.9",
  "spki",
 ]
@@ -5261,6 +5261,17 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
  "digest 0.10.7",
+]
+
+[[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.1",
+ "digest 0.11.3",
 ]
 
 [[package]]
