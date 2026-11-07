@@ -232,6 +232,26 @@ test("coverage passes for both statement versions", () => {
   }
 });
 
+test("coverage reads a Sigstore bundle and a bare statement too", () => {
+  const directory = workspace();
+  write(directory, "a.exe", "installer");
+  const statement = {
+    _type: "https://in-toto.io/Statement/v1",
+    subject: [{ name: "a.exe", digest: { sha256: sha256("installer") } }],
+  };
+  const payload = Buffer.from(JSON.stringify(statement), "utf8").toString("base64");
+  const elsewhere = workspace();
+  const bundle = join(elsewhere, "bundle.jsonl");
+  writeFileSync(
+    bundle,
+    `${JSON.stringify({ mediaType: "application/vnd.dev.sigstore.bundle.v0.3+json", dsseEnvelope: { payloadType: "application/vnd.in-toto+json", payload } })}\n`,
+  );
+  assert.equal(run(["coverage", "--release-dir", directory, bundle]).code, 0, run(["coverage", "--release-dir", directory, bundle]).stderr);
+  const raw = join(elsewhere, "statement.json");
+  writeFileSync(raw, `${JSON.stringify(statement)}\n`);
+  assert.equal(run(["coverage", "--release-dir", directory, raw]).code, 0);
+});
+
 test("coverage names an asset no envelope covers", () => {
   const directory = workspace();
   write(directory, "a.exe", "installer");
