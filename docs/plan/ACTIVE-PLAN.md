@@ -2281,3 +2281,13 @@ kenarlıklar** (küçük, kullanıcı-görünür, pdfcore içinde, yerelde doğr
 sonra v7.17.0: içinde hem `/BE` hem provenance olur → tag'de
 `omnioffice-v7.17.0-desktop.intoto.jsonl` (18 → **19** asset) ve
 `slsa-verifier`/`coverage` ile doğrulama.
+
+**`/BE` bulut kenarlık ertelendi (bütçe ölçümü):** `/BE` `border.rs` (+~8),
+`bevel.rs` (+1 test literal) ve `appearance.rs` (+3 bağlama) dosyalarına dokunuyor;
+üçü de **tam tavanında** (239/240/282). Skill kuralı "tavanı yükseltme, alt modüle
+taşı" → doğru iş önce stroke ayrıştırmasını `border/` alt modülüne taşımak; bu,
+Opus'un "değeri düşük" dediği bir özellik için orantısız. Bu yüzden sıradaki adım
+**v7.17.0**: içeriği SLSA provenance asset'i (`omnioffice-v7.17.0-desktop.intoto.jsonl`,
+18 → **19** asset) — kullanıcı için gerçek karşılığı "indirdiğini doğrulayabilme" ve
+tag-only job'ların ilk gerçek testi. `/BE` daha sonra, stroke ayrıştırması kendi
+modülüne taşındıktan sonra yapılacak.
