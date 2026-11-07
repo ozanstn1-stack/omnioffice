@@ -2073,3 +2073,50 @@ None · kodlanamayan karakter → None · WinAnsi/Türkçe kodlama · genişlik
 ("Hello" = 20.502) · Inline kesme aralığı · Top baseline · diyagonal `Tm` ·
 `/CO` kaydırması · çizgiden uzun metin → kesme yok · sıfır uzunluk → None ·
 BBox kuadı kapsıyor · `/AP` varsa dokunulmaz (mevcut yol) · 2-up entegrasyon.
+
+**PR #654 birleşti** (`ab45f4f`), 17 kontrol yeşil + 2 beklenen skip. Auto-tag
+`v7.14.0`'ı Desktop yeşilinde atacak (guard tag'den önce), ardından Release +
+Android. Doğrulanacak: 18 asset, `latest.json` 7.14.0 + imza, `SHA256SUMS.txt`
+8 satır, release gövdesi `[7.14.0]` bölümüyle birebir, versionCode 7014000.
+`target/` temizlendi (12.6 GiB), disk %60.
+
+---
+
+# Sıradaki dilim: Type0/CID metin — **Opus kararı `f7f8ef5c`** + Adım 0 düzeltmesi
+
+Opus, N-up sentezinde WinAnsi dışı metnin (Türkçe ğ/ı/ş, CJK) **tamamen
+kaybolduğunu** gerekçesiyle Type0/CID metni seçti; `/BE` bulut kenarlık (kozmetik
+fallback), `/NoZoom` (çok küçük), redaksiyon düzleştirme (tek dilimde güvenli
+değil) elendi.
+
+## Adım 0 (ölçüldü) — planı değiştiren bulgu
+- **ToUnicode okuyucusu yok** (`ToUnicode`/`bfrange` yalnız testlerde) → Opus'un
+  önerdiği "belgenin Type0 fontunu `/ToUnicode`'dan ters çevir, `/W` ile
+  ölç, referansla" yolu ~700 satır yeni ayrıştırıcı demek.
+- **Ama yazıcı zaten var:** `crates/pdfcore/src/textfont.rs` (**418**)
+  `TextFont::create(&mut Document, &BTreeSet<char>)` — gömülü Liberation Sans'ı
+  Identity-H Type0 + `/ToUnicode` olarak **alt kümeleyip** yazıyor, Türkçe
+  repertoarın tamamı var; `encode()` hex üretiyor, `measure(text, size)` var,
+  `reference()` ve `ensure_page_font_named()` ile kaynak sözlüğüne giriyor.
+  (Başlık/altbilgi, Bates, form görünümleri bunu kullanıyor.)
+- Yani doğru dilim: **belgenin fontunu okumak değil, WinAnsi'ye sığmayan metni
+  kendi alt küme fontumuzla basmak** — mevcut ve test edilmiş kod yeniden
+  kullanılır, CMap ayrıştırıcısı gerekmez. Türkçe kazanç tam; CJK yalnız
+  Liberation Sans'ta varsa (yok → metin yine atlanır, kural korunur).
+
+## Tasarım taslağı (uygulanacak)
+- `Synth`/`FontSpec`'e üçüncü hal: `FontSpec::Embedded { key, id }` (zaten
+  `Resource{key,id}` var; ayrım yalnız belgeleme) veya `TextFont` referansı.
+- **İki faz sorunu:** `carry_markup` önce **okur** (`&Document`), sonra yazar;
+  `TextFont::create` ise `&mut Document` istiyor. Çözüm: `Draw`'a ertelenmiş
+  metin (`DeferredText { chars, template }`) ekle; `install` (yazma fazı) fontu
+  bir kez oluşturup (iş başına `BTreeMap<BTreeSet<char>, ObjectId>` önbelleği)
+  hex kodları yerleştirsin.
+- Uygulama sırası: (1) caption (en küçük, satır kaydırma yok), (2) FreeText
+  (sarma/auto-size için `FontMetrics` impl'i: `advances[glyph]·size/upem`).
+- Türkçe testi: caption/FreeText `Ölçüm ğ ş ı İ` → `BT … <…> Tj` çıkmalı ve
+  `/Resources /Font <key>` alt küme fontuna referans olmalı; WinAnsi yolu
+  **bayt bayt aynı** kalmalı (golden).
+- Kapılar: fmt, clippy `-D warnings`, `cargo test -p pdfcore`, files:check
+  (yeni modül ≤400, `textfont.rs` bütçede), docs:stats, claims:check,
+  release-guard.
