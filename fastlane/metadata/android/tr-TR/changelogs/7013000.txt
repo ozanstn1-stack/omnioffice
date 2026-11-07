@@ -1,0 +1,1 @@
+7.13.0: LAN eşleşmeleri kendiliğinden yeni istek imzasına geçiyor — eski çiftler yeniden eşleşmeden, tek turda bağlayıcı imza sürümüne yükseliyor; bant dışı bir saldırgan ilk teklifi düşürebilir, o durumda yeniden eşleşmek en güçlü çözüm. Ayrıca sürüm notu olmadan tag atılması artık CI'da kırmızı.
