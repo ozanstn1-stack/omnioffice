@@ -2309,9 +2309,21 @@ modülüne taşındıktan sonra yapılacak.
 edilemiyordu**. Düzeltme: `coverage` üç biçimi de okuyor (bundle / çıplak DSSE /
 statement), 21 test. Gerçek zarfla doğrulandı.
 
-## Sıradaki: Android zarfı — PR #663
-`android.yml`'e aynı iki job (`provenance` + `provenance-asset`,
-`omnioffice-<tag>-android.intoto.jsonl`); `check-published` yalnız kendi
-yayınladığı dosyalarla (`--pattern '*.apk' --pattern '*.aab'
---pattern 'SHA256SUMS-android.txt'`). v7.18.0'da sürüm **20 asset** olmalı ve
+**PR #663 birleşti** (`d7dd8f6`) — Android asset'leri de kendi zarfını alıyor
+(`omnioffice-<tag>-android.intoto.jsonl`); `check-published` yalnız kendi
+yayınladığı dosyalarla karşılaştırıyor. v7.18.0'da sürüm **20 asset** olmalı ve
 iki zarf birlikte verildiğinde `coverage` **0** dönmeli.
+
+## Sıradaki dilim: `/BE` bulut kenarlıklar — bütçeyi içeriden ödeyerek
+Üç dosya da tam tavanında olduğu için dilim iki işi birlikte yapar:
+1. **Ödeme (saf taşıma, davranış aynı):** `appearance.rs::border`/`shape`
+   içindeki stroke/`/BE` ayrıştırmasını yeni `appearance/frame.rs`'e taşı;
+   `border.rs` ve `bevel.rs` yalnız kendi işini yapsın. `cargo test` bu adımda
+   **hiçbir golden değişmeden** yeşil olmalı.
+2. **Özellik:** `/BE << /S /C /I >>` — Square/Circle çevresinde dilim (scallop)
+   yayları (kübik Bézier), `/I` 0..2'ye kırpılır, `/S` yoksa veya `/S /S` ise
+   **bayt-aynı**; dejenere rect / 2000+ dilim / sonsuz sayı → düz kenarlık;
+   dolgu `/IC` aynı yoldan. Testler: yoklukta bayt-aynı, `/S /S` aynı, kapalı
+   yol ve `/Rect` içinde kalma, dilim sayısı, `/I` kırpma, dejenere, tavan,
+   `/IC` dolgusu.
+3. Docs `docs/roadmap.md` + CHANGELOG `[Unreleased] Added`; kapılar + PR.
