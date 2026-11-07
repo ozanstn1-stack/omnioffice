@@ -1569,7 +1569,12 @@ otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
   üretildi (uydurma genişlik yok); (2) `wrap`/`encode` ayrı `textfit.rs`'te,
   callout ve `/RD` `freetext.rs` içinde; (3) kodlanamayan karakter **tüm
   açıklamayı** düşürüyor (plan gereği), test bunu sabitliyor.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki iki kalem (Opus): (1) N-up geometri rötuşları — `Polygon`/`PolyLine`
-  (`/Vertices`), kesikli kenar `/BS /S /D`, `/LE` çizgi uçları; (2) v7.11.0
-  sürümü (versionCode 7011000).
+- **PR #639 birleşti** (`37a0c8c`), 18 kontrol yeşil (coverage dahil), dal
+  silindi; `target/` temizlendi (4.8 GiB), disk %60.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-shape-polish` açıldı.
+  Sıradaki kalem (Opus sıralaması): **N-up geometri rötuşları** —
+  `Polygon`/`PolyLine` (`/Vertices`, `/IC`, `/BS`; `Line`/`Ink` yolu yeniden
+  kullanılır), kesikli kenar (`/BS /S /D` → `[d…] 0 d`), `/LE` çizgi uçları
+  (`/L`, `/CL` ve callout'ta OpenArrow/ClosedArrow/Square/Circle/Diamond/Butt/
+  Slash/ROpen/ClosedArrow). `/BE` bulut kapsam dışı. Ardından v7.11.0 sürüm
+  treni (versionCode **7011000**).
