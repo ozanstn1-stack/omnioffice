@@ -2074,11 +2074,21 @@ None · kodlanamayan karakter → None · WinAnsi/Türkçe kodlama · genişlik
 `/CO` kaydırması · çizgiden uzun metin → kesme yok · sıfır uzunluk → None ·
 BBox kuadı kapsıyor · `/AP` varsa dokunulmaz (mevcut yol) · 2-up entegrasyon.
 
-**PR #654 birleşti** (`ab45f4f`), 17 kontrol yeşil + 2 beklenen skip. Auto-tag
-`v7.14.0`'ı Desktop yeşilinde atacak (guard tag'den önce), ardından Release +
-Android. Doğrulanacak: 18 asset, `latest.json` 7.14.0 + imza, `SHA256SUMS.txt`
-8 satır, release gövdesi `[7.14.0]` bölümüyle birebir, versionCode 7014000.
-`target/` temizlendi (12.6 GiB), disk %60.
+**PR #654 birleşti** (`ab45f4f`), 17 kontrol yeşil + 2 beklenen skip.
+
+## SÜRÜM: v7.14.0 yayınlandı ve doğrulandı (2026-11-07)
+- Tag **`v7.14.0` → `ab45f4f`** (auto-tag, guard tag'den **önce** koştu);
+  `Release` + `Android` başarılı, **18 asset**.
+- `latest.json` **7.14.0**, `windows-x86_64` girdisinde **444 baytlık imza**;
+  `SHA256SUMS.txt` **8 satır**; release gövdesi CHANGELOG `[7.14.0]` bölümüyle
+  **birebir** (705 = 705 karakter); Android versionCode **7014000**.
+- `target/` temizlendi (12.6 GiB), disk %60.
+- **Not:** `Scorecard` işi bu iki master commit'inde kırmızı; sebep bizim kod
+  değil — `rekor.sigstore.dev` 500 döndü ("error signing scorecard results"),
+  analiz tamamlanmış (skor 6.5). Dış servis kesintisi; tekrar denemek yeterli.
+  Skorcard'ın işaret ettiği gerçek kalemler (sonraki adaylar): 21 OSV uyarısı
+  (bağımlılık güncellemesi), "releases lack provenance" (attestation asset'i
+  yalnız bir dosya için), Code-Review 0/30 (insan onayı yok — yapısal).
 
 ---
 
