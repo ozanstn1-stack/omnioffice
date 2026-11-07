@@ -2196,3 +2196,26 @@ README Rust testi 1686 → **1699**. `target/` temizlendi (23.5 GiB), disk %61.
 2. Opus'a yeni kalem: `/BE` bulut kenarlıklar, `/NoZoom`, belgenin Type0 fontunu
    okumak (Identity-V/predefined CMap), redaksiyon düzleştirme, OSV bağımlılık
    güncellemeleri (Scorecard "21 vulnerabilities"), provenance attestation.
+
+---
+
+# GÜVENLİK BULGUSU (sıradaki dilim adayı): calamine CFB/OLE2 DoS — RUSTSEC-2026-0436
+
+Scorecard'ın "21 OSV" listesindeki en ciddi kalem: `calamine 0.37.0`
+(`crates/officecore`) **CFB/OLE2 ayrıştırıcısında** (`src/cfb.rs`, `.xls`,
+`.xlsb` ve VBA çıkarma yolu) hazırlanmış girdiyle **panic veya sınırsız
+allocation** yapıyor; public reader API'sinden (`open_workbook`, `Xls::new`,
+`Xlsb::new`) erişilebilir → kullanıcının açtığı dosyayla uygulama çökebilir.
+Düzeltme: **0.38.0**. DoS, bellek bozulması yok.
+
+**Engel:** repo `vendor/calamine` altında 0.37'yi **yerel iki yamayla** tutuyor
+(`[patch.crates-io]`): (1) `cell_ref_to_row_col` taşma (`checked_mul/add`),
+(2) `get_dimension` ters `ref` alt taşması (`saturating_*`). Bunlar kendi
+fuzz'ımızın bulduğu düzeltmeler; regresyon testleri
+`crates/officecore/tests/calamine_dimension_test.rs` + `fuzz/corpus/xlsx/`.
+
+Düz requirement'ı 0.38'e çıkarmak vendor yamasını **düşürür**
+(`[[patch.unused]]` — ölçüldü), yani iki yerel düzeltme kaybolur. Doğru iş:
+**0.38'i vendor'la ve iki yamayı üzerine yeniden uygula** (upstream 0.38'de
+zaten yoksa), `vendor/calamine/README.md`'yi güncelle, fuzz regresyonlarını
+koştur. Ayrıntılı plan Opus'a sorulacak.
