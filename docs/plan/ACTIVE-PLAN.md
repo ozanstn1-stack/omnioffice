@@ -2225,3 +2225,23 @@ koştur. Ayrıntılı plan Opus'a sorulacak.
 MSRV 1.88 ✔). officecore **440 test** + yeni `calamine_hostile_input` 4/4.
 README Rust testi 1699 → **1703**. Sürüm **7.16.0** treni açıldı (içerik:
 FreeText alt küme metni + RUSTSEC-2026-0436 düzeltmesi).
+
+---
+
+# SÜRÜM: v7.16.0 yayınlandı ve doğrulandı (2026-11-07)
+- Tag **`v7.16.0` → `7309b82`** (auto-tag, guard tag'den önce); `Release` +
+  `Android` başarılı, **18 asset**. `Scorecard` bu kez **yeşil** (Rekor kesintisi
+  geçti).
+- `latest.json` **7.16.0**, `windows-x86_64` girdisinde **444 baytlık imza**;
+  `SHA256SUMS.txt` **8 satır**; release gövdesi CHANGELOG `[7.16.0]` ile
+  **birebir** (1434 = 1434); Android versionCode **7016000**.
+- İçerik: RUSTSEC-2026-0436 düzeltmesi (crafted `.xls`/`.xlsb` DoS) + FreeText
+  notlarının alt küme metni.
+
+## Sıradaki dilim: SLSA provenance — **Opus planı `34742bfd` (c)**
+Yeni `scripts/provenance-subjects.mjs` (`hash`/`encode`/`check-published`/
+`coverage` alt komutları) + `scripts/provenance-subjects.test.mjs` (node:test,
+~19 vaka), `release.yml`'e hash toplama + `generator_generic_slsa3` job'ı
+(`*.intoto.jsonl` asset'i), `docs/release.md` + `SECURITY.md` doğrulama
+bölümü, `latest.json` hariç tutulur (updater imzasıyla korunuyor). Asset sayısı
+18 → 19 olur; `docs-stats`/`files:check` etkisi ölçülecek.
