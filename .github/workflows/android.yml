@@ -388,19 +388,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.label.name == 'android-ci'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: tauri.conf.json and Android metadata agree
-        run: |
-          node -e "
-            const fs = require('fs');
-            const version = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')).version;
-            const props = fs.readFileSync('src-tauri/gen/android/app/tauri.properties','utf8');
-            const name = (props.match(/versionName=([^\r\n]+)/) || [])[1];
-            const code = (props.match(/versionCode=([0-9]+)/) || [])[1];
-            const [major, minor, patch] = version.split('.').map(Number);
-            const expectedCode = String(major * 1000000 + minor * 1000 + patch);
-            console.log({ version, name, code, expectedCode });
-            if (name !== version) throw new Error('Android versionName does not match tauri.conf.json');
-            if (code !== expectedCode) throw new Error('Android versionCode is not consistent');
-            const tag = process.env.GITHUB_REF_NAME || '';
-            if (tag.startsWith('v') && tag.slice(1) !== version) throw new Error('tag does not match version');
-          "
+      # The same script the pull request and the release build run: version
+      # files and Android metadata agree, and this version's CHANGELOG section
+      # and store changelog exist before an APK is built for it.
+      - name: Release guard (version files, CHANGELOG section, store changelog)
+        run: node scripts/release-guard.mjs --tag "$GITHUB_REF_NAME"

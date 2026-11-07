@@ -71,6 +71,7 @@ section prepares everything that can live in the repository.
 | Every APK is signed with the same certificate | `verify-android-release.sh` compares the fresh APK against the previous release's APK at tag time |
 | The APK carries the version code it claims (not only the metadata) | same script, `aapt dump badging` |
 | Listing text and changelogs are in `fastlane/metadata/android/<locale>/` | `npm run fastlane:check` in the Lint job |
+| A version has its `## [X.Y.Z]` CHANGELOG section and its `en-US/changelogs/<versionCode>.txt` before it is tagged | `scripts/release-guard.mjs` in pull-request CI, in `auto-tag.yml` before the tag, and as the first step of `release.yml` / `android.yml` |
 | No tracking, no proprietary dependencies, source available | the build is public in `.github/workflows/android.yml`; no Play Services in the dependency tree |
 
 If the signing key is ever lost, every installed app is stranded: the key is
@@ -99,6 +100,13 @@ fastlane/metadata/android/tr-TR/...            (same layout)
   current version code to be present there.
 - Old codes are kept from 6.6.0 on; `scripts/fastlane-changelogs.mjs` has the
   `SINCE_VERSION` constant that decides how far back the tree keeps them.
+- **A version-bump pull request must carry the `## [X.Y.Z]` section and the
+  `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt` in the same
+  pull request.** `node scripts/release-guard.mjs` fails the pull request, the
+  auto-tag job and the release builds when either is missing or empty, or when
+  the version files disagree; run it locally before opening the pull request.
+  It exists because v7.12.0 was tagged without both, the publish job failed with
+  the tag already pushed, and the recovery needed a force push.
 - The catalogue reads this directory directly; nothing is copied to the APK.
 
 ### IzzyOnDroid (recommended first step)
