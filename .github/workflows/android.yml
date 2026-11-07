@@ -382,6 +382,61 @@ jobs:
             release-artifacts/*.apk release-artifacts/*.aab \
             release-artifacts/SHA256SUMS-android.txt --clobber
 
+  # The same provenance the desktop assets get, for the four packages this
+  # workflow publishes:
+  #   slsa-verifier verify-artifact <file> \
+  #     --provenance-path omnioffice-<tag>-android.intoto.jsonl \
+  #     --source-uri github.com/<owner>/<repo> --source-tag <tag>
+  provenance:
+    name: Build provenance (Android assets)
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [assemble]
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    outputs:
+      subjects: ${{ steps.subjects.outputs.subjects }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-apks
+          path: built
+      - name: Subjects (the files this workflow published)
+        id: subjects
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/provenance-subjects.mjs hash --dir built > hashes.txt
+          subjects=$(node scripts/provenance-subjects.mjs encode hashes.txt)
+          echo "subjects=$subjects" >> "$GITHUB_OUTPUT"
+      - name: The subjects are the published bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBJECTS: ${{ steps.subjects.outputs.subjects }}
+        run: |
+          set -euo pipefail
+          gh release download "$GITHUB_REF_NAME" --dir published --pattern '*.apk' --pattern '*.aab' --pattern 'SHA256SUMS-android.txt'
+          node scripts/provenance-subjects.mjs check-published --subjects-b64 "$SUBJECTS" --release-dir published
+
+  provenance-asset:
+    name: Publish the Android provenance envelope
+    needs: provenance
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.provenance.outputs.subjects }}
+      upload-assets: true
+      provenance-name: omnioffice-${{ github.ref_name }}-android.intoto.jsonl
+
   version-consistency:
     name: Android version consistency
     runs-on: ubuntu-24.04
