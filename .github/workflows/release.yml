@@ -359,6 +359,68 @@ jobs:
           # releases, which enforces the same rule on the API side).
           Get-ChildItem release-artifacts -File | ForEach-Object { gh release upload $tag $_.FullName }
 
+  # Build provenance as a release asset, so a download can be checked offline
+  # without GitHub's attestation store:
+  #   slsa-verifier verify-artifact <file> \
+  #     --provenance-path omnioffice-<tag>-desktop.intoto.jsonl \
+  #     --source-uri github.com/<owner>/<repo> --source-tag <tag>
+  # The subjects are the files the build jobs produced; `check-published` proves
+  # they are byte-for-byte what the release carries. The generator is referenced
+  # by tag on purpose: its builder refuses a commit ref.
+  provenance:
+    name: Build provenance (desktop assets)
+    runs-on: ubuntu-24.04
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, linux]
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    outputs:
+      subjects: ${{ steps.subjects.outputs.subjects }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: omnioffice-windows
+          path: built
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-packages
+          path: built
+      - name: Subjects (the files the build jobs produced)
+        id: subjects
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/provenance-subjects.mjs hash --dir built > hashes.txt
+          subjects=$(node scripts/provenance-subjects.mjs encode hashes.txt)
+          echo "subjects=$subjects" >> "$GITHUB_OUTPUT"
+      - name: The subjects are the published bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBJECTS: ${{ steps.subjects.outputs.subjects }}
+        run: |
+          set -euo pipefail
+          gh release download "$GITHUB_REF_NAME" --dir published
+          node scripts/provenance-subjects.mjs check-published --subjects-b64 "$SUBJECTS" --release-dir published
+
+  provenance-asset:
+    name: Publish the provenance envelope
+    needs: provenance
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.provenance.outputs.subjects }}
+      upload-assets: true
+      provenance-name: omnioffice-${{ github.ref_name }}-desktop.intoto.jsonl
+
   linux:
     name: Linux packages
     needs: version-consistency

@@ -2245,3 +2245,24 @@ Yeni `scripts/provenance-subjects.mjs` (`hash`/`encode`/`check-published`/
 (`*.intoto.jsonl` asset'i), `docs/release.md` + `SECURITY.md` doğrulama
 bölümü, `latest.json` hariç tutulur (updater imzasıyla korunuyor). Asset sayısı
 18 → 19 olur; `docs-stats`/`files:check` etkisi ölçülecek.
+
+**DURUM (SLSA provenance, uygulandı):** `scripts/provenance-subjects.mjs`
+**~250** (4 alt komut: `hash --paths-json|--dir`, `encode`, `check-published`,
+`coverage`; 0/1/2 çıkış kodları; Windows yolları için `\\` ayracı), testleri
+`scripts/provenance-subjects.test.mjs` **~300** (20 vaka: hash/hash-dir,
+birleştirme+sıralama+tekilleştirme, CRLF/`*`/büyük hex/yol öneki, `file:line`
+hatası, aynı ada iki digest, `latest.json`+`*.intoto.jsonl` dışlama, round-trip,
+check-published pass/tamper/extra/bad-input, coverage v0.1+v1/kapsanmayan/bayat/
+bozuk zarf). `release.yml`: `provenance` job'ı (windows+linux artefaktlarını
+indirir, `hash --dir built` → `encode` → job output `subjects`; `gh release
+download` + `check-published` ile **yayınlanan baytlarla** karşılaştırır) ve
+`provenance-asset` job'ı (`slsa-framework/slsa-github-generator/.github/
+workflows/generator_generic_slsa3.yml@v2.1.0`, `upload-assets: true`,
+`provenance-name: omnioffice-<tag>-desktop.intoto.jsonl`; generator **tag** ile
+referanslanır çünkü builder SHA ref'i reddediyor). `/tmp/relcheck` ile gerçek
+v7.16.0 asset'leri üzerinde kuru çalıştırma: 3 subject (4 dosya − `latest.json`)
+ve `check-published` **eşleşti**. Docs: `SECURITY.md` "Verifying a download"
+(`slsa-verifier` + `gh attestation verify`), `docs/distribution.md` kural
+tablosuna satır, CHANGELOG `### Security`. **Android** için aynı job ayrı dilim
+(kendi `*.intoto.jsonl`'i); asset sayısı 18 → **19** (desktop zarfı), Android
+zarfıyla 20.
