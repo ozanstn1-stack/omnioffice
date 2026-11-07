@@ -207,24 +207,6 @@ fn rectangle_defects_pull_the_text_in() {
 }
 
 #[test]
-fn a_note_with_an_unrepresentable_character_is_skipped() {
-    let dir = TestDir::new();
-    let mut fixture = Fixture::new(&page_specs(2));
-    fixture.annot(0, freetext([100.0, 100.0, 300.0, 200.0], "漢字", "/Helv 12 Tf 0 g"));
-    fixture.annot(0, freetext([400.0, 100.0, 600.0, 200.0], "latin only", "/Helv 12 Tf 0 g"));
-    let input = dir.path("mixed.pdf");
-    fixture.write(&input);
-
-    let out = dir.path("mixed-out.pdf");
-    impose(&input, &out, &NupOptions::default());
-    let doc = Document::load(&out).expect("load output");
-    let sheet = sheets(&doc)[0].1;
-    let drawn = painted(&doc, sheet);
-    assert_eq!(drawn.len(), 1, "only the Latin note is drawn");
-    assert!(ops_of(&doc, sheet, &drawn[0].name).contains(" Tj\n"));
-}
-
-#[test]
 fn an_empty_note_still_paints_its_box() {
     let dir = TestDir::new();
     let mut fixture = Fixture::new(&page_specs(2));

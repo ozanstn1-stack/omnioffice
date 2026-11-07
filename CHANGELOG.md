@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Free-text notes can use the bundled face too:** a note whose text neither
+  the document's `/DR` font nor the standard font can carry is now set in a
+  subset of the bundled Liberation Sans, laid out with that face's own advance
+  widths, so Cyrillic, Greek and the wider Latin ranges reach the paper instead
+  of the note being dropped. The layout keeps working in one-byte codes: the
+  note's characters are mapped to dense slots (the space keeps `0x20`, which
+  the wrapper writes between words) and only the emission turns slots back into
+  the face's two-byte glyph ids. Text no available face can show still drops
+  the note, and notes the document font or WinAnsi can already carry are
+  byte-identical.
+
 ## [7.15.0] - 2026-11-07
 
 ### Added

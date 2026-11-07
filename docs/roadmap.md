@@ -300,9 +300,9 @@ Effort estimates assume a single developer.
   (`/Top`), moved by `/CO`. Synthesized text goes through the standard font
   while WinAnsi (plus its `/Differences` extras) can carry it, and through a
   subset of the bundled face for anything else the face covers, so a caption or
-  note in Cyrillic, Greek or the wider Latin ranges is printed instead of being
-  dropped; text the face cannot show still means no text rather than
-  replacement glyphs. Reading a *document's* composite font (Identity-V,
+  a free-text note in Cyrillic, Greek or the wider Latin ranges is printed
+  instead of being dropped; text no face can show still means no text rather
+  than replacement glyphs. Reading a *document's* composite font (Identity-V,
   predefined CMaps, an embedded CMap stream) is still open, as are redactions,
   `/BE` clouds and `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to

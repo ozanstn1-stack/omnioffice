@@ -156,7 +156,10 @@ fn an_unrepresentable_character_drops_the_note() {
     let mut fixture = Fixture::new(&page_specs(2));
     let font = simple_font(&mut fixture, "Helvetica", "Type1", 32, &[600; 224]);
     install_dr(&mut fixture, "F1", font);
-    fixture.annot(0, freetext([100.0, 100.0, 300.0, 200.0], "漢字", "/F1 12 Tf 0 g"));
+    // UTF-16, as a producer writes it (a UTF-8 literal would read as PDFDoc).
+    let mut cjk = freetext([100.0, 100.0, 300.0, 200.0], "x", "/F1 12 Tf 0 g");
+    cjk.set("Contents", Object::String(vec![0xFE, 0xFF, 0x6F, 0x22, 0x5B, 0x57], lopdf::StringFormat::Literal));
+    fixture.annot(0, cjk);
     fixture.annot(0, freetext([350.0, 100.0, 550.0, 200.0], "latin", "/F1 12 Tf 0 g"));
     let input = dir.path("cjk.pdf");
     fixture.write(&input);
@@ -242,7 +245,7 @@ fn differences_carry_turkish_characters_through_the_document_font() {
         "FontDescriptor" => Object::Reference(descriptor),
     }));
     install_dr(&mut fixture, "F1", font);
-    // UTF-16BE with a BOM is how a PDF text string carries a non-Latin-1 glyph.
+    // UTF-16BE with a BOM carries a non-Latin-1 glyph.
     let mut annot = freetext([100.0, 100.0, 300.0, 200.0], "x", "/F1 12 Tf 0 g");
     annot.set("Contents", Object::String(vec![0xFE, 0xFF, 0x01, 0x1F], lopdf::StringFormat::Literal));
     fixture.annot(0, annot);

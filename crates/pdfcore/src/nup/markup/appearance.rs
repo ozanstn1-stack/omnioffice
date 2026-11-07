@@ -8,9 +8,8 @@
 //! line kinds), so the placement matrix that already maps page space onto the
 //! sheet applies unchanged.
 //!
-//! The quad-point markup (`Highlight`, `Underline`, `Squiggly`, `StrikeOut`),
-//! the shapes (`Square`, `Circle`, `Line`, `Ink`), `FreeText` and widgets are
-//! covered; `Stamp` and the text-note icon stay out of scope.
+//! The quad-point markup, the shapes, `FreeText` and widgets are covered;
+//! `Stamp` and the text-note icon stay out of scope.
 
 use super::super::dests::resolve;
 use super::super::links::number;
@@ -22,6 +21,7 @@ mod border;
 mod caption;
 mod drfont;
 mod ends;
+mod face;
 mod freetext;
 mod paths;
 mod quads;
