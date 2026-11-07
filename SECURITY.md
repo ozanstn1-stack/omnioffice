@@ -65,11 +65,12 @@ Every release ships three independent handles on the same bytes:
     --source-uri github.com/ozanstn1-stack/omnioffice --source-tag <tag>
   ```
 
-  The same attestations are also in GitHub's attestation store; where the `gh`
-  CLI is available, `gh attestation verify <file> --repo
-  ozanstn1-stack/omnioffice` checks them without downloading the envelope.
-  Android assets are published by their own workflow and are not named by the
-  desktop envelope.
+  Android packages are published by their own workflow and have their own
+  envelope, `omnioffice-<tag>-android.intoto.jsonl`; pass the one that matches
+  the file you downloaded. The same attestations are also in GitHub's
+  attestation store, so where the `gh` CLI is available `gh attestation verify
+  <file> --repo ozanstn1-stack/omnioffice` checks them without downloading an
+  envelope at all.
 
 `latest.json` is deliberately not a provenance subject: it is rewritten by more
 than one build job, so its content is a race rather than a build output, and the

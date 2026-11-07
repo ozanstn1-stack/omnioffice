@@ -18,8 +18,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   into GitHub's attestation store; this publishes the statement as a release
   asset as well, and a new `scripts/provenance-subjects.mjs` hash-then-check step
   refuses to publish an envelope when the bytes on the release differ from the
-  ones the build produced. `latest.json` is excluded on purpose: several jobs
-  rewrite it, and its own updater signature protects it.
+  ones the build produced. The Android packages get their own envelope from the
+  workflow that builds them, so a release is covered end to end. `latest.json`
+  is excluded on purpose: several jobs rewrite it, and its own updater
+  signature protects it.
 
 ## [7.16.0] - 2026-11-07
 
