@@ -295,7 +295,10 @@ Effort estimates assume a single developer.
   A note also uses the form's own simple `/DR` font when its metrics are
   readable (WinAnsi and `/Widths`), and a line's `/LL` leaders are drawn with
   their `/LLE`/`/LLO` variants, and `/BS /S` bevel, inset and underline frames
-  are painted. Redactions, composite (Type0/CID) fonts, line captions (`/Cap`),
+  are painted. A line's caption (`/Cap`) is set too: the text in `/Contents`
+  sits on the line (`/CP /Inline`, stroke broken around it) or above it
+  (`/Top`), moved by `/CO`, and is left out entirely when the standard font
+  cannot show every character. Redactions, composite (Type0/CID) fonts,
   `/BE` clouds and `/NoZoom` are the next candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
