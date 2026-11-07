@@ -179,10 +179,15 @@ fn map_range(map: &mut ToUnicode, low: &[u8], high: &[u8], list: &[Vec<u8>]) {
 
 /// A destination incremented as one big-endian number, keeping its byte length.
 fn increment(base: &[u8], offset: u16) -> Option<Vec<u8>> {
+    let width = base.len();
+    if width > 8 {
+        return None;
+    }
     let value = base.iter().fold(0u64, |value, byte| value << 8 | u64::from(*byte));
     let grown = value.checked_add(u64::from(offset))?;
-    let width = base.len();
-    if width > 8 || grown >> (width * 8) != 0 {
+    // Only a full eight-byte destination fills the whole word, so the shift
+    // below is skipped there: shifting a `u64` by 64 would overflow.
+    if width < 8 && grown >> (width * 8) != 0 {
         return None;
     }
     Some((0..width).map(|index| ((grown >> ((width - 1 - index) * 8)) & 0xFF) as u8).collect())
