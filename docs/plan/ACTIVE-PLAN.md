@@ -2291,3 +2291,27 @@ Opus'un "değeri düşük" dediği bir özellik için orantısız. Bu yüzden s�
 18 → **19** asset) — kullanıcı için gerçek karşılığı "indirdiğini doğrulayabilme" ve
 tag-only job'ların ilk gerçek testi. `/BE` daha sonra, stroke ayrıştırması kendi
 modülüne taşındıktan sonra yapılacak.
+
+---
+
+# SÜRÜM: v7.17.0 yayınlandı ve doğrulandı (2026-11-07) — provenance'ın ilk gerçek testi
+- Tag **`v7.17.0` → `9277ae1`**, **19 asset** (`omnioffice-v7.17.0-desktop.intoto.jsonl` dahil);
+  provenance job'larının **hepsi yeşil** (`Build provenance (desktop assets)` +
+  `Publish the provenance envelope / detect-env, generator, upload-assets, final`).
+- Release gövdesi CHANGELOG `[7.17.0]` ile **birebir** (802/802); `latest.json`
+  7.17.0 + **444 baytlık imza**; `SHA256SUMS.txt` **8 satır**; versionCode 7017000.
+- Zarf: `_type` `Statement/v0.1`, `predicateType` `slsa.dev/provenance/v0.2`,
+  **12 subject** — tüm masaüstü asset'leri (`latest.json` tasarım gereği dışta).
+
+**Tag'in bulduğu gerçek hata (PR #662 → `68c4197`):** SLSA generator zarfı
+**Sigstore bundle** olarak yazıyor (`verificationMaterial` + `dsseEnvelope`),
+`coverage` ise çıplak DSSE zarfı bekliyordu → yayınlanan provenance **kontrol
+edilemiyordu**. Düzeltme: `coverage` üç biçimi de okuyor (bundle / çıplak DSSE /
+statement), 21 test. Gerçek zarfla doğrulandı.
+
+## Sıradaki: Android zarfı — PR #663
+`android.yml`'e aynı iki job (`provenance` + `provenance-asset`,
+`omnioffice-<tag>-android.intoto.jsonl`); `check-published` yalnız kendi
+yayınladığı dosyalarla (`--pattern '*.apk' --pattern '*.aab'
+--pattern 'SHA256SUMS-android.txt'`). v7.18.0'da sürüm **20 asset** olmalı ve
+iki zarf birlikte verildiğinde `coverage` **0** dönmeli.
