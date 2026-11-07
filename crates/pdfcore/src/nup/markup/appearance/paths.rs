@@ -5,7 +5,6 @@
 //! page space like every other synthesized appearance.
 
 use super::super::super::dests::resolve;
-use super::super::FontSpec;
 use super::border::stroke;
 use super::caption;
 use super::{ends, number, number_text, union, Color, Synth};
@@ -96,7 +95,7 @@ pub(super) fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option
     if let Some(captioned) = &captioned {
         ops.push_str(&captioned.ops);
         bbox = caption::union_with(bbox, captioned);
-        font = Some(FontSpec::Standard(caption::HELVETICA));
+        font = Some(captioned.font());
     }
     Some(Synth { ops: ops.into_bytes(), bbox, multiply: false, font })
 }

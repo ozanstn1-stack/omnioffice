@@ -118,6 +118,51 @@ fn a_caption_the_font_cannot_show_leaves_the_line_alone() {
     assert_eq!(ops.matches(" m\n").count(), 1, "and the line is not broken: {ops:?}");
 }
 
+/// Every Type0 font the output document carries.
+fn type0_fonts(doc: &Document) -> Vec<&lopdf::Dictionary> {
+    doc.objects
+        .values()
+        .filter_map(|object| object.as_dict().ok())
+        .filter(|dict| dict.get(b"Subtype").and_then(|value| value.as_name()).ok() == Some(b"Type0"))
+        .collect()
+}
+
+#[test]
+fn a_caption_winansi_cannot_show_is_set_in_a_subset_font() {
+    let dir = TestDir::new();
+    // Cyrillic: no WinAnsi code, no /Differences glyph, but the bundled face
+    // carries it, so the caption is drawn instead of being dropped.
+    let (doc, sheet) = render(line("Привет", vec![("Cap", true.into())]), &dir, "caption-cyrillic");
+    let ops = ops_of(&doc, sheet, &painted(&doc, sheet)[0].name);
+    assert!(ops.contains("/OmniTr 9 Tf"), "the subset font is referenced: {ops:?}");
+    assert!(ops.contains(" Tj"), "the text is drawn: {ops:?}");
+    assert!(!ops.contains("/FOmni0"), "and not through the standard font: {ops:?}");
+
+    // The font the form points at is a Type0 one with an identity encoding and
+    // a ToUnicode map, written once for the characters that are drawn.
+    let fonts = type0_fonts(&doc);
+    assert_eq!(fonts.len(), 1, "one subset font for the sheet");
+    let font = fonts[0];
+    assert_eq!(font.get(b"Encoding").and_then(|value| value.as_name()).ok(), Some(b"Identity-H".as_slice()));
+    assert!(font.get(b"ToUnicode").is_ok(), "the map back to text is written");
+    assert!(font.get(b"DescendantFonts").is_ok());
+
+    // Deterministic: the same input gives byte-identical output.
+    let dir_two = TestDir::new();
+    let (doc_two, sheet_two) = render(line("Привет", vec![("Cap", true.into())]), &dir_two, "caption-cyrillic");
+    assert_eq!(ops, ops_of(&doc_two, sheet_two, &painted(&doc_two, sheet_two)[0].name));
+    assert_eq!(type0_fonts(&doc_two).len(), 1);
+}
+
+#[test]
+fn a_western_caption_still_uses_the_standard_font() {
+    let dir = TestDir::new();
+    let (doc, sheet) = render(line("Hello", vec![("Cap", true.into())]), &dir, "caption-standard");
+    let ops = ops_of(&doc, sheet, &painted(&doc, sheet)[0].name);
+    assert!(ops.contains("/FOmni0 9 Tf"), "{ops:?}");
+    assert!(type0_fonts(&doc).is_empty(), "no subset font when WinAnsi suffices");
+}
+
 #[test]
 fn a_caption_follows_the_line_colour() {
     let dir = TestDir::new();

@@ -297,9 +297,14 @@ Effort estimates assume a single developer.
   their `/LLE`/`/LLO` variants, and `/BS /S` bevel, inset and underline frames
   are painted. A line's caption (`/Cap`) is set too: the text in `/Contents`
   sits on the line (`/CP /Inline`, stroke broken around it) or above it
-  (`/Top`), moved by `/CO`, and is left out entirely when the standard font
-  cannot show every character. Redactions, composite (Type0/CID) fonts,
-  `/BE` clouds and `/NoZoom` are the next candidates.
+  (`/Top`), moved by `/CO`. Synthesized text goes through the standard font
+  while WinAnsi (plus its `/Differences` extras) can carry it, and through a
+  subset of the bundled face for anything else the face covers, so a caption or
+  note in Cyrillic, Greek or the wider Latin ranges is printed instead of being
+  dropped; text the face cannot show still means no text rather than
+  replacement glyphs. Reading a *document's* composite font (Identity-V,
+  predefined CMaps, an embedded CMap stream) is still open, as are redactions,
+  `/BE` clouds and `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF

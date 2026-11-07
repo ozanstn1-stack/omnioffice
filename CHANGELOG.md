@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Synthesized annotation text can use the bundled face:** a free-text note or
+  a line caption whose text the standard font cannot encode used to be dropped
+  from the imposition. It is now set in a subset of the bundled Liberation Sans
+  written for exactly the characters it draws (Identity-H with a `ToUnicode`
+  map, described in `textfont`), so Cyrillic, Greek and the wider Latin ranges
+  reach the paper; WinAnsi text keeps the standard font and its bytes are
+  unchanged. Text the bundled face cannot show is still left out rather than
+  printed as replacement glyphs, and one subset font is shared by every
+  annotation on a sheet that needs the same characters.
+
 ## [7.14.0] - 2026-11-07
 
 ### Added
