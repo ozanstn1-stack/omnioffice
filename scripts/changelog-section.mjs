@@ -24,9 +24,14 @@ import { pathToFileURL } from "node:url";
  */
 export function extractSection(text, version) {
   const wanted = String(version || "").replace(/^v/, "");
+  // A version, not a pattern: the heading is matched by its literal prefix, so
+  // no part of the argument ever reaches a regular expression.
+  if (!/^\d+\.\d+\.\d+$/.test(wanted)) {
+    return null;
+  }
+  const heading = "## [" + wanted + "]";
   const lines = text.split(/\r?\n/);
-  const heading = new RegExp("^## \\[" + wanted.replace(/\./g, "\\.") + "\\]");
-  const start = lines.findIndex((line) => heading.test(line));
+  const start = lines.findIndex((line) => line.startsWith(heading));
   if (start < 0) {
     return null;
   }

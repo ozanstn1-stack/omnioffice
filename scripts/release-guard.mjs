@@ -103,17 +103,40 @@ export function isMeaningful(text) {
   if (!text) {
     return false;
   }
-  const withoutComments = text.replace(/<!--[\s\S]*?-->/g, "");
-  return withoutComments.split(/\r?\n/).some((line) => {
-    const trimmed = line.trim();
-    if (trimmed === "") {
-      return false;
+  return stripComments(text)
+    .split(/\r?\n/)
+    .some((line) => {
+      const trimmed = line.trim();
+      if (trimmed === "") {
+        return false;
+      }
+      if (/^#{1,6}\s/.test(trimmed) || /^-{3,}$/.test(trimmed)) {
+        return false;
+      }
+      return !PLACEHOLDER.test(trimmed.replace(/^[-*]\s*/, "").replace(/[*_`]/g, ""));
+    });
+}
+
+/**
+ * Removes HTML comments by scanning, not by one regular-expression pass: a
+ * single pass can leave a fresh `<!--` behind and CodeQL is right to flag it.
+ * An unterminated comment hides the rest of the section.
+ */
+function stripComments(text) {
+  let kept = "";
+  let rest = text;
+  for (;;) {
+    const open = rest.indexOf("<!--");
+    if (open < 0) {
+      return kept + rest;
     }
-    if (/^#{1,6}\s/.test(trimmed) || /^-{3,}$/.test(trimmed)) {
-      return false;
+    const close = rest.indexOf("-->", open + 4);
+    if (close < 0) {
+      return kept;
     }
-    return !PLACEHOLDER.test(trimmed.replace(/^[-*]\s*/, "").replace(/[*_`]/g, ""));
-  });
+    kept += rest.slice(0, open);
+    rest = rest.slice(close + 3);
+  }
 }
 
 function readAndroidProperties(text) {
