@@ -48,6 +48,17 @@ working app, but cannot compare a released binary byte-for-byte against the
 source. The release `build-info.json` and `SHA256SUMS` are the comparison
 point, not a reproducibility proof.
 
+## Action pinning, and the one exception
+
+Every GitHub action a workflow calls is pinned to a 40-character commit
+(`scripts/check-reproducibility-inputs.mjs` enforces it). The exception is
+`slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml`,
+which `release.yml` calls as `@v2.1.0`: the SLSA builder verifies the ref it was
+called with against its own released tags and refuses a commit SHA, and the
+generator repository is immutable (a tag can never move), so the tag is the
+reference its own documentation requires. The allow-list lives next to the check
+and names the exact ref, so a version bump is a visible edit.
+
 ## How to verify
 
 1. Check the Rust toolchain actually used by a release: the release job logs
