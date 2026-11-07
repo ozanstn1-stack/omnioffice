@@ -1552,7 +1552,24 @@ bir `/Differences` tablosuyla çözülüyor.
 `/DR`/gömülü font yeniden kullanımı, Type0/CID, `/RC`, `/DS`, RTL/CJK/emoji,
 otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
 
-- **NEREDE KALDIM / SIRADAKİ ADIM:** sürüm çıktı. Dal `feat/nup-freetext-std14`
-  açıldı. Sıradaki: adım 1 (std14 tabloları — AFM verisinden üretilecek) → 2 →
-  3 → 5 → 7 → belgeler. Sonraki iki kalem (Opus): (1) N-up geometri rötuşları
-  (Polygon/PolyLine, kesikli kenar, `/LE` uçları), (2) v7.11.0 sürümü.
+- **DURUM:** uygulandı. `std14.rs` **197 satır** (genişlik tabloları **Adobe
+  Core14 AFM** dosyalarından üretildi — matplotlib'in `pdfcorefonts` dağıtımı,
+  kaynak yorumda; Courier sabit 600; ascent/descent AFM'den), `textfit.rs`
+  **242** (UTF-16BE/UTF-8/PDFDocEncoding çözme, WinAnsi + 36 özel glif kodlama,
+  ölçü, açgözlü `wrap`), `freetext.rs` **316** (`/DA` → `/AcroForm /DA` →
+  `Helv 12 0 g`, `/Q`, `/C`, `/BS`·`/Border`, `/RD`, `/CL`, satır yerleşimi),
+  `appearance.rs` 363 → **371** ve `markup.rs` 259 → **261** (ratchet'ler
+  bilinçli yükseltildi: `FreeText` dispatch + `Synth.font`), `install.rs` 161
+  (sentez formuna `/Font` + `/Differences`). Testler: **10 entegrasyon**
+  (`nup_freetext_test.rs`) + **14 birim** (std14/textfit/freetext); lib 197 →
+  **211**, toplam N-up testi **91**. Kapılar: fmt, clippy `-D warnings`,
+  `files:check`/`files:update`, `docs:stats`, `claims:check` (390 iddia / 501
+  işaret) temiz.
+  **Opus planından sapmalar:** (1) `std14.rs` tabloları elle değil AFM'den
+  üretildi (uydurma genişlik yok); (2) `wrap`/`encode` ayrı `textfit.rs`'te,
+  callout ve `/RD` `freetext.rs` içinde; (3) kodlanamayan karakter **tüm
+  açıklamayı** düşürüyor (plan gereği), test bunu sabitliyor.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
+  Sonraki iki kalem (Opus): (1) N-up geometri rötuşları — `Polygon`/`PolyLine`
+  (`/Vertices`), kesikli kenar `/BS /S /D`, `/LE` çizgi uçları; (2) v7.11.0
+  sürümü (versionCode 7011000).
