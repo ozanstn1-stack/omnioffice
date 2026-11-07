@@ -2219,3 +2219,9 @@ Düz requirement'ı 0.38'e çıkarmak vendor yamasını **düşürür**
 **0.38'i vendor'la ve iki yamayı üzerine yeniden uygula** (upstream 0.38'de
 zaten yoksa), `vendor/calamine/README.md`'yi güncelle, fuzz regresyonlarını
 koştur. Ayrıntılı plan Opus'a sorulacak.
+
+**PR #658 birleşti** (`146d268`), 20 kontrol (18 yeşil + 2 beklenen skip;
+`Dependency audit`, `MSRV` ve `Fuzz changed parsers` de yeşil — calamine 0.38
+MSRV 1.88 ✔). officecore **440 test** + yeni `calamine_hostile_input` 4/4.
+README Rust testi 1699 → **1703**. Sürüm **7.16.0** treni açıldı (içerik:
+FreeText alt küme metni + RUSTSEC-2026-0436 düzeltmesi).

@@ -1,0 +1,1 @@
+7.16.0: Güvenlik ve uyumluluk — hazırlanmış bir .xls/.xlsb dosyası artık uygulamayı çökertemiyor (OLE2 kapsayıcı ayrıştırıcısındaki sınırsız bellek hatası kapatıldı). Ayrıca N-up çıktısında not metinleri de standart fontun kodlayamadığı karakterlerde (Kiril, Yunan, geniş Latin) gömülü yazı tipinin alt kümesiyle basılıyor.

@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.16.0] - 2026-11-07
+
 ### Security
 
 - **A crafted spreadsheet can no longer take the app down:** `calamine` 0.37
