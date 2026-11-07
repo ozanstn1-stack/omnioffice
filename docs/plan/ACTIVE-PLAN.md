@@ -1866,3 +1866,48 @@ yok); sig-v2 dilim B; `/Cap` caption.
   (force push gerekmez).
 - Guard, master'da gerçek bir sürüm uyuşmazlığı bulursa düzeltme `src-tauri`
   gerektirir → o zaman genişletme yapılmaz, rapor edilir.
+
+---
+
+# Seçilen iş kalemi: imza v2'ye kendiliğinden yükselme (dilim B′) — **Opus kararı `88db6078`**
+
+#648'in güvenlik kazancı yalnızca **yeni** eşleşmelere ulaşıyordu; eski çiftler
+yeniden eşleşmeden v1'de kalıyordu. Opus `/Cap` caption'ı (yalnız `/Cap true`
++ `/AP`'siz Line'da görünür, değeri dar) ve "v2'yi zorunlu kıl" (güncellenmemiş
+cihazlarla eşleşmeyi kırar) seçeneklerine karşı bunu seçti. **A0 doğrulandı:**
+#648 ve #649 hiçbir tag'de yok (`v7.12.0` öncesi), yani bu dilim v2 ile aynı
+sürümde çıkıyor → kullanıcı v2'yi hiç "eski çift" hâliyle görmez.
+
+## Opus varsayımlarının düzeltilmesi (Adım 0)
+- A2 ✔ `sig_v` istekte kendini ilan ediyor; A3 ✔ serde bilinmeyen alanı yok
+  sayıyor; A5 ✔ replay penceresi ve v1 golden testleri var.
+- A4 ✘ kod adları `bad-signature` / `sig-downgrade` / `range-mismatch`
+  (`sig_version_required` yok) → mevcut adlar kullanıldı.
+- A1 kısmen: `PairedPeer` ve doğrulama `synccore`'da; mağaza yazımı `src-tauri`'de
+  ama #648'den beri pin **bellekte** tutulup uygulama katmanı peer listesini
+  mağazaya kopyalıyor → `src-tauri` değişikliği gerekmedi.
+
+## Tasarım (uygulandı)
+- **Tel:** `Request.sig_v2` (`#[serde(default, skip_serializing_if = "String::is_empty")]`).
+- **Gönderen** (`lan/auth.rs::sign_for`): eş `features`/`min_sig` v2 diyorsa
+  yalnız v2; bilmiyorsa `mac`=v1 + `sig_v2`=v2 (çift imza).
+- **Alan** (`authenticated`): `sig_v2` doluysa **yalnız** v2 doğrulanır, kabulde
+  `pin_min_sig(2)`; boşsa eski kurallar (bilinmeyen sürüm → bad-signature,
+  v2 sözleşmiş eşten v1 → sig-downgrade, v2 → TOFU kabul + pin, v1 → kabul).
+  Bozuk sidecar yanındaki geçerli v1 onu **kurtarmaz** (kurcalanmış aralık durumu).
+- **Yakınsama:** host sidecar'ı kabul edip pinleyince karşıya v2-only yollar →
+  karşı taraf da pinler → çift tek turda v2-only olur. Eski build sidecar
+  göndermez, v1 ile yanıtlanır. Tek kalan açık: ilk teklifi ağdaki saldırgan
+  düşürebilir (yeniden eşleşme güçlü çözüm) — belgelendi.
+
+## Dosyalar / testler
+`lan/sig.rs` **229** (`verify_tag` dışa açıldı, `sign_for`/`verify_sidecar`
+`auth.rs`'ye taşındı → bütçe 230'da kaldı), `lan/auth.rs` **139** (imzalama +
+sidecar kuralı), `lan.rs` **1252** (bütçede), `docs/lan-sync.md` (yükselme
+bölümü), CHANGELOG `### Changed`. Testler: `sig_negotiation_tests` 7 → **10**
+(kendiliğinden yükselme + pin, çift imzanın v1 yarısının eski alıcıda okunması,
+pinli eşten sidecar'sız v1 → sig-downgrade, bozuk sidecar → bad-signature,
+eski build v1-only kabul + pin yok, v2-only'de sidecar yok). lib **107 → 111**,
+toplam Rust 1646 → **1650**. Kapılar: fmt, clippy `-D warnings`, `cargo test
+-p synccore`, `files:check` (bütçe yükseltmesi **yok**), `docs:stats`,
+`claims:check` (395/521), `fastlane:check`.

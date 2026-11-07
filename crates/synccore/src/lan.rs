@@ -12,8 +12,8 @@
 //!   there is no CA and no trust-on-first-use after pairing.
 //! * **Requests are authenticated.** Pairing establishes a 32-byte shared key;
 //!   every request carries an HMAC-SHA256 over device id, timestamp, nonce,
-//!   operation, path and body hash. A stale timestamp (five minutes) or a
-//!   missing pairing is refused.
+//!   operation, path, body hash and - once both ends can - the range fields
+//!   (`lan::sig`). A stale timestamp or a missing pairing is refused.
 //! * **Transfers are bounded and path-safe.** Only known document extensions
 //!   leave the folder, only relative paths are accepted (no `..`, no absolute
 //!   paths), and both sides cap a single transfer at [`crate::MAX_TRANSFER_BYTES`].
@@ -38,7 +38,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use auth::{authenticated, refusal_error, refuse, CODE_RANGE_MISMATCH};
+use auth::{authenticated, refusal_error, refuse, sign_for, CODE_RANGE_MISMATCH};
 
 use crate::merge::{self, MergeAction, Resolution};
 use crate::metadata::{self, BaseState, SyncState};
@@ -193,13 +193,12 @@ pub struct PairedPeer {
     /// directions, the flag only tells the UI which list a peer belongs to.
     #[serde(default)]
     pub host_side: bool,
-    /// Capabilities the peer announced while pairing (`"sig-v2"` today). An
+    /// Capabilities the peer announced while pairing (`"sig-v2"` today); an
     /// older build announces nothing, which reads as an empty list.
     #[serde(default)]
     pub features: Vec<String>,
-    /// The lowest request signature version this peer may use. `2` is written
-    /// once a version 2 request from it was accepted, and from then on a
-    /// version 1 request is refused: a downgrade cannot undo the upgrade.
+    /// The lowest request signature version this peer may use: `2` once a
+    /// version 2 request from it was accepted, after which version 1 is refused.
     #[serde(default)]
     pub min_sig: u8,
 }
@@ -647,9 +646,7 @@ impl LanClient {
             ..Request::default()
         };
         let body_hash = hex_encode(&Sha256::digest(body.unwrap_or(&[])));
-        let version = sig::SigVersion::for_peer(&peer.features, peer.min_sig);
-        request.sig_v = version.to_wire();
-        request.mac = sig::sign(&peer.shared_key, &request, &body_hash, &peer.device_id, version)?;
+        sign_for(peer, &mut request, &body_hash)?;
         let (response, body) = connection.request::<_, Response>(&request, body)?;
         if !response.ok {
             return Err(refusal_error(&response));
@@ -720,6 +717,9 @@ struct Request {
     /// Pairing: the capabilities the device offers, `"sig-v2"` today.
     #[serde(default)]
     features: Vec<String>,
+    /// The version 2 tag, sent beside version 1 until the pair upgrades.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    sig_v2: String,
 }
 
 impl transport::HasBodyLen for Request {

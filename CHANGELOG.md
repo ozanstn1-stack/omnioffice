@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **LAN sync: a pair formed before the request signature v2 upgrades itself.**
+  Until both records know the capability the client sends the version 1 tag in
+  `mac` and the version 2 tag in a `sig_v2` sidecar; a host that verifies the
+  sidecar pins the pair (`min_sig = 2`) and answers with version 2 alone, so
+  the other end pins it in turn and the pair converges in one round trip. No
+  re-pairing is needed, a device on an older build keeps being answered on
+  version 1, and a version 1 request from an upgraded peer is refused. The
+  first offer can still be dropped by an attacker on the network, which keeps
+  that pair on version 1 until it is re-paired.
+
 - **A version cannot be tagged without its release notes:** a new
   `scripts/release-guard.mjs` runs in pull-request CI, in the auto-tag job
   before the tag is created, and as the first step of the release and Android
