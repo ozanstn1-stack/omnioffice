@@ -1671,3 +1671,58 @@ Type0/CID/Identity-H · Type3 · MacRoman/Standard/yerleşik kodlama · font dos
   `RELEASE_READINESS` başlığı, fastlane `en-US/7012000.txt` + `tr-TR`, PR →
   merge → auto-tag → 18 asset doğrulaması. Sonra `/Cap` caption ya da
   `/NoZoom` dilimi (Opus'a sorulacak).
+
+---
+
+# Seçilen iş kalemi: LAN istek imzası v2 (`offset`/`total`/`sha256`) + features anlaşması — **Opus planı `f6a28999`**
+
+`canonical()` imzası bugün `offset`, `total` ve `sha256` alanlarını kapsamıyor;
+`get_chunk` isteği hangi aralığın ve hangi dosya sürümünün istendiğini
+bağlamıyor. TLS sabitleme ve tekrar koruması riski düşürüyor ama bu, savunmayı
+tek katmana bırakmak demek. Chief'in açık talebi; v7.13.0'a sessiz bir güvenlik
+dilimi olarak giriyor.
+
+## Plan (dilim A — v1 açık kalır)
+1. **Ön okuma:** `crates/synccore/src/lan.rs` (`canonical`/`sign`/`verify`
+   kapsamı), imza algoritması (Ed25519 mi HMAC-SHA256 mi — mevcut bağımlılık),
+   `lan_sync.rs` el sıkışması (`protocol_version`, `deny_unknown_fields` yok mu),
+   `begin_get`/`get_chunk` (`begin_put`/`put_chunk` da kapsama), eşleştirilmiş
+   cihaz kaydının yeri.
+2. **`crates/synccore/src/lan/sig.rs` (≤220):** `SigVersion { V1, V2 }`;
+   `canonical_v1` bugünkü baytları **birebir** korur; `canonical_v2` alan
+   ayrımı önekiyle (`b"omnioffice-lan-sig/v2\0"`) ve **uzunluk önekli/sabit
+   genişlikli** alanlarla: op, sender_id, receiver_id, transfer_id, file_id,
+   offset (u64be), length (u64be), total (u64be; bilinmiyorsa `u64::MAX`),
+   sha256 (32 bayt; bilinmiyorsa sıfır), nonce, timestamp (i64be).
+3. **Kablo (geriye uyumlu):** isteklere `#[serde(default)] sig_v: u8` (yoksa 1);
+   `get_chunk`, `begin_get` yanıtındaki `total`+`sha256`'yı geri yollar ve
+   imzalar; sunucu oturumla karşılaştırır. El sıkışmaya
+   `#[serde(default)] features: Vec<String>`; yeni cihaz `"sig-v2"` ilan eder.
+   `protocol_version` **artırılmaz**.
+4. **Anlaşma:** kesişim V2 ise V2; `features` el sıkışma transkriptine girer
+   (düşürme engeli). **TOFU sabitleme:** bir eşten bir kez geçerli V2 gelirse
+   kayda `min_sig: 2` yazılır, o eşten sonraki V1 reddedilir.
+5. **Hata politikası:** imza tutmazsa `BadSignature` (hangi alan olduğu karşıya
+   söylenmez, `debug`); `offset > total` / `offset+length > total` /
+   oturumla uyuşmayan `total`/`sha256` → `RangeMismatch` (imza doğrulandıktan
+   sonra); sürüm düşürme → `SigDowngrade` + bağlantı kapanır; V1 eşle sessizce
+   devam (`info`, oturum başına bir kez).
+6. **Testler (34 → ~52 `lan::`):** golden v1 (değişmedi) + golden v2, alan
+   mutasyonları (offset/length/total/sha256/transfer/receiver/op/nonce/ts),
+   uzunluk-öneki belirsizliği, v1↔v2 ayrımı; anlaşma matrisi (yeni/yeni,
+   yeni/eski, eski/yeni, sabitlenmiş eş, bilinmeyen özellik, eski JSON);
+   indirme: tam, devam, offset/total/sha kurcalama, eski eş V1, tekrar.
+7. **Bütçe:** `sig.rs` ≤220; `lan.rs` net ≤+40; `lan_sync.rs` ≤+60; test sayısı
+   ratchet'i güncellenir.
+8. **Kapılar:** `cargo fmt`, `cargo clippy -p synccore -- -D warnings`,
+   `cargo test -p synccore` + CI tamamı; protokol belgesi (v2 biçimi + golden
+   vektör + anlaşma tablosu) ve CHANGELOG "Güvenlik"; sonunda `cargo clean` +
+   `df -h /`. Tek PR: `feat(synccore): LAN istek imzası v2`.
+
+## Kapsam dışı
+Parça başına MAC, V1'in kaldırılması/zorunlu V2 (dilim B), anahtar döndürme,
+TLS sabitleme değişikliği, UI/ayar, `protocol_version` artışı.
+
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/lan-sig-v2` açıldı; sıradaki adım
+  1 (ön okuma) → 2 (`sig.rs`) → 3 → 4 → 6 → 8. Sonraki iki kalem (Opus):
+  (1) `/Cap` caption, (2) Calc dynamic-array spill tasarım dilimi.
