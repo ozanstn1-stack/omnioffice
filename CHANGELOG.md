@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.17.0] - 2026-11-07
+
 ### Security
 
 - **Release assets now carry SLSA build provenance:** every desktop file the
