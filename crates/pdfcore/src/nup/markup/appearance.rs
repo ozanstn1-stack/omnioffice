@@ -19,14 +19,15 @@ use lopdf::{Dictionary, Document};
 mod bevel;
 mod border;
 mod caption;
+mod cloudy;
 mod drfont;
 mod ends;
 mod face;
 mod freetext;
 mod paths;
 mod quads;
-pub(crate) mod std14;
 mod shape;
+pub(crate) mod std14;
 mod textfit;
 
 pub(crate) use std14::Std14;

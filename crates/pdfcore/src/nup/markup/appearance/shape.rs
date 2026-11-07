@@ -11,7 +11,7 @@
 use lopdf::{Dictionary, Document};
 
 use super::super::Synth;
-use super::{bevel, border, color, number_text, KAPPA};
+use super::{bevel, border, cloudy, color, number_text, KAPPA};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ShapeKind {
@@ -60,6 +60,11 @@ pub(super) fn shape(doc: &Document, annot: &Dictionary, rect: [f64; 4], kind: Sh
             }
         }
         return Some(Synth { ops: styled.into_bytes(), bbox: rect, multiply: false, font: None });
+    }
+    // A cloudy `/BE` replaces the plain path with a chain of scallops; every
+    // other effect leaves the frame below untouched.
+    if let Some(effect) = cloudy::read(doc, annot) {
+        return cloudy::synthesize(doc, annot, kind, rect, &border, &effect);
     }
     let mut ops = String::new();
     if has_stroke {
