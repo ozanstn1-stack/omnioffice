@@ -1661,7 +1661,13 @@ Type0/CID/Identity-H · Type3 · MacRoman/Standard/yerleşik kodlama · font dos
   (2) Circle bantları Bézier yerine 15°'lik poligon segmentleriyle (belgelendi);
   (3) FreeText çerçevesi `bevel`'e taşındı ama metin iç boşluğu `2w` yerine
   `w + 2` kaldı (davranış testle sabit).
-- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
-  Sonraki iki kalem: (1) `/Cap` caption (`/CP`, `/CO`) ya da doğrudan
-  **v7.12.0** sürüm treni — `[Unreleased]` şu an **iki** girdi taşıyor (leader +
-  kenar stilleri), versionCode **7012000**; (2) `/NoZoom` ayrı PR.
+- **PR #645 birleşti** (`9f7613f`), 18 kontrol yeşil, dal silindi; `target/`
+  temizlendi (4.9 GiB), disk %60.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `chore/release-v7.12.0` açıldı.
+  Sıradaki iş **v7.12.0 sürüm treni** — `[Unreleased]` **iki** girdi taşıyor
+  (`/LL` leader'ları #644, `/BS` bevel/inset/underline #645). Adımlar v7.11.0
+  ile aynı: sürüm 7.12.0, `tauri.properties` versionCode **7012000**, CHANGELOG
+  `[Unreleased]` → `[7.12.0] - 2026-11-07`, README + indirme bağlantıları,
+  `RELEASE_READINESS` başlığı, fastlane `en-US/7012000.txt` + `tr-TR`, PR →
+  merge → auto-tag → 18 asset doğrulaması. Sonra `/Cap` caption ya da
+  `/NoZoom` dilimi (Opus'a sorulacak).
