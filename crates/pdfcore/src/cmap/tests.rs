@@ -134,8 +134,7 @@ fn a_range_that_runs_out_of_the_code_space_stops() {
 fn a_destination_of_any_width_up_to_eight_bytes_is_fine() {
     // A full eight-byte destination is the case that used to shift a `u64` by
     // its own width and panic; the fuzzer found it.
-    let eight =
-        read(cmap("1 beginbfrange\n<0010> <0015> <0000000000000041>\nendbfrange\n").as_bytes());
+    let eight = read(cmap("1 beginbfrange\n<0010> <0015> <0000000000000041>\nendbfrange\n").as_bytes());
     assert!(eight.is_empty(), "eight bytes is four characters, not one: {eight:?}");
     // Every narrower width is judged by the same rule and never panics.
     for width in 1..=8 {
