@@ -162,6 +162,19 @@ pub(super) fn polygon(doc: &Document, annot: &Dictionary, rect: [f64; 4], closed
     if let Some(fill) = &fill {
         ops.push_str(&fill.render(fill.fill_op()));
     }
+    if closed && border.edge != super::border::Edge::Plain && has_stroke {
+        // A styled polygon is painted edge by edge in two tones; the plain
+        // path below is left untouched.
+        if let Some(outline) = &outline {
+            super::bevel::polygon_frame(&mut ops, &points, &border, outline);
+        }
+        return Some(Synth {
+            ops: ops.into_bytes(),
+            bbox: padded(rect, &points, border.width / 2.0),
+            multiply: false,
+            font: None,
+        });
+    }
     path_ops(&mut ops, &points, closed);
     let ends = if closed { (ends::Ending::None, ends::Ending::None) } else { ends::pair(doc, annot) };
     if ends.0 == ends::Ending::None && ends.1 == ends::Ending::None {

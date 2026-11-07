@@ -872,8 +872,9 @@ These are real and honest:
   and an unsigned signature stays a placeholder. A mark that ships no appearance
   stream is drawn from its own geometry (highlights, underlines, strike-outs,
   squiggles, squares, circles, lines (with their `/LL` leaders), polygons and
-  ink, with their colours, a dashed border and line-ending arrows when the
-  annotation asks for them, and their border width), and a
+  ink, with their colours, a dashed or beveled/inset/underline border and
+  line-ending arrows when the annotation asks for them, and their border
+  width), and a
   free-text note is set with a standard font referenced by name
   (Turkish and the other Latin-A glyphs ride a fixed `/Differences` table, so no
   font program is embedded), or in the form's own simple `/DR` font when it has
@@ -979,7 +980,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 55 |
 | Tauri commands | 253 |
-| Rust tests | 1613 |
+| Rust tests | 1629 |
 | TypeScript test files | 231 |
 | TypeScript test cases (approx.) | 2641 |
 <!-- stats:end -->
