@@ -1,0 +1,1 @@
+7.12.0: N-up ve kitapçık çıktısı belgenin çerçevelerini de doğru basıyor — kabartma (bevel), çökük (inset) ve alt çizgi çerçeveleri iki tonla; leader çizgili çizgiler artık kaybolmuyor, yanına kaydırılıp bağlantı çizgileriyle çiziliyor.
