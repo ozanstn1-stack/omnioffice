@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.18.0] - 2026-11-07
+
 ### Added
 
 - **A cloudy border reaches the paper:** a square or circle annotation without
