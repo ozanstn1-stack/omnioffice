@@ -55,9 +55,9 @@ mod sig;
 #[cfg(test)]
 mod sig_negotiation_tests;
 #[cfg(test)]
-mod sig_tests;
-#[cfg(test)]
 mod sig_tamper_tests;
+#[cfg(test)]
+mod sig_tests;
 #[cfg(test)]
 mod tests;
 mod transport;
