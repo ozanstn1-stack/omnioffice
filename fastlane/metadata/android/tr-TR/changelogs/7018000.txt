@@ -1,0 +1,1 @@
+7.18.0: N-up ve kitapçık çıktısında düzeltme bulutları da basılıyor — /BE /S /C isteyen kare ve daire açıklamalarının çerçevesi artık düz kenar yerine dışa taşan dilimlerle çiziliyor; /I kabalığı belirliyor. Ayrıca Android paketlerinin de kendi yapı kökeni (provenance) zarfı var.

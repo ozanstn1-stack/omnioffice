@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.17.0
+# Release Readiness — OmniOffice 7.18.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (this cycle, 7.17.0) - SLSA build provenance (indirmeyi doğrulama)
+## Implemented (this cycle, 7.18.0) - `/BE` bulut kenarlıklar + iki zarf (desktop + Android)
 
 - **A LAN download resumes where it stopped (E6.3):** uploads have resumed since
   D3; a download was one request that started over when the Wi-Fi dropped. Two
