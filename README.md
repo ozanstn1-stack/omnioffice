@@ -10,12 +10,12 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.13.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.14.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
 
-## What's new (6.2 to 7.13.0)
+## What's new (6.2 to 7.14.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -239,7 +239,10 @@ was split into per-format modules.
   security release: a LAN request signature that binds the range a resumable
   transfer asks for, the automatic upgrade of pairs formed before it (no
   re-pairing), and a release guard that refuses to tag a version without its
-  release notes - the mistake that cost v7.12.0 a force-pushed tag.
+  release notes - the mistake that cost v7.12.0 a force-pushed tag. 7.14.0
+  closes the last drawing gap in annotation synthesis: a line's caption is set
+  where the document put it, above the line or on it with the stroke broken
+  around the text.
 - **LAN sync** (6.11.0): two devices on the same Wi-Fi pair with a one-time
   six-digit code, keep a pinned TLS connection and move office documents
   between their folders with a three-way plan; conflicts stay for the user
@@ -248,14 +251,14 @@ was split into per-format modules.
   deletion, with an Android foreground service keeping the folder reachable;
   6.13.0 adds the two-host acceptance contract, a 30-day deletion trash with
   tombstones and resumable chunked uploads with live progress.
-**Downloads (v7.13.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v7.13.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.13.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.13.0/OmniOffice-Setup-7.13.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.13.0/OmniOffice-Portable-7.13.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.13.0/OmniOffice-Linux-7.13.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.13.0/OmniOffice-Linux-7.13.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.13.0/OmniOffice-Android-7.13.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.13.0/OmniOffice-Android-7.13.0-armeabi-v7a.apk)
+**Downloads (v7.14.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v7.14.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.14.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.14.0/OmniOffice-Setup-7.14.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.14.0/OmniOffice-Portable-7.14.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.14.0/OmniOffice-Linux-7.14.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.14.0/OmniOffice-Linux-7.14.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.14.0/OmniOffice-Android-7.14.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.14.0/OmniOffice-Android-7.14.0-armeabi-v7a.apk)
 
 ## Release history
 
