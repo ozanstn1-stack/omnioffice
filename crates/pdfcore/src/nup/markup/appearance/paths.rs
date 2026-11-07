@@ -7,7 +7,7 @@
 
 use super::super::super::dests::resolve;
 use super::border::stroke;
-use super::{number, number_text, union, Color, Synth};
+use super::{ends, number, number_text, union, Color, Synth};
 use lopdf::{Dictionary, Document, Object};
 
 /// A point in page space.
@@ -37,7 +37,13 @@ pub(super) fn line(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option
     border.ops(&mut ops);
     path_ops(&mut ops, &points, false);
     ops.push_str("S\n");
-    Some(Synth { ops: ops.into_bytes(), bbox: padded(rect, &points, border.width / 2.0), multiply: false, font: None })
+    let pad = paint_ends(doc, annot, &mut ops, &points, border.width)?;
+    Some(Synth {
+        ops: ops.into_bytes(),
+        bbox: padded(rect, &points, border.width / 2.0 + pad),
+        multiply: false,
+        font: None,
+    })
 }
 
 /// Builds an `Ink` annotation (`/InkList`).
@@ -102,6 +108,10 @@ pub(super) fn polygon(doc: &Document, annot: &Dictionary, rect: [f64; 4], closed
         ops.push_str(&fill.render(fill.fill_op()));
     }
     path_ops(&mut ops, &points, closed);
+    let ends = if closed { (ends::Ending::None, ends::Ending::None) } else { ends::pair(doc, annot) };
+    if ends.0 == ends::Ending::None && ends.1 == ends::Ending::None {
+        // Nothing extra to paint.
+    }
     ops.push_str(if has_stroke && fill.is_some() {
         "B\n"
     } else if has_stroke {
@@ -109,7 +119,11 @@ pub(super) fn polygon(doc: &Document, annot: &Dictionary, rect: [f64; 4], closed
     } else {
         "f\n"
     });
-    let boxed = padded(rect, &points, border.width / 2.0);
+    let mut pad = 0.0;
+    if !closed && has_stroke {
+        pad = paint_ends(doc, annot, &mut ops, &points, border.width)?;
+    }
+    let boxed = padded(rect, &points, border.width / 2.0 + pad);
     Some(Synth { ops: ops.into_bytes(), bbox: boxed, multiply: false, font: None })
 }
 
@@ -146,6 +160,16 @@ fn padded(rect: [f64; 4], points: &[Point], half: f64) -> [f64; 4] {
         bounds = union(bounds, [*x - half, *y - half, *x + half, *y + half]);
     }
     bounds
+}
+
+/// Paints the `/LE` marks of a stroked path and reports the padding they need.
+fn paint_ends(doc: &Document, annot: &Dictionary, ops: &mut String, points: &[Point], width: f64) -> Option<f64> {
+    let pair = ends::pair(doc, annot);
+    if pair == (ends::Ending::None, ends::Ending::None) {
+        return Some(0.0);
+    }
+    let fill = super::color(doc, annot, b"IC")?.map(|colour| colour.render(colour.fill_op()));
+    Some(ends::draw(ops, points, pair, width, fill.as_deref()))
 }
 
 /// The fill colour of a closed path, when the annotation carries one.

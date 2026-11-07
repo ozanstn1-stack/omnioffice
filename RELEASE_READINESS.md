@@ -142,6 +142,16 @@ release-train schedule is decided.
   `test:crates/pdfcore/tests/nup_appearance_test.rs#ink_draws_every_stroke`
   `test:crates/pdfcore/tests/nup_appearance_test.rs#an_annotation_with_a_broken_appearance_is_not_synthesized`
 
+- **Line endings are synthesized:** a `Line`, `PolyLine` or free-text callout
+  honours `/LE` - open/closed arrows in both directions, square, circle,
+  diamond, butt and slash - drawn at `max(6, 3w)` with the line's own width and
+  filled with `/IC` for the closed kinds. Each mark is solid even on a dashed
+  line, and the form's box grows so the head is not clipped.
+  `test:crates/pdfcore/tests/nup_line_ends_test.rs#closed_arrows_sit_at_both_ends_of_a_diagonal_line`
+  `test:crates/pdfcore/tests/nup_line_ends_test.rs#the_closed_kinds_fill_when_the_line_has_an_interior_colour`
+  `test:crates/pdfcore/tests/nup_line_ends_test.rs#a_free_text_callout_gets_its_end_at_the_first_point`
+  `test:crates/pdfcore/tests/nup_line_ends_test.rs#a_reversed_arrow_points_past_the_tip`
+
 - **Polygons, polylines and dashed borders are synthesized:** a `Polygon` or
   `PolyLine` without an `/AP` is drawn from `/Vertices` (the closed one filled
   with `/IC` and stroked with `/C`, the open one only stroked), and `/BS /S /D`

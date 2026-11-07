@@ -290,8 +290,10 @@ Effort estimates assume a single developer.
   without an appearance stream is synthesized from its geometry (the quad-point
   marks and square/circle/line/polygon/ink shapes, dashed borders included), and
   a free-text note is set with a standard font by name (`/Differences` carries
-  the Turkish and Latin-A glyphs). Redactions, embedded/CID fonts, callout line
-  ends (`/LE`), `/BE` clouds and `/NoZoom` are the next candidates.
+  the Turkish and Latin-A glyphs). Line endings (`/LE` arrows, squares, circles,
+  diamonds, caps and slashes) follow on lines, polylines and callouts.
+  Redactions, embedded/CID fonts, `/BE` clouds and `/NoZoom` are the next
+  candidates.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF

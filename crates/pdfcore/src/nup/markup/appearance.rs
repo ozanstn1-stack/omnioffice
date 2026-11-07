@@ -20,6 +20,7 @@ use super::Synth;
 use lopdf::{Dictionary, Document};
 
 mod border;
+mod ends;
 mod freetext;
 mod paths;
 mod quads;

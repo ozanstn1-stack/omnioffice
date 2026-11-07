@@ -1586,12 +1586,16 @@ otomatik boyut, callout `/LE` uçları, kesikli kenar, `/BE`, `/Rotate`.
   açılmadı).
 - **PR #640 birleşti** (`7c98fa5`), 18 kontrol yeşil, dal silindi; `target/`
   temizlendi (4.5 GiB), disk %60.
-- **NEREDE KALDIM / SIRADAKİ ADIM:** dal `feat/nup-line-ends` açıldı. Sıradaki
-  kalem **dilim 2: `/LE` çizgi uçları** — plan Opus `4a676a26` §5: `/L` ve
-  `/PolyLine` için iki uç (`/LE [a b]`), `FreeText` callout'ta tek uç (`/LE`
-  adı, yalnız `/CL`'nin ilk noktası). Türler: `None`, `Butt`, `Square`,
-  `Circle`, `Diamond`, `OpenArrow`, `ClosedArrow`, `ROpenArrow`, `RClosedArrow`,
-  `Slash`. Yön `u` çizgiden dışarı, `n` dik; `L = max(6, 3w)`; kapalı türler
-  `/IC` (yoksa dış hat) ile `b`/`s`, açık türler `S`; uç bloğu `q [] 0 d … Q`.
-  bbox payı `L + w`. Yeni `appearance/ends.rs` (≤400) + 10-12 test; sonra
-  v7.11.0 sürüm treni (versionCode **7011000**).
+- **DURUM (dilim 2):** uygulandı. Yeni `appearance/ends.rs` **338** (`Ending`
+  10 tür, `/LE` çift/tek okuma, `outward` yinelenen noktaları atlar,
+  `size = 3·max(w,2)`, tüm uç geometrileri, ters oklar, `q [] 0 d … Q` bloğu,
+  bbox payı); `paths.rs` line/polyline uçları (`paint_ends`), `freetext.rs`
+  callout'ta tek uç. Ratchet'ler bilinçli yükseltildi: appearance.rs 253 → 254,
+  freetext.rs 316 → 332, paths.rs 208 → 232 (yeni özellik kodu).
+  **11 yeni entegrasyon testi** (`nup_line_ends_test.rs`) + **10 birim testi**;
+  lib 219 → **229**, N-up testi **113**. Kapılar: fmt, clippy `-D warnings`,
+  `files:check`/`files:update`, `docs:stats`, `claims:check` (392 iddia / 509
+  işaret) temiz.
+- **NEREDE KALDIM / SIRADAKİ ADIM:** PR açılıyor; CI yeşilse squash merge.
+  Sonraki: **v7.11.0 sürüm treni** — `[Unreleased]` üç girdi taşıyor (kesikli
+  kenar/poligon, FreeText, `/LE`); versionCode **7011000**.

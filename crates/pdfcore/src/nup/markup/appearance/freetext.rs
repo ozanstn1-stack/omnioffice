@@ -123,6 +123,22 @@ fn callout(doc: &Document, annot: &Dictionary, style: &Style, stroke: &super::bo
         ops.push_str(&format!("{} {} {command}\n", n(pair[0]), n(pair[1])));
     }
     ops.push_str("S\n");
+    let ending = super::ends::single(doc, annot);
+    if ending != super::ends::Ending::None && points.len() >= 2 {
+        let (ux, uy) = (points[0] - points[2], points[1] - points[3]);
+        let length = ux.hypot(uy);
+        if length > 1e-9 {
+            let fill = super::color(doc, annot, b"IC").flatten().map(|colour| colour.render(colour.fill_op()));
+            super::ends::end_ops(
+                ops,
+                ending,
+                (points[0], points[1]),
+                (ux / length, uy / length),
+                stroke.width.max(1.0),
+                fill.as_deref(),
+            );
+        }
+    }
 }
 
 /// Lays the text out in the box and appends the `BT … ET` block.
