@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Lines and callouts get their ending marks in N-up:** a `Line` or `PolyLine`
+  without an appearance stream now carries its `/LE` ends - open and closed
+  arrows in both directions, squares, circles, diamonds, a butt cap and a slash
+  - drawn at the line's own width and filled with `/IC` when the annotation has
+  an interior colour. A free-text callout honours its single `/LE` at the point
+  it points to. Each mark is painted solid even on a dashed line, and the form's
+  box grows so a thick arrow head is never clipped.
 - **Polygons, polylines and dashed borders arrive in N-up:** a `Polygon` or
   `PolyLine` without an appearance stream is drawn from its `/Vertices` now -
   the closed path filled with `/IC` and stroked with `/C`, the open one only
