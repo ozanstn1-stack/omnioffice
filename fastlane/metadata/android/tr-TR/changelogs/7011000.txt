@@ -1,0 +1,1 @@
+7.11.0: N-up ve kitapçık çıktısı belgeyi daha eksiksiz basıyor — poligon ve polilineler, kesikli kenarlar, standart fontla dizilen serbest metin notları ve çizgi uçları (oklar, kare, daire, elmas, eğik çizgi) artık kâğıda geçiyor.
