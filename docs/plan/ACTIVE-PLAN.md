@@ -1900,6 +1900,10 @@ sürümde çıkıyor → kullanıcı v2'yi hiç "eski çift" hâliyle görmez.
   göndermez, v1 ile yanıtlanır. Tek kalan açık: ilk teklifi ağdaki saldırgan
   düşürebilir (yeniden eşleşme güçlü çözüm) — belgelendi.
 
+**PR #650 birleşti** (`ff09b19`), 17 kontrol yeşil + 2 beklenen skip, dal
+silindi; `target/` temizlendi (1.2 GiB), disk %60. README Rust testi 1646 →
+**1650**. Sürüm değişmedi (v7.12.0).
+
 ## Dosyalar / testler
 `lan/sig.rs` **229** (`verify_tag` dışa açıldı, `sign_for`/`verify_sidecar`
 `auth.rs`'ye taşındı → bütçe 230'da kaldı), `lan/auth.rs` **139** (imzalama +
@@ -1911,3 +1915,32 @@ eski build v1-only kabul + pin yok, v2-only'de sidecar yok). lib **107 → 111**
 toplam Rust 1646 → **1650**. Kapılar: fmt, clippy `-D warnings`, `cargo test
 -p synccore`, `files:check` (bütçe yükseltmesi **yok**), `docs:stats`,
 `claims:check` (395/521), `fastlane:check`.
+
+---
+
+# Sürüm treni: v7.13.0 — güvenlik sürümü (imza v2 + kendiliğinden yükselme + release guard)
+
+Üç dilim birikti ve hiçbiri tag'de değil (#648, #649, #650). Kullanıcıya
+ulaşması gereken asıl kazanç LAN istek imzası v2 ve eski çiftlerin yükselmesi;
+ayrıca yeni `release-guard` ilk kez gerçek bir sürümde çalışacak.
+
+## Adımlar (yapıldı)
+- Sürüm **7.13.0**: `package.json`, `package-lock.json`, `Cargo.toml`
+  `[workspace.package]`, `Cargo.lock` (7 workspace üyesi),
+  `src-tauri/tauri.conf.json`, `src-tauri/gen/android/app/tauri.properties`
+  (`versionName=7.13.0`, `versionCode=**7013000**`).
+- CHANGELOG: `[Unreleased]` boşaltıldı, `## [7.13.0] - 2026-11-07` açıldı;
+  **`### Security` başta** (store metni ilk girdiden üretiliyor), sonra
+  `### Changed` (yükselme + release guard). #648'in "yeniden eşleşene kadar v1"
+  cümlesi #650 yüzünden yanlış olduğu için metinden çıkarıldı.
+- README: sürüm satırı, `What's new (6.2 to 7.13.0)`, 7.13.0 paragrafı,
+  **indirme bağlantıları** — eskiden `v7.7.0` tag'ini gösteriyordu (kırık
+  linkler) → `v7.13.0` + 7.13.0 dosya adları; `docs:stats` blok tazelendi.
+- RELEASE_READINESS başlığı + döngü başlığı.
+- fastlane: `en-US/7013000.txt` changelog'dan üretildi (497 bayt < 500),
+  `tr-TR/7013000.txt` elle yazıldı (340 bayt).
+- **Guard kendi işini yaptı:** dosyalar yokken `release-guard` 7.13.0'ı
+  `fastlane/.../7013000.txt: file is missing` ile reddetti; dosyalar eklenince
+  `release-guard: 7.13.0 (versionCode 7013000) OK`.
+- Kapılar: `release-guard`, `fastlane:check` (26 changelog), `docs:stats:check`,
+  `claims:check` (395/521, döngü 7.13.0), `files:check` (bütçe değişmedi).
