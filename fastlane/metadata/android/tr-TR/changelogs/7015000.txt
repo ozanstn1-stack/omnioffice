@@ -1,0 +1,1 @@
+7.15.0: N-up ve kitapçık çıktısında satır açıklamalarının caption'ı artık standart fontun kodlayamadığı karakterler için kaybolmuyor — Kiril, Yunan ve geniş Latin aralıkları gömülü yazı tipinin yalnız o metin için yazılmış alt kümesiyle basılıyor; yazı tipinin de gösteremediği metin yine hiç çizilmiyor.

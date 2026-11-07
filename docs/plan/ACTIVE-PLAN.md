@@ -2155,3 +2155,19 @@ değil) elendi.
 - **Bu PR'ın kapsamı:** mekanizma + **caption** (`/Cap`), FreeText sonraki PR
   (skill: bir PR'da tek mekanizma). `caption.rs` 399'da olduğu için testler
   `appearance/caption_tests.rs`'ye taşınır (`read`/`offset_of` `pub(super)`).
+
+**PR #655 birleşti** (`d0640d8`), 20 kontrol (18 yeşil + 2 beklenen skip; pdfcore
+değiştiği için `Fuzz changed parsers` de koştu ve yeşil). README Rust testi
+1678 → **1686**. `textfont.rs` 418 → **87**, yeni `textfont/subset.rs` **386**,
+`caption.rs` **241** + `caption_tests.rs` **230**. Sürüm **7.15.0** treni açıldı
+(yalnız caption kapsanıyor — FreeText sonraki dilim, metin buna göre yazıldı).
+
+## Sıradaki dilim (plan): FreeText'i alt küme yüzüne geçirmek
+- `freetext.rs` (393, bütçe tavanı) + `textfit.rs` (335). Engel: `FontMetrics`
+  trait'i `encode(&self, char) -> Option<u8>` — tek bayt; alt küme glyph id'leri
+  **u16**. İki yol: (a) trait'i `Vec<u8>`/`String` döndürecek şekilde genişlet
+  (drfont + std14metrics + wrap_with + freetext dokunur, en temiz), (b) yerleşimi
+  Helvetica metrikleriyle yap (Liberation Sans Helvetica ile metrik-uyumlu) ve
+  yalnız **emisyonda** alt küme fontunu kullan (daha küçük, ama auto-size
+  genişliği yaklaşık). Karar Opus'a sorulacak; bütçe nedeniyle (a) seçilirse
+  `textfit.rs`'teki trait kodu ayrı bir `appearance/metrics.rs`'ye taşınmalı.
