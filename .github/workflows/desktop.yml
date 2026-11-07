@@ -63,6 +63,11 @@ jobs:
         run: npm run acl:check
       - name: Fastlane metadata (changelogs derived from CHANGELOG.md)
         run: npm run fastlane:check
+      # A version's release notes have to exist before its pull request merges:
+      # v7.12.0 was tagged without them, and recovering needed a force push.
+      # The unit test and the real checkout run in one step on purpose.
+      - name: Release guard (version files, CHANGELOG section, store changelog)
+        run: node --test scripts/release-guard.test.mjs && node scripts/release-guard.mjs
       # The signing scripts only run in the tag release workflow, so a syntax
       # error would surface during a release instead of review: parse them here.
       - name: Windows signing scripts (PowerShell parse check)

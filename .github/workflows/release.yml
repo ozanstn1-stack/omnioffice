@@ -374,22 +374,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: package.json, Cargo.toml, tauri.conf.json and Android metadata agree
-        run: |
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json','utf8')).version;
-            const tauri = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8')).version;
-            const cargo = fs.readFileSync('Cargo.toml','utf8').match(/version = \"([^\"]+)\"/)[1];
-            const props = fs.readFileSync('src-tauri/gen/android/app/tauri.properties','utf8');
-            const androidName = (props.match(/versionName=([^\r\n]+)/) || [])[1];
-            const androidCode = (props.match(/versionCode=([0-9]+)/) || [])[1];
-            const [major, minor, patch] = pkg.split('.').map(Number);
-            const expectedCode = String(major * 1000000 + minor * 1000 + patch);
-            const tag = process.env.GITHUB_REF_NAME || '';
-            console.log({pkg, tauri, cargo, androidName, androidCode, tag});
-            if (pkg !== tauri || pkg !== cargo) throw new Error('version mismatch');
-            if (androidName !== pkg) throw new Error('Android versionName mismatch');
-            if (androidCode !== expectedCode) throw new Error('Android versionCode mismatch');
-            if (tag.startsWith('v') && tag.slice(1) !== pkg) throw new Error('tag does not match version');
-          "
+      # One script for the pull request, the tag and the build, so the gate and
+      # the release can never disagree: the version files and Android metadata
+      # agree, and the CHANGELOG section and store changelog for this version
+      # exist. A `workflow_dispatch` on a branch has no tag to compare.
+      - name: Release guard (version files, CHANGELOG section, store changelog)
+        run: node scripts/release-guard.mjs --tag "$GITHUB_REF_NAME"
