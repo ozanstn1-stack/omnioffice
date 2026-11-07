@@ -19,8 +19,8 @@ use crate::utils::read_usize;
 use crate::utils::{push_column, read_f64, read_i16, read_i32, read_u16, read_u32};
 use crate::vba::VbaProject;
 use crate::{
-    Cell, CellErrorType, Data, Dimensions, HeaderRow, Metadata, Range, Reader, Sheet, SheetType,
-    SheetVisible,
+    oleps, Cell, CellErrorType, Data, Dimensions, HeaderRow, Metadata, Range, Reader, Sheet,
+    SheetType, SheetVisible, WorkbookProperties,
 };
 
 #[derive(Debug)]
@@ -240,6 +240,35 @@ impl<RS: Read + Seek> Xls<RS> {
 
         #[allow(deprecated)]
         self.worksheet_merge_cells(&sheet.name)
+    }
+
+    /// Get the workbook document properties.
+    ///
+    /// Read the document properties, such as the creator, title, application
+    /// and company, and any custom document properties, into a
+    /// [`WorkbookProperties`] struct. Missing fields are returned as `None`.
+    ///
+    /// See [`Xlsx::workbook_properties()`](crate::Xlsx::workbook_properties)
+    /// for an example.
+    ///
+    pub fn workbook_properties(&mut self) -> Result<WorkbookProperties, XlsError> {
+        let mut props = WorkbookProperties::default();
+
+        if self.cfb.has_directory("\u{5}SummaryInformation") {
+            let stream = self
+                .cfb
+                .get_stream("\u{5}SummaryInformation", &mut self.reader)?;
+            oleps::read_summary_information(&stream, &mut props);
+        }
+
+        if self.cfb.has_directory("\u{5}DocumentSummaryInformation") {
+            let stream = self
+                .cfb
+                .get_stream("\u{5}DocumentSummaryInformation", &mut self.reader)?;
+            oleps::read_doc_summary_information(&stream, &mut props);
+        }
+
+        Ok(props)
     }
 
     /// Get the merged cells/regions in a worksheet by sheet name.
@@ -475,8 +504,6 @@ impl<RS: Read + Seek> Xls<RS> {
             .cfb
             .get_stream("Workbook", &mut self.reader)
             .or_else(|_| self.cfb.get_stream("Book", &mut self.reader))
-            .or_else(|_| self.cfb.get_stream("WORKBOOK", &mut self.reader))
-            .or_else(|_| self.cfb.get_stream("BOOK", &mut self.reader))
         {
             Ok(s) => s,
             Err(StreamNotFound(_)) => return Err(StreamNotFound("Workbook".to_string()).into()),
@@ -1621,9 +1648,12 @@ fn parse_formula(
                 stack.push(formula.len());
             }
             0x17 => {
+                // PtgStr [MS-XLS 2.5.198.89]. In BIFF8 the literal is a
+                // ShortXLUnicodeString: cch, a 1-byte grbit, then the
+                // characters. Before BIFF8 it is a ShortByteString: cch
+                // immediately followed by cch bytes, with no grbit.
                 stack.push(formula.len());
                 formula.push('\"');
-                // PtgStr: cch (1 byte) followed by an XLUnicodeStringNoCch
                 let Some(&cch) = rgce.first() else {
                     return Err(XlsError::Len {
                         expected: 1,
@@ -1631,10 +1661,24 @@ fn parse_formula(
                         typ: "PtgStr",
                     });
                 };
-                let consumed =
-                    read_unicode_string_no_cch(encoding, &rgce[1..], cch as usize, &mut formula)?;
-                formula.push('\"');
-                rgce = &rgce[1 + consumed..];
+                let cch = cch as usize;
+                if is_pre_biff8 {
+                    if rgce.len() < 1 + cch {
+                        return Err(XlsError::Len {
+                            expected: 1 + cch,
+                            found: rgce.len(),
+                            typ: "PtgStr",
+                        });
+                    }
+                    encoding.decode_to(&rgce[1..1 + cch], cch, &mut formula, None);
+                    formula.push('\"');
+                    rgce = &rgce[1 + cch..];
+                } else {
+                    let consumed =
+                        read_unicode_string_no_cch(encoding, &rgce[1..], cch, &mut formula)?;
+                    formula.push('\"');
+                    rgce = &rgce[1 + consumed..];
+                }
             }
             0x18 => {
                 rgce = &rgce[5..];
@@ -2048,5 +2092,40 @@ mod tests {
     fn test_parse_string() {
         let enc = XlsEncoding::from_codepage(1252).unwrap();
         parse_string(&[0, 1], &enc, Biff::Biff8).unwrap_err();
+    }
+
+    // A pre-BIFF8 PtgStr carries no grbit byte: `cch` is directly followed by
+    // `cch` bytes. Decoding it as BIFF8 used to read one byte past the end of
+    // the token stream and panic.
+    #[test]
+    fn test_parse_formula_ptgstr_biff5() {
+        let enc = XlsEncoding::from_codepage(1252).unwrap();
+        // cce = 8, then PtgStr(0x17) cch=6 "SCHUCH" - the literal ends the rgce.
+        let mut rgce = vec![8u8, 0, 0x17, 6];
+        rgce.extend_from_slice(b"SCHUCH");
+        let f = parse_formula(&rgce, &[], &[], &[], &enc, Biff::Biff5).unwrap();
+        assert_eq!(f, "\"SCHUCH\"");
+    }
+
+    // The BIFF8 layout keeps its grbit byte.
+    #[test]
+    fn test_parse_formula_ptgstr_biff8() {
+        // BIFF8 workbooks declare code page 1200 (UTF-16LE).
+        let enc = XlsEncoding::from_codepage(1200).unwrap();
+        // cce = 9, then PtgStr(0x17) cch=6, grbit=0 (compressed), "SCHUCH".
+        let mut rgce = vec![9u8, 0, 0x17, 6, 0];
+        rgce.extend_from_slice(b"SCHUCH");
+        let f = parse_formula(&rgce, &[], &[], &[], &enc, Biff::Biff8).unwrap();
+        assert_eq!(f, "\"SCHUCH\"");
+    }
+
+    // A truncated literal is an error, never a panic.
+    #[test]
+    fn test_parse_formula_ptgstr_truncated() {
+        let enc = XlsEncoding::from_codepage(1252).unwrap();
+        // cce = 5 covers the whole token stream, but cch claims 6 bytes.
+        let mut rgce = vec![5u8, 0, 0x17, 6];
+        rgce.extend_from_slice(b"SCH");
+        parse_formula(&rgce, &[], &[], &[], &enc, Biff::Biff5).unwrap_err();
     }
 }

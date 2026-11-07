@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **A crafted spreadsheet can no longer take the app down:** `calamine` 0.37
+  parsed the OLE2/CFB container of `.xls` and `.xlsb` files (and VBA
+  extraction) with no bound on a hostile input, so a crafted file could panic
+  or allocate until memory ran out - RUSTSEC-2026-0436, reachable from the
+  public reader on a file the user opens. The workspace now vendors **0.38.0**,
+  which fixes it, with the two arithmetic guards our own fuzzing had added to
+  0.37 carried over (hostile cell references and reversed `/dimension`
+  references are parse errors, not overflow panics). A new hostile-input suite
+  pins that every malformed container is an error, promptly.
+
 ### Added
 
 - **Free-text notes can use the bundled face too:** a note whose text neither

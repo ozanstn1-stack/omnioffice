@@ -2171,3 +2171,51 @@ değiştiği için `Fuzz changed parsers` de koştu ve yeşil). README Rust test
   yalnız **emisyonda** alt küme fontunu kullan (daha küçük, ama auto-size
   genişliği yaklaşık). Karar Opus'a sorulacak; bütçe nedeniyle (a) seçilirse
   `textfit.rs`'teki trait kodu ayrı bir `appearance/metrics.rs`'ye taşınmalı.
+
+---
+
+# SÜRÜM: v7.15.0 yayınlandı ve doğrulandı (2026-11-07)
+- Tag **`v7.15.0` → `233884d`** (auto-tag, guard tag'den önce); `Release` +
+  `Android` başarılı, **18 asset**.
+- `latest.json` **7.15.0**, `windows-x86_64` girdisinde **444 baytlık imza**;
+  `SHA256SUMS.txt` **8 satır**; release gövdesi CHANGELOG `[7.15.0]` ile
+  **birebir** (763 = 763 karakter); Android versionCode **7015000**.
+- İçerik: standart fontun kodlayamadığı **caption** metni (Kiril/Yunan/geniş
+  Latin) alt küme yüzüyle basılıyor.
+
+**PR #657 birleşti** (`f4e1ba1`), 20 kontrol (18 yeşil + 2 beklenen skip;
+pdfcore değiştiği için `Fuzz changed parsers` de yeşil). FreeText notları da
+artık WinAnsi'nin taşıyamadığı metinde gömülü yüzün **slot eşlemeli** alt
+kümesiyle basılıyor; `textfit.rs`/`drfont.rs` değişmedi, `freetext.rs`
+393 → **353**, yeni `face.rs` 238. lib **261 → 266**, tam suite 662/7 (7 =
+libpdfium yok). `nup_freetext_dr.rs` bütçesi **+3** (UTF-16 fixture, bilinçli).
+README Rust testi 1686 → **1699**. `target/` temizlendi (23.5 GiB), disk %61.
+
+## Sıradaki adaylar
+1. **v7.16.0 sürüm treni** (FreeText alt küme; tek kullanıcı-görünür değişiklik).
+2. Opus'a yeni kalem: `/BE` bulut kenarlıklar, `/NoZoom`, belgenin Type0 fontunu
+   okumak (Identity-V/predefined CMap), redaksiyon düzleştirme, OSV bağımlılık
+   güncellemeleri (Scorecard "21 vulnerabilities"), provenance attestation.
+
+---
+
+# GÜVENLİK BULGUSU (sıradaki dilim adayı): calamine CFB/OLE2 DoS — RUSTSEC-2026-0436
+
+Scorecard'ın "21 OSV" listesindeki en ciddi kalem: `calamine 0.37.0`
+(`crates/officecore`) **CFB/OLE2 ayrıştırıcısında** (`src/cfb.rs`, `.xls`,
+`.xlsb` ve VBA çıkarma yolu) hazırlanmış girdiyle **panic veya sınırsız
+allocation** yapıyor; public reader API'sinden (`open_workbook`, `Xls::new`,
+`Xlsb::new`) erişilebilir → kullanıcının açtığı dosyayla uygulama çökebilir.
+Düzeltme: **0.38.0**. DoS, bellek bozulması yok.
+
+**Engel:** repo `vendor/calamine` altında 0.37'yi **yerel iki yamayla** tutuyor
+(`[patch.crates-io]`): (1) `cell_ref_to_row_col` taşma (`checked_mul/add`),
+(2) `get_dimension` ters `ref` alt taşması (`saturating_*`). Bunlar kendi
+fuzz'ımızın bulduğu düzeltmeler; regresyon testleri
+`crates/officecore/tests/calamine_dimension_test.rs` + `fuzz/corpus/xlsx/`.
+
+Düz requirement'ı 0.38'e çıkarmak vendor yamasını **düşürür**
+(`[[patch.unused]]` — ölçüldü), yani iki yerel düzeltme kaybolur. Doğru iş:
+**0.38'i vendor'la ve iki yamayı üzerine yeniden uygula** (upstream 0.38'de
+zaten yoksa), `vendor/calamine/README.md`'yi güncelle, fuzz regresyonlarını
+koştur. Ayrıntılı plan Opus'a sorulacak.

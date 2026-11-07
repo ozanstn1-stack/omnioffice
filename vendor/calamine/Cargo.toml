@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.88"
 name = "calamine"
-version = "0.37.0"
+version = "0.38.0"
 authors = ["Johann Tuffe <tafia973@gmail.com>"]
 build = false
 exclude = ["tests/**/*"]
@@ -89,6 +89,10 @@ name = "excel_to_csv"
 path = "examples/excel_to_csv.rs"
 
 [[example]]
+name = "read_cell_styles"
+path = "examples/read_cell_styles.rs"
+
+[[example]]
 name = "read_hyperlinks"
 path = "examples/read_hyperlinks.rs"
 
@@ -112,6 +116,10 @@ path = "examples/simple_read.rs"
 [[example]]
 name = "xlsx_formula_stream"
 path = "examples/xlsx_formula_stream.rs"
+
+[[example]]
+name = "xlsx_style_stream"
+path = "examples/xlsx_style_stream.rs"
 
 [[bench]]
 name = "basic"

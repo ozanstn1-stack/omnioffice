@@ -36,22 +36,28 @@ splits again.
   majors (API migrations are their own work) and the duplicate frontend-group
   branches; Renovate re-opens them behind the approval rule.
 
-## Vendored patch: calamine 0.37.0
+## Vendored patch: calamine 0.38.0
 
-`vendor/calamine` is a verbatim copy of crates.io 0.37.0 with two arithmetic
-guards, both found by nightly fuzzing (cargo-fuzz builds with overflow checks,
-so the panic aborted a fuzz target even though the app's worker would catch it;
-the fuzz gate must stay green for releases):
+`vendor/calamine` is a verbatim copy of crates.io **0.38.0** with two arithmetic
+guards upstream still does not carry, both found by nightly fuzzing (cargo-fuzz
+builds with overflow checks, so the panic aborted a fuzz target even though the
+app's worker would catch it; the fuzz gate must stay green for releases):
 
-* `cell_ref_to_row_col` uses `checked_mul`/`checked_add` so a hostile cell
-  reference (`AAAAAAAA...`, a giant row number) is a parse error instead of an
-  integer-overflow panic;
+* `get_row_and_optional_column` uses `checked_mul`/`checked_add` so a hostile
+  cell reference (`AAAAAAAA...`, a giant row number) is a parse error instead of
+  an integer-overflow panic;
 * `get_dimension` normalizes a reversed `<dimension ref="O1:C4"/>` to its
   bounding box (and the table header/totals offsets use saturating arithmetic),
   so the `end - start` maths - and `Dimensions::len` - cannot underflow.
 
+0.38.0 is the reason the copy moved: **RUSTSEC-2026-0436**, a panic and an
+unbounded allocation in the OLE2/CFB parser (`.xls`, `.xlsb`, VBA extraction)
+reachable from `open_workbook`/`Xls::new`/`Xlsb::new` on a crafted file, is
+fixed there. `crates/officecore/tests/calamine_hostile_input.rs` pins the
+behaviour: every malformed container is an error, promptly.
+
 Both `Cargo.toml` files patch the crate (`[patch.crates-io]`). Remove the
-directory and the patches when calamine ships the same guards upstream
+directory and the patches when calamine ships the two guards upstream
 (`vendor/calamine/README.md` has the details). The rustfmt gate skips
 `vendor/` because it is third-party source.
 
