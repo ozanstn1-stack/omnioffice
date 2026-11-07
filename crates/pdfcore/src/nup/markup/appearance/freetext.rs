@@ -13,12 +13,12 @@
 
 use super::super::super::dests::resolve;
 use super::super::super::links::number;
-use super::super::FontSpec;
-use super::drfont::{self, DrFont};
+use super::drfont;
+use super::face::{Face, HELVETICA};
 use super::std14::{Family, Std14};
-use super::textfit::{decode, encode, width_of, wrap_with, FontMetrics, Std14Metrics};
+use super::textfit::{decode, encode, width_of, wrap_with};
 use super::{color, Color, Synth};
-use lopdf::{Dictionary, Document, ObjectId};
+use lopdf::{Dictionary, Document};
 
 /// Space between the border and the text, in points.
 const PADDING: f64 = 2.0;
@@ -32,37 +32,6 @@ enum Align {
     Left,
     Center,
     Right,
-}
-
-/// Which font the note is set in.
-enum Face {
-    /// One of the standard 14, written by us.
-    Standard(Std14),
-    /// A simple font of the document, referenced as it already is.
-    Document { key: String, id: ObjectId, metrics: DrFont },
-}
-
-impl Face {
-    fn with_metrics<R>(&self, run: impl FnOnce(&dyn FontMetrics) -> R) -> R {
-        match self {
-            Face::Standard(font) => run(&Std14Metrics(*font)),
-            Face::Document { metrics, .. } => run(metrics),
-        }
-    }
-
-    fn resource_key(&self) -> String {
-        match self {
-            Face::Standard(_) => "FOmni0".to_string(),
-            Face::Document { key, .. } => key.clone(),
-        }
-    }
-
-    fn spec(&self) -> FontSpec {
-        match self {
-            Face::Standard(font) => FontSpec::Standard(*font),
-            Face::Document { key, id, .. } => FontSpec::Resource { key: key.as_bytes().to_vec(), id: *id },
-        }
-    }
 }
 
 /// What `/DA` says about the text: font, size and colour.
@@ -119,15 +88,16 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
         // back to a standard face.
         let usable = match &style.face {
             Face::Document { metrics, .. } => metrics.can_show(&text),
-            Face::Standard(_) => true,
+            Face::Standard(_) | Face::Subset(_) => true,
         };
         if !usable {
-            style.face = Face::Standard(Std14 { family: Family::Helvetica, bold: false, italic: false });
+            style.face = Face::Standard(HELVETICA);
         }
-        // A character no font can show drops the note rather than printing a
-        // guess; the standard font is the last word on that.
-        if matches!(style.face, Face::Standard(_)) {
-            encode(&text)?;
+        // WinAnsi cannot carry every script: when it falls short the bundled
+        // face is tried through its slots, and a character no face can show
+        // still drops the note rather than printing a guess.
+        if matches!(style.face, Face::Standard(_)) && encode(&text).is_none() {
+            style.face = Face::subset_for(&text)?;
         }
         layout(&style, align, border, [x0, y0, x1, y1], &text, &mut ops);
     }
@@ -226,7 +196,7 @@ fn layout(style: &Style, align: Align, border: f64, box_: [f64; 4], text: &str, 
                 Align::Center => tx0 + (max_width - line_width) / 2.0,
                 Align::Right => tx1 - line_width,
             };
-            ops.push_str(&format!("1 0 0 1 {} {} Tm\n<{}> Tj\n", n(x), n(baseline), hex(line)));
+            ops.push_str(&format!("1 0 0 1 {} {} Tm\n{} Tj\n", n(x), n(baseline), style.face.operand(line)));
         }
         ops.push_str("ET\n");
     });
@@ -353,10 +323,6 @@ fn n(value: f64) -> String {
     super::number_text(value)
 }
 
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02X}")).collect::<Vec<_>>().join("")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,11 +349,5 @@ mod tests {
         assert_eq!(font_of(&doc, "TiRo").family, Family::Times);
         assert_eq!(font_of(&doc, "Helv").family, Family::Helvetica);
         assert!(!font_of(&doc, "Helv").bold);
-    }
-
-    #[test]
-    fn the_hex_writer_pads_each_byte() {
-        assert_eq!(hex(&[0x01, 0xAB]), "01AB");
-        assert_eq!(hex(b""), "");
     }
 }

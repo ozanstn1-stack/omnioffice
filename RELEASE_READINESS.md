@@ -200,11 +200,12 @@ release-train schedule is decided.
   to `/AcroForm /DA`), `/Q`, `/C`, `/RD` and `/CL`, using a Helvetica, Times or
   Courier member referenced by name. The width tables come from the Adobe
   Core14 AFM metrics and the glyphs WinAnsi lacks are declared through a fixed
-  `/Differences` table, so Turkish prints without an embedded font. A character
-  the Latin fonts cannot show drops the whole note.
+  `/Differences` table, so Turkish prints without an embedded font. Text none
+  of the available faces can show drops the whole note; text outside WinAnsi
+  that the bundled face carries is set in a subset of it instead.
   `test:crates/pdfcore/tests/nup_freetext_test.rs#a_free_text_note_is_laid_out_with_a_standard_font`
   `test:crates/pdfcore/tests/nup_freetext_test.rs#the_form_default_appearance_is_the_fallback`
-  `test:crates/pdfcore/tests/nup_freetext_test.rs#a_note_with_an_unrepresentable_character_is_skipped`
+  `test:crates/pdfcore/tests/nup_freetext_subset_test.rs#a_note_no_face_can_show_is_dropped`
 
 - **The toast stack clears the bottom bar (6.5.1):** `.toast-host` offsets by
   `env(safe-area-inset-bottom)` everywhere and, below 720 px, by the bottom bar
