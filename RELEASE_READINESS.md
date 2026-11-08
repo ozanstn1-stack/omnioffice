@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.22.0
+# Release Readiness — OmniOffice 7.23.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,24 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.23.0) - Basit font önbelleği ve ölçüm
+
+- **Simple fonts are cached per document too, and the cache is measured:** the
+  `/Widths`, `/Encoding`, `/Differences` and descriptor of a `/DR` font were
+  re-read for every note. Both font kinds share one cache keyed by the font's
+  object id - never its resource name, since two pages may call different fonts
+  `/F1`. A budget of zero stores nothing, which is exactly how the code behaved
+  before, so the benchmark runs both modes on one document and compares the bytes
+  before printing: on 500 pages with four notes each (2000 notes, release build,
+  median of five), a composite font went from 896 ms to 183 ms and a simple font
+  from 205 ms to 178 ms.
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#the_same_font_is_read_once_however_many_notes_use_it`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#a_font_past_the_budget_is_used_but_not_stored`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#two_fonts_get_two_entries`
+- **Still open:** Type3 fonts, a cache shared across calls or documents, and any
+  timing gate in CI (noisy across three operating systems).
+  (no test: those are the paths this slice deliberately leaves alone.)
 
 ## Implemented (this cycle, 7.22.0) - Font başına tek okuma
 

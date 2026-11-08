@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.23.0] - 2026-11-08
+
 ### Changed
 
 - **A simple `/DR` font is read once per document too:** `/Widths`, `/Encoding`,
