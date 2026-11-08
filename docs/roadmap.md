@@ -305,10 +305,12 @@ Effort estimates assume a single developer.
   than replacement glyphs. A square or circle that asks for a cloudy border
   (`/BE /S /C`, with `/I` setting how coarse it is) is drawn as a chain of
   outward scallops, and a shape too small for its own bumps keeps the plain
-  frame. Reading a *document's* composite font (Identity-V, predefined CMaps,
-  an embedded CMap stream) is still open, as are redactions and `/NoZoom`; the
-  first piece landed as `pdfcore::cmap`, a reader for a Type0 font's
-  `/ToUnicode` map, which the synthesized-text paths do not use yet.
+  frame. A note whose `/DA` font is a document's embedded Type0 font with
+  `/Identity-H` codes is drawn in that font when no other face can show it:
+  `/ToUnicode` gives the codes, `/W` and `/DW` the advances, and the font is
+  referenced where it already is, never copied (`nup_freetext_cid`).
+  Still open: vertical writing (`/Identity-V`), predefined CMaps and an
+  embedded CMap stream, as are redactions and `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF

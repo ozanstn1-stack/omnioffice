@@ -37,6 +37,8 @@ enum Align {
 /// What `/DA` says about the text: font, size and colour.
 struct Style {
     face: Face,
+    /// The `/DA` font name, which a composite font is declared under.
+    name: String,
     size: f64,
     colour: Color,
 }
@@ -86,18 +88,15 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
         // A document font is used only when it can show every character; a
         // missing glyph would print as a blank, so the note as a whole falls
         // back to a standard face.
-        let usable = match &style.face {
-            Face::Document { metrics, .. } => metrics.can_show(&text),
-            Face::Standard(_) | Face::Subset(_) => true,
-        };
-        if !usable {
+        if !style.face.can_show(&text) {
             style.face = Face::Standard(HELVETICA);
         }
         // WinAnsi cannot carry every script: when it falls short the bundled
-        // face is tried through its slots, and a character no face can show
-        // still drops the note rather than printing a guess.
+        // face is tried through its slots, then the document's own composite
+        // font, and a character no face can show still drops the note rather
+        // than printing a guess.
         if matches!(style.face, Face::Standard(_)) && encode(&text).is_none() {
-            style.face = Face::subset_for(&text)?;
+            style.face = Face::script_for(doc, annot, &style.name, &text)?;
         }
         layout(&style, align, border, [x0, y0, x1, y1], &text, &mut ops);
     }
@@ -224,7 +223,7 @@ fn style_of(doc: &Document, annot: &Dictionary) -> Option<Style> {
         return None;
     }
     let colour = parsed.colour.unwrap_or(Color { values: vec![0.0] });
-    Some(Style { face, size, colour })
+    Some(Style { face, name: parsed.font_name.clone(), size, colour })
 }
 
 #[derive(Default)]
