@@ -254,3 +254,17 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   yalnız `(100,200)` kaymalı; (2) **değişmez** — "center" filigranın merkezi görünen kutunun merkezi,
   damganın sağ-alt çapası görünen kutunun sağ-alt köşesi eksi kenar boşluğu.
 - **Sıradaki**: prob kırmızı → yardımcı + üç çağrı noktası → kapılar → PR.
+
+## v7.29.0 DOĞRULANDI · #690 birleşti (`ce03a50`) — 2026-11-08 22:30 UTC
+- **v7.29.0** tag `8c2650e`; Release + Android **success**, **20 asset** (14 desktop + 6 Android).
+- Gövde **647 bayt** == `node scripts/changelog-section.mjs v7.29.0` (diff boş). `latest.json` **7.29.0**,
+  `.sig` **444 B**, `SHA256SUMS.txt` **8/8** API `digest` eşleşmesi, `coverage` → *"every published
+  asset is covered by 2 envelope(s)"*.
+- **#690** squash merge (`ce03a50`): filigran, sayfa numarası ve kanıt etiketi görünen kutuya oturuyor;
+  kural `pagegeom.rs` (`visible_box`, `page_visible_box`, `display_frame`). Prob 8 vaka: önce **7/8
+  kırmızı** (kaydırılmış sayfada `(300,400)` yerine `(400,600)`, ters kutuda `(-300,-400)`, kırpılmış
+  sayfada medya kutusunun merkezi), sonra **8/8 yeşil**.
+- **Flake notu**: macOS Rust işi `synccore` LAN testinde `Address already in use (os error 48)` ile
+  düştü; `jobs/<id>/rerun` ile yeşile döndü — kodla ilgisiz, tekrarında rerun yeterli.
+- **Sıradaki**: yeni dilim (Opus'a sorulacak). Adaylar: evidence kendi testleri, N-up markup,
+  inspect'in kalan kuralları (link hedefi, şifreleme).
