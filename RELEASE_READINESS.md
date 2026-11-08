@@ -65,6 +65,28 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Önbellek belleği ölçülerek kanıtlandı
+
+- **The font cache holds no more than its budget, measured:** a counting global
+  allocator compares the peak of an imposition with the cache against the peak
+  without it. With sixty-four composite fonts and a 4 MiB budget the cached run
+  stays within the budget of the uncached baseline, and a cache that fits its fonts
+  lowers the peak instead of raising it (about 6 MB against 21 MB on that fixture),
+  because an uncached run builds and drops one map per note. The output is
+  byte-identical either way.
+  `test:crates/pdfcore/tests/font_cache_memory.rs#the_cache_never_holds_more_than_its_budget`
+  `test:crates/pdfcore/tests/font_cache_memory.rs#a_cache_that_fits_avoids_the_per_note_maps`
+- **A real-size map is measured too:** the benchmark's `composite-large` scenario
+  carries a twenty-thousand-entry `/ToUnicode`, four thousand `/W` entries and a
+  full `/CIDToGIDMap`. With the cache on it costs 1.35x the small map (223 ms
+  against 166 ms for 2000 notes) - under the 1.5x gate that would have justified a
+  binary-search index, so no index was added. Without the cache the same document
+  spends 13.3 s.
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#the_same_font_is_read_once_however_many_notes_use_it`
+- **Still open:** Type3 fonts, a cache shared across documents, and an Android
+  on-device memory test (needs an emulator).
+  (no test: the emulator and the app crate are not available on this host.)
+
 ## Implemented (this cycle, 7.23.0) - Basit font önbelleği ve ölçüm
 
 - **Simple fonts are cached per document too, and the cache is measured:** the
