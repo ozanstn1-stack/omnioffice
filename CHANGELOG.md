@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.25.0] - 2026-11-08
+
 ### Fixed
 
 - **Resize keeps a page's annotations on the content they mark:** the page content

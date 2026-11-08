@@ -112,3 +112,15 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   Bu kapı bir dilimi (ve bir sürüm trenini) boşa gitmekten kurtardı.
 - **Sıradaki adaylar** (hepsi kullanıcıya dönük değil ya da araç kısıtlı): (i) fixture dedupe,
   (ii) `/W` fuzz köprüsü, (iii) Type3, (iv)/(v) editör/Android (VPS'te derlenemiyor).
+
+## v7.24.0 DOĞRULANDI · PR #679 BİRLEŞTİ · v7.25.0 TRENİ (2026-11-08 08:40 UTC)
+- **v7.24.0**: tag `84c2258`, **20 asset**, gövde 688 bayt (CHANGELOG ile birebir), `latest.json`
+  7.24.0, `.sig` 444 B, `SHA256SUMS.txt` 8 satır / 8 OK, `coverage` exit 0.
+- **#679 `ab9824c`**: resize sonrası açıklama konumları + crop orijini (18 başarı + 2 skip).
+- **v7.25.0**: branch `release/v7.25.0`; CHANGELOG `[7.25.0]`, sürüm 7.25.0, versionCode 7025000,
+  README, RELEASE_READINESS 7.25.0 bölümü (3 `test:` işareti), fastlane 7025000.
+  Kapılar: `release-guard` OK, `claims:check` 412/569, `repro:check` OK, `changelog-section
+  v7.24.0` yayınlanan gövdeyle eşleşiyor.
+- **Ders (üçüncü kez)**: `str.replace` sessizce başarısız oluyor (anchor metni tutmazsa). Her
+  RELEASE_READINESS/CHANGELOG düzenlemesinden sonra `grep` ile doğrula — bu kez 7.25.0 bölümü
+  yazılmamıştı, yakalandı ve eklendi.
