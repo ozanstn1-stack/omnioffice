@@ -11,13 +11,17 @@
 //! and the caller falls back to the standard 14 path.
 
 use super::super::super::dests::resolve;
+use glyph::glyph_symbol;
+use std::sync::Arc;
+
 use super::super::super::links::number;
+use super::cidfont::FontCache;
 use super::textfit::{win_ansi_symbol, FontMetrics};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::HashMap;
 
 /// A simple font of the document, ready to be referenced by an appearance.
-pub(super) struct DrFont {
+pub(crate) struct DrFont {
     /// The font dictionary object, which the form's `/Resources` references.
     pub(super) id: ObjectId,
     widths: Vec<f32>,
@@ -46,6 +50,11 @@ impl FontMetrics for DrFont {
 }
 
 impl DrFont {
+    /// An estimate of what this font holds, for the cache's budget.
+    pub(super) fn heap_bytes(&self) -> usize {
+        self.widths.len() * std::mem::size_of::<f32>() + self.reverse.len() * 8
+    }
+
     /// Whether every character of `text` is encoded and has a real glyph.
     pub(super) fn can_show(&self, text: &str) -> bool {
         text.chars()
@@ -56,14 +65,24 @@ impl DrFont {
 
 /// Resolves the font named by `/DA` in the annotation's `/DR`, then in the
 /// form's; `None` when it cannot be used for metrics.
-pub(super) fn resolve_font(doc: &Document, annot: &Dictionary, name: &str) -> Option<DrFont> {
+pub(super) fn resolve_font(
+    doc: &Document,
+    annot: &Dictionary,
+    name: &str,
+    cache: &mut FontCache,
+) -> Option<Arc<DrFont>> {
     let entry = font_entry(doc, annot, name)?;
-    let (id, dict) = match entry {
-        Object::Reference(id) => (id, doc.get_dictionary(id).ok()?.clone()),
-        // A font dictionary written inline has no object to reference; the
-        // caller's standard-font fallback is the honest answer.
-        _ => return None,
+    let Object::Reference(id) = entry else {
+        // A font dictionary written inline has no object to cache; the caller's
+        // standard-font fallback is the honest answer.
+        return None;
     };
+    let dict = doc.get_dictionary(id).ok()?;
+    cache.simple(doc, id, dict)
+}
+
+/// Reads one simple font, or `None` when its metrics cannot be read.
+pub(super) fn parse_font(doc: &Document, id: ObjectId, dict: &Dictionary) -> Option<DrFont> {
     let subtype = dict.get(b"Subtype").ok()?.as_name().ok()?;
     if !matches!(subtype, b"Type1" | b"MMType1" | b"TrueType") {
         return None;
@@ -203,18 +222,7 @@ fn apply_differences(doc: &Document, differences: &Object, table: &mut [Option<c
     Some(())
 }
 
-/// A glyph name to a character: the extra-glyph table, `uniXXXX` and `uXXXX`.
-fn glyph_symbol(name: &[u8]) -> Option<char> {
-    let text = std::str::from_utf8(name).ok()?;
-    if let Some(symbol) = super::textfit::glyph_symbol(text) {
-        return Some(symbol);
-    }
-    if let Some(hex) = text.strip_prefix("uni") {
-        return u32::from_str_radix(hex, 16).ok().and_then(char::from_u32);
-    }
-    let hex = text.strip_prefix('u')?;
-    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32).filter(|_| (4..=6).contains(&hex.len()))
-}
+mod glyph;
 
 #[cfg(test)]
 mod tests {
@@ -223,14 +231,6 @@ mod tests {
 
     fn doc() -> Document {
         Document::with_version("1.7")
-    }
-
-    #[test]
-    fn glyph_names_resolve() {
-        assert_eq!(glyph_symbol(b"gbreve"), Some('ğ'));
-        assert_eq!(glyph_symbol(b"uni011F"), Some('ğ'));
-        assert_eq!(glyph_symbol(b"u011F"), Some('ğ'));
-        assert_eq!(glyph_symbol(b"notaglyph"), None);
     }
 
     #[test]

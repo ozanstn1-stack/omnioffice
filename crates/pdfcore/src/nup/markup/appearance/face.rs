@@ -14,6 +14,8 @@
 //! face for its `<hex>` operand. A note with more than 256 distinct characters
 //! gives up, which is today's behaviour for text no font could show.
 
+use std::sync::Arc;
+
 use lopdf::{Dictionary, Document, ObjectId};
 
 use super::super::FontSpec;
@@ -35,7 +37,7 @@ pub(super) enum Face {
     /// One of the standard 14, written by us.
     Standard(Std14),
     /// A simple font of the document, referenced as it already is.
-    Document { key: String, id: ObjectId, metrics: DrFont },
+    Document { key: String, id: ObjectId, metrics: Arc<DrFont> },
     /// A two-byte font reached through slots: the bundled face, or a composite
     /// font of the document.
     Subset(SlotMetrics),
@@ -45,7 +47,7 @@ impl Face {
     pub(super) fn with_metrics<R>(&self, run: impl FnOnce(&dyn FontMetrics) -> R) -> R {
         match self {
             Face::Standard(font) => run(&Std14Metrics(*font)),
-            Face::Document { metrics, .. } => run(metrics),
+            Face::Document { metrics, .. } => run(metrics.as_ref()),
             Face::Subset(metrics) => run(metrics),
         }
     }

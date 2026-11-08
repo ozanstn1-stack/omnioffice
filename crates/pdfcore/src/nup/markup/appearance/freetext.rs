@@ -45,7 +45,7 @@ struct Style {
 
 /// Builds the appearance of one `FreeText` annotation.
 pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4], fonts: &mut FontCache) -> Option<Synth> {
-    let style = style_of(doc, annot)?;
+    let style = style_of(doc, annot, fonts)?;
     let align = match annot.get(b"Q").ok().and_then(|value| value.as_i64().ok()) {
         Some(1) => Align::Center,
         Some(2) => Align::Right,
@@ -201,7 +201,7 @@ fn layout(style: &Style, align: Align, border: f64, box_: [f64; 4], text: &str, 
     });
 }
 /// The `/DA` chain: the annotation's own, then the form's, then a default.
-fn style_of(doc: &Document, annot: &Dictionary) -> Option<Style> {
+fn style_of(doc: &Document, annot: &Dictionary, fonts: &mut FontCache) -> Option<Style> {
     let own = annot
         .get(b"DA")
         .ok()
@@ -214,7 +214,7 @@ fn style_of(doc: &Document, annot: &Dictionary) -> Option<Style> {
         .and_then(|form| resolve(doc, &form).as_dict().ok().cloned())
         .and_then(|form| form.get(b"DA").ok().and_then(|value| value.as_str().ok()).map(<[u8]>::to_vec));
     let parsed = own.as_deref().and_then(parse_da).or_else(|| form.as_deref().and_then(parse_da)).unwrap_or_default();
-    let face = match drfont::resolve_font(doc, annot, &parsed.font_name) {
+    let face = match drfont::resolve_font(doc, annot, &parsed.font_name, fonts) {
         Some(metrics) => Face::Document { key: parsed.font_name.clone(), id: metrics.id, metrics },
         None => Face::Standard(font_of(doc, &parsed.font_name)),
     };

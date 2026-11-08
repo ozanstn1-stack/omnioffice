@@ -17,10 +17,8 @@ use std::sync::Arc;
 
 use lopdf::{Dictionary, Document, ObjectId};
 
+use super::super::drfont::DrFont;
 use super::CidFont;
-
-/// The most the cached fonts of one document may hold.
-pub(crate) const DEFAULT_BUDGET_BYTES: usize = 32 * 1024 * 1024;
 
 /// What the cache did, for the tests that prove it works.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -29,8 +27,10 @@ pub(crate) struct FontCacheStats {
     pub(crate) hits: u32,
     /// Fonts that had to be read.
     pub(crate) misses: u32,
-    /// Fonts read successfully, whatever happened to them afterwards.
+    /// Composite fonts read successfully, whatever happened to them afterwards.
     pub(crate) parses: u32,
+    /// Simple fonts read successfully.
+    pub(crate) simple_parses: u32,
     /// Fonts read but not stored because the budget was full.
     pub(crate) bypassed: u32,
 }
@@ -44,20 +44,24 @@ enum Entry {
 /// The composite fonts of one document.
 pub(crate) struct FontCache {
     entries: HashMap<ObjectId, Entry>,
+    /// Simple fonts, by object id; a refused font is stored as `None`.
+    simple_fonts: HashMap<ObjectId, Option<Arc<DrFont>>>,
     bytes: usize,
     budget: usize,
     stats: FontCacheStats,
 }
 
 impl FontCache {
-    pub(crate) fn new() -> Self {
-        Self::with_budget(DEFAULT_BUDGET_BYTES)
-    }
-
     /// A cache with this many bytes of room; zero stores nothing, which is how a
     /// test compares the cached output with the uncached one.
     pub(crate) fn with_budget(budget: usize) -> Self {
-        Self { entries: HashMap::new(), bytes: 0, budget, stats: FontCacheStats::default() }
+        Self {
+            entries: HashMap::new(),
+            simple_fonts: HashMap::new(),
+            bytes: 0,
+            budget,
+            stats: FontCacheStats::default(),
+        }
     }
 
     #[cfg(test)]
@@ -97,6 +101,35 @@ impl FontCache {
         }
         self.bytes += size;
         self.entries.insert(id, Entry::Ready(Arc::clone(&font)));
+        Some(font)
+    }
+}
+
+impl FontCache {
+    /// The simple font `id` names, reading it the first time.
+    ///
+    /// The key is the font's object id, never its resource name: two pages may
+    /// call different fonts `/F1`.
+    pub(crate) fn simple(&mut self, doc: &Document, id: ObjectId, dict: &Dictionary) -> Option<Arc<DrFont>> {
+        if let Some(entry) = self.simple_fonts.get(&id) {
+            self.stats.hits += 1;
+            return entry.clone();
+        }
+        self.stats.misses += 1;
+        let font = super::super::drfont::parse_font(doc, id, dict);
+        let Some(font) = font else {
+            self.simple_fonts.insert(id, None);
+            return None;
+        };
+        self.stats.simple_parses += 1;
+        let font = Arc::new(font);
+        let size = font.heap_bytes();
+        if self.bytes.saturating_add(size) > self.budget {
+            self.stats.bypassed += 1;
+            return Some(font);
+        }
+        self.bytes += size;
+        self.simple_fonts.insert(id, Some(Arc::clone(&font)));
         Some(font)
     }
 }

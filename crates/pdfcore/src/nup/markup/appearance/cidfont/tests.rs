@@ -105,7 +105,7 @@ fn build(knobs: Knobs) -> (Document, Dictionary, Option<ObjectId>) {
 
 fn resolve(knobs: Knobs) -> Option<DocCid> {
     let (doc, annot, _) = build(knobs);
-    resolve_font(&doc, &annot, "F1", &mut FontCache::new())
+    resolve_font(&doc, &annot, "F1", &mut FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES))
 }
 
 #[test]
@@ -122,7 +122,8 @@ fn an_identity_h_cid_font_is_read() {
 #[test]
 fn the_font_is_referenced_where_it_already_is() {
     let (doc, annot, id) = build(Knobs::default());
-    let font = resolve_font(&doc, &annot, "F1", &mut FontCache::new()).expect("the font is usable");
+    let font = resolve_font(&doc, &annot, "F1", &mut FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES))
+        .expect("the font is usable");
     assert_eq!(Some(font.id()), id);
     assert_eq!(font.key(), "F1");
 }
@@ -186,13 +187,17 @@ fn broken_widths_reject_the_font() {
 fn a_direct_font_dictionary_cannot_be_referenced() {
     let (doc, annot, id) = build(Knobs { direct: true, ..Knobs::default() });
     assert!(id.is_none());
-    assert!(resolve_font(&doc, &annot, "F1", &mut FontCache::new()).is_none());
+    assert!(
+        resolve_font(&doc, &annot, "F1", &mut FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES)).is_none()
+    );
 }
 
 #[test]
 fn a_missing_name_is_not_a_font() {
     let (doc, annot, _) = build(Knobs::default());
-    assert!(resolve_font(&doc, &annot, "F2", &mut FontCache::new()).is_none());
+    assert!(
+        resolve_font(&doc, &annot, "F2", &mut FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES)).is_none()
+    );
 }
 
 #[test]
