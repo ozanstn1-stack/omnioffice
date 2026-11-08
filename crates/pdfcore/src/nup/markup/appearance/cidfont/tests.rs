@@ -1,7 +1,7 @@
-//! Tests for the composite-font reader: what a note may draw with, and every
-//! shape the reader refuses.
+//! Tests for the composite-font reader: what a note may draw with, and what it refuses.
 
 use super::*;
+use crate::cmap::Code;
 use lopdf::{dictionary, Document, Object, ObjectId};
 
 /// `/ToUnicode` for a font whose space is CID 3 and whose one ideograph is CID
@@ -111,10 +111,10 @@ fn resolve(knobs: Knobs) -> Option<DocCid> {
 #[test]
 fn an_identity_h_cid_font_is_read() {
     let font = resolve(Knobs::default()).expect("the font is usable");
-    assert_eq!(font.code(' '), Some(3));
-    assert_eq!(font.code('\u{4E2D}'), Some(0x24));
-    assert_eq!(font.advance(0x24), Some(1000.0), "a CID outside /W takes /DW");
-    assert_eq!(font.advance(3), Some(250.0));
+    assert_eq!(font.code(' '), Some(Code::two(3)));
+    assert_eq!(font.code('\u{4E2D}'), Some(Code::two(0x24)));
+    assert_eq!(font.advance(Code::two(0x24)), Some(1000.0), "a CID outside /W takes /DW");
+    assert_eq!(font.advance(Code::two(3)), Some(250.0));
     assert_eq!(font.code('A'), None, "the map does not cover it");
     assert!((font.ascent() - 0.88).abs() < 0.01);
 }
@@ -202,7 +202,7 @@ fn a_cid_map_that_points_at_notdef_costs_that_character() {
     table[0x24 * 2 + 1] = 7;
     let stream = lopdf::Stream::new(Dictionary::new(), table);
     let font = resolve(Knobs { gid_map: Some(Object::Stream(stream)), ..Knobs::default() }).expect("font");
-    assert_eq!(font.code('\u{4E2D}'), Some(0x24), "glyph 7 draws");
+    assert_eq!(font.code('\u{4E2D}'), Some(Code::two(0x24)), "glyph 7 draws");
     assert_eq!(font.code(' '), None, "glyph 0 is the .notdef box");
 }
 
@@ -211,7 +211,7 @@ fn a_cid_past_the_map_has_no_glyph() {
     // Four entries only: CID 3 has glyph 5, and CID 0x24 is past the end.
     let stream = lopdf::Stream::new(Dictionary::new(), vec![0, 1, 0, 2, 0, 3, 0, 5]);
     let font = resolve(Knobs { gid_map: Some(Object::Stream(stream)), ..Knobs::default() }).expect("font");
-    assert_eq!(font.code(' '), Some(3));
+    assert_eq!(font.code(' '), Some(Code::two(3)));
     assert_eq!(font.code('\u{4E2D}'), None);
 }
 

@@ -3,6 +3,11 @@
 
 use super::*;
 
+/// A two-byte code, which is what an Identity-H font writes.
+fn two(value: u16) -> Code {
+    Code::two(value)
+}
+
 /// A CMap around the given body, shaped like a real one.
 fn cmap(body: &str) -> String {
     format!(
@@ -25,11 +30,11 @@ fn read_body(body: &str) -> Option<CidMap> {
 #[test]
 fn an_identity_equivalent_stream_selects_each_code_as_its_cid() {
     let map = read_body(identity_body()).expect("identity map");
-    assert_eq!(map.cid(0x0000), Some(0x0000));
-    assert_eq!(map.cid(0x3042), Some(0x3042));
-    assert_eq!(map.cid(0xFFFF), Some(0xFFFF));
+    assert_eq!(map.cid(two(0x0000)), Some(0x0000));
+    assert_eq!(map.cid(two(0x3042)), Some(0x3042));
+    assert_eq!(map.cid(two(0xFFFF)), Some(0xFFFF));
     // Code 0 maps to CID 0, which the caller refuses; the map itself keeps it.
-    assert_eq!(map.cid(0xFFFE), Some(0xFFFE));
+    assert_eq!(map.cid(two(0xFFFE)), Some(0xFFFE));
 }
 
 #[test]
@@ -38,13 +43,13 @@ fn ranges_and_single_codes_are_read() {
                 1 begincidrange\n<3040> <309F> 842\nendcidrange\n\
                 1 begincidchar\n<3000> 633\nendcidchar\n";
     let map = read_body(body).expect("map");
-    assert_eq!(map.cid(0x3040), Some(842));
-    assert_eq!(map.cid(0x3042), Some(844), "the CID follows its code");
-    assert_eq!(map.cid(0x309F), Some(842 + 0x5F));
-    assert_eq!(map.cid(0x3000), Some(633));
-    assert_eq!(map.cid(0x3041), Some(843));
+    assert_eq!(map.cid(two(0x3040)), Some(842));
+    assert_eq!(map.cid(two(0x3042)), Some(844), "the CID follows its code");
+    assert_eq!(map.cid(two(0x309F)), Some(842 + 0x5F));
+    assert_eq!(map.cid(two(0x3000)), Some(633));
+    assert_eq!(map.cid(two(0x3041)), Some(843));
     // A code inside the codespace that no entry mentions.
-    assert_eq!(map.cid(0x4000), None);
+    assert_eq!(map.cid(two(0x4000)), None);
 }
 
 #[test]
@@ -52,10 +57,10 @@ fn a_code_outside_the_declared_codespace_selects_nothing() {
     let body = "1 begincodespacerange\n<8140> <9FFC>\nendcodespacerange\n\
                 1 begincidrange\n<8100> <9FFF> 100\nendcidrange\n";
     let map = read_body(body).expect("map");
-    assert_eq!(map.cid(0x8140), Some(100 + 0x40), "the first byte and the second are checked");
-    assert_eq!(map.cid(0x8240), Some(100 + 0x140), "inside the range");
-    assert_eq!(map.cid(0x81FD), None, "the second byte is outside 40..=FC");
-    assert_eq!(map.cid(0x0041), None, "the first byte is outside 81..=9F");
+    assert_eq!(map.cid(two(0x8140)), Some(100 + 0x40), "the first byte and the second are checked");
+    assert_eq!(map.cid(two(0x8240)), Some(100 + 0x140), "inside the range");
+    assert_eq!(map.cid(two(0x81FD)), None, "the second byte is outside 40..=FC");
+    assert_eq!(map.cid(two(0x0041)), None, "the first byte is outside 81..=9F");
 }
 
 #[test]
@@ -69,8 +74,8 @@ fn notdef_codes_select_nothing() {
                  1 begincidrange\n<0020> <007E> 20\nendcidrange\n\
                  1 beginnotdefrange\n<0000> <0002> 0\nendnotdefrange\n";
     let map = read_body(clean).expect("map");
-    assert_eq!(map.cid(0x0001), None, "notdef");
-    assert_eq!(map.cid(0x0041), Some(0x35), "20 + (0x41 - 0x20)");
+    assert_eq!(map.cid(two(0x0001)), None, "notdef");
+    assert_eq!(map.cid(two(0x0041)), Some(0x35), "20 + (0x41 - 0x20)");
 }
 
 #[test]
@@ -78,8 +83,8 @@ fn an_identity_base_fills_the_codes_the_stream_does_not_map() {
     let body = "/Identity-H usecmap\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
                 1 begincidrange\n<3040> <309F> 842\nendcidrange\n";
     let map = read_body(body).expect("map");
-    assert_eq!(map.cid(0x3042), Some(844), "the stream's own entry wins");
-    assert_eq!(map.cid(0x0041), Some(0x41), "the base fills the rest");
+    assert_eq!(map.cid(two(0x3042)), Some(844), "the stream's own entry wins");
+    assert_eq!(map.cid(two(0x0041)), Some(0x41), "the base fills the rest");
 }
 
 #[test]
@@ -87,8 +92,8 @@ fn the_dictionary_may_name_the_base_instead() {
     let body = "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
                 1 begincidrange\n<3040> <309F> 842\nendcidrange\n";
     let map = read(cmap(body).as_bytes(), Some(b"Identity-H")).expect("map");
-    assert_eq!(map.cid(0x3042), Some(844));
-    assert_eq!(map.cid(0x0041), Some(0x41), "the base fills the rest");
+    assert_eq!(map.cid(two(0x3042)), Some(844));
+    assert_eq!(map.cid(two(0x0041)), Some(0x41), "the base fills the rest");
 }
 
 #[test]
@@ -110,14 +115,53 @@ fn vertical_writing_is_refused() {
 }
 
 #[test]
-fn a_codespace_that_is_not_two_bytes_is_refused() {
-    let one_byte = "1 begincodespacerange\n<00> <FF>\nendcodespacerange\n1 begincidrange\n<00> <FF> 0\nendcidrange\n";
-    assert!(read_body(one_byte).is_none(), "one-byte codes");
-    let mixed = "2 begincodespacerange\n<00> <80>\n<8140> <9FFC>\nendcodespacerange\n\
-                 1 begincidrange\n<00> <FF> 0\nendcidrange\n";
-    assert!(read_body(mixed).is_none(), "mixed widths");
+fn a_codespace_wider_than_two_bytes_is_refused() {
     let four = "1 begincodespacerange\n<00000000> <FFFFFFFF>\nendcodespacerange\n";
     assert!(read_body(four).is_none(), "four-byte codes");
+    let three = "1 begincodespacerange\n<000000> <FFFFFF>\nendcodespacerange\n";
+    assert!(read_body(three).is_none(), "three-byte codes");
+    // The two ends of one range must agree on their width.
+    let ragged = "1 begincodespacerange\n<00> <FFFF>\nendcodespacerange\n";
+    assert!(read_body(ragged).is_none(), "a one-byte start and a two-byte end");
+}
+
+#[test]
+fn a_one_byte_codespace_selects_one_byte_codes() {
+    let body = "1 begincodespacerange\n<20> <7E>\nendcodespacerange\n\
+                1 begincidrange\n<20> <7E> 1\nendcidrange\n";
+    let map = read_body(body).expect("one-byte map");
+    assert_eq!(map.cid(Code::one(0x41)), Some(0x22), "1 + (0x41 - 0x20)");
+    assert_eq!(map.cid(Code::one(0x20)), Some(1));
+    assert_eq!(map.cid(Code::one(0x7F)), None, "outside the range");
+    // The same value at width two is a different code, and the map has no
+    // two-byte range, so it is not admitted.
+    assert_eq!(map.cid(Code::two(0x41)), None, "no two-byte range is declared");
+}
+
+#[test]
+fn a_shift_jis_codespace_mixes_widths() {
+    // The shape a Japanese producer writes: one-byte ASCII, then two-byte leads.
+    let body = "2 begincodespacerange\n<20> <7E>\n<8140> <9FFC>\nendcodespacerange\n\
+                1 begincidrange\n<20> <7E> 1\nendcidrange\n\
+                1 begincidrange\n<8140> <9FFC> 633\nendcidrange\n";
+    let map = read_body(body).expect("mixed map");
+    assert_eq!(map.cid(Code::one(0x41)), Some(0x22));
+    assert_eq!(map.cid(Code::two(0x8140)), Some(633));
+    assert_eq!(map.cid(Code::two(0x8150)), Some(633 + 0x10));
+    assert_eq!(map.cid(Code::two(0x41)), None, "0x41 is not a two-byte code here");
+}
+
+#[test]
+fn a_one_byte_range_inside_a_two_byte_lead_is_refused() {
+    // 0x81 leads a two-byte code, so a one-byte range that covers it would make a
+    // viewer split the string at the wrong place.
+    let body = "2 begincodespacerange\n<00> <FF>\n<8140> <9FFC>\nendcodespacerange\n\
+                1 begincidrange\n<20> <7E> 1\nendcidrange\n";
+    assert!(read_body(body).is_none());
+    // The same overlap through an identity base is refused as well.
+    let identity = "/Identity-H usecmap\n2 begincodespacerange\n<20> <7E>\n<8140> <9FFC>\nendcodespacerange\n\
+                    1 begincidrange\n<20> <7E> 1\nendcidrange\n";
+    assert!(read_body(identity).is_none());
 }
 
 #[test]
@@ -153,7 +197,7 @@ fn entries_that_disagree_are_refused_and_ones_that_agree_merge() {
                  1 begincidrange\n<0010> <001F> 16\nendcidrange\n\
                  1 begincidchar\n<0015> 21\nendcidchar\n";
     let map = read_body(agree).expect("the same offset twice is not a conflict");
-    assert_eq!(map.cid(0x0015), Some(21));
+    assert_eq!(map.cid(two(0x0015)), Some(21));
 
     let disagree = "1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
                     1 begincidrange\n<0010> <001F> 16\nendcidrange\n\
@@ -185,6 +229,6 @@ fn a_full_ps_adobe_cmap_is_read() {
      endcmap\nCMapName currentdict /CMap defineresource pop\n";
     let map = read(body.as_bytes(), None);
     let map = map.expect("a header like a real CMap does not stop the reader");
-    assert_eq!(map.cid(0x3042), Some(844));
-    assert_eq!(map.cid(0x3000), Some(633));
+    assert_eq!(map.cid(two(0x3042)), Some(844));
+    assert_eq!(map.cid(two(0x3000)), Some(633));
 }

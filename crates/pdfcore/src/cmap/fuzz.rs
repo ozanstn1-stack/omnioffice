@@ -12,4 +12,3 @@ pub fn fuzz_cid(program: &[u8], identity_base: bool) -> Option<usize> {
     let base = identity_base.then_some(&b"Identity-H"[..]);
     cid::read(program, base).map(|map| map.probe())
 }
-
