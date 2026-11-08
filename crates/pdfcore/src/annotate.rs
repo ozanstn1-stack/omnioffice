@@ -20,7 +20,10 @@ use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFo
 use serde::{Deserialize, Serialize};
 
 mod geometry_util;
-use geometry_util::{normalize_rect, real, to_page_space};
+use geometry_util::{
+    inherited_box, normalize_rect, page_mediabox_or_inherited, page_rotation_or_inherited, real, to_page_space,
+    visible_box,
+};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -234,10 +237,13 @@ fn apply_annotations(
         }
         let page_id = doc.get_pages().get(&annotation.page).copied().ok_or(PdfError::RangeOutOfBounds)?;
         let rotation = page_rotation(doc, page_id)?;
-        let media = page_mediabox(doc, page_id)?;
-        let (page_w, page_h) = (media[2] - media[0], media[3] - media[1]);
-        let (_, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
-        let to_page = Matrix::display_to_page(rotation, page_w, page_h);
+        // The canvas overlays coordinates on the box the viewer shows, not on
+        // the media box (ISO 32000-1 14.11.2), and the page's own coordinates
+        // start at that box's corner (7.7.3.3).
+        let crop = page_cropbox(doc, page_id).ok().flatten();
+        let (x0, y0, box_w, box_h) = visible_box(page_mediabox(doc, page_id)?, crop);
+        let (_, display_h) = Matrix::displayed_size(rotation, box_w, box_h);
+        let to_page = Matrix::translate(x0, y0).mul(Matrix::display_to_page(rotation, box_w, box_h));
         let color = crate::watermark::parse_hex_color(&annotation.color);
         let (r, g, b) = (color[0] as f64 / 255.0, color[1] as f64 / 255.0, color[2] as f64 / 255.0);
         let mut content = String::new();
@@ -423,59 +429,16 @@ struct PageGeometry {
 impl PageGeometry {
     fn new(doc: &Document, page_id: ObjectId) -> PdfResult<Self> {
         let rotation = page_rotation_or_inherited(doc, page_id);
-        let media = page_mediabox_or_inherited(doc, page_id)?;
-        // A page's own coordinates start at its `/MediaBox` origin, and the two
-        // corners may be written in either order (ISO 32000-1 7.9.5).
-        let (x0, y0) = (media[0].min(media[2]), media[1].min(media[3]));
-        let (page_w, page_h) = ((media[2] - media[0]).abs(), (media[3] - media[1]).abs());
+        // The canvas overlays coordinates on the visible box (crop clipped to
+        // media, ISO 32000-1 14.11.2), whose corner is where the page's own
+        // coordinates start (7.7.3.3); both boxes may be reversed (7.9.5).
+        let crop = inherited_box(doc, page_id, |doc, id| page_cropbox(doc, id).ok().flatten());
+        let (x0, y0, page_w, page_h) = visible_box(page_mediabox_or_inherited(doc, page_id)?, crop);
         let (_, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
         let to_page = Matrix::display_to_page(rotation, page_w, page_h);
         let to_display = to_page.inverse().unwrap_or(Matrix::IDENTITY);
         Ok(Self { page_id, rotation, page_w, page_h, display_h, to_page, to_display, origin: (x0, y0) })
     }
-}
-
-/// MediaBox lookup that follows the page tree, so listing works on documents
-/// whose pages inherit it (reading is not allowed to materialize attributes).
-fn page_mediabox_or_inherited(doc: &Document, page_id: ObjectId) -> PdfResult<[f64; 4]> {
-    let mut current = Some(page_id);
-    let mut hops = 0;
-    while let Some(id) = current {
-        hops += 1;
-        if hops > 64 {
-            break;
-        }
-        if let Ok(media) = page_mediabox(doc, id) {
-            return Ok(media);
-        }
-        current = doc
-            .get_dictionary(id)
-            .ok()
-            .and_then(|page| page.get(b"Parent").ok().and_then(|value| value.as_reference().ok()));
-    }
-    Err(PdfError::CorruptPdf("page has no MediaBox".into()))
-}
-
-/// /Rotate lookup following the page tree (inherited rotation).
-fn page_rotation_or_inherited(doc: &Document, page_id: ObjectId) -> i32 {
-    let mut current = Some(page_id);
-    let mut hops = 0;
-    while let Some(id) = current {
-        hops += 1;
-        if hops > 64 {
-            break;
-        }
-        let page = match doc.get_dictionary(id) {
-            Ok(page) => page,
-            Err(_) => break,
-        };
-        let rotation = page.get(b"Rotate").ok().and_then(|value| value.as_i64().ok());
-        if let Some(rotation) = rotation {
-            return rotation.rem_euclid(360) as i32;
-        }
-        current = page.get(b"Parent").ok().and_then(|value| value.as_reference().ok());
-    }
-    0
 }
 
 /// Display rect (top-left) -> page rect [x y w h] (bottom-left, normalized).
