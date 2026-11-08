@@ -5,12 +5,11 @@
 //! speaks `FontMetrics`, whose `encode` returns a `u8`. Two fonts address glyphs
 //! with two bytes - the bundled face, whose slots are subset glyph ids, and a
 //! composite font of the document, whose codes are CIDs. Both reach the page the
-//! same way: the layout gets dense slot codes, and only the emission turns slots
-//! back into the real two-byte code of the font that will draw them.
+//! same way: dense slot codes, turned back into real codes at emission.
 //!
 //! The space keeps slot `0x20` because the wrapper writes that byte between two
 //! words without asking the metrics. A note with more than 256 distinct
-//! characters gives up, which is today's behaviour for text no font could show.
+//! characters gives up, as before.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -18,6 +17,7 @@ use super::super::super::FontSpec;
 use super::super::cidfont::DocCid;
 use super::super::textfit::FontMetrics;
 use super::HELVETICA;
+use crate::cmap::Code;
 use crate::textfont::{SubsetFace, RESOURCE_NAME};
 
 /// The code the wrapper writes for the space between two words.
@@ -40,8 +40,8 @@ pub(crate) struct SlotMetrics {
     slots: BTreeMap<char, u8>,
     /// Slot -> advance in 1/1000 em, for `width`.
     widths: [f32; 256],
-    /// Slot -> CID, for a document font; the bundled face encodes from `chars`.
-    codes: [u16; 256],
+    /// Slot -> code, for a document font (the bundled face uses `chars`).
+    codes: [Code; 256],
     ascent: f32,
 }
 
@@ -63,7 +63,7 @@ impl SlotMetrics {
             chars,
             slots,
             widths,
-            codes: [0; 256],
+            codes: [Code::default(); 256],
             ascent: f32::from(HELVETICA.ascent()),
         })
     }
@@ -73,7 +73,7 @@ impl SlotMetrics {
     pub(crate) fn for_document(font: DocCid, text: &str) -> Option<Self> {
         let (chars, slots) = assign_slots(&visible(text))?;
         let mut widths = [0.0f32; 256];
-        let mut codes = [0u16; 256];
+        let mut codes = [Code::default(); 256];
         for (symbol, slot) in &slots {
             let code = font.code(*symbol)?;
             let width = font.advance(code)?;
@@ -97,7 +97,7 @@ impl SlotMetrics {
                 let mut hex = String::with_capacity(codes.len() * 4 + 2);
                 hex.push('<');
                 for slot in codes {
-                    hex.push_str(&format!("{:04X}", self.codes[usize::from(*slot)]));
+                    hex.push_str(&self.codes[usize::from(*slot)].hex());
                 }
                 hex.push('>');
                 hex

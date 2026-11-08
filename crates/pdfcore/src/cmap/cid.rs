@@ -9,61 +9,64 @@
 //! Strips of it are refused the same way the rest of the drawing path refuses
 //! them, because a wrong guess here draws the wrong glyph without any error:
 //!
-//! * a codespace that is not exactly **two bytes** per code - [`crate::cmap`]
-//!   does not report the length of the source code it inverted, and
-//!   `face/slots.rs` writes four hex digits per code, so a one-byte font would
-//!   silently shift every glyph after the mistake,
 //! * a base CMap other than an identity one: an unknown base (`90ms-RKSJ-H` and
 //!   friends) brings its own codespace with it, and splitting our code with it
 //!   would draw the wrong glyphs,
+//! * one- and two-byte ranges that are not prefix-free ([`space`]),
 //! * overlapping entries that disagree, since neither viewer is authoritative
 //!   about which one wins.
 //!
 //! Entries outside the declared codespace are kept but never matched: a viewer
-//! never decodes those codes either.
+//! never decodes those codes either. A map that declares one-byte ranges is
+//! stricter, because the width is part of the code there.
+
+mod space;
+mod table;
 
 use super::lex::Token;
-
-/// One run of consecutive codes that select consecutive CIDs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Run {
-    low: u16,
-    high: u16,
-    /// The CID `low` selects; the rest follow it.
-    cid: u16,
-}
+use super::Code;
+use space::Space;
+use table::{code_of, Run, Table};
 
 /// A code-to-CID table, sorted and normalised.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct CidMap {
-    /// The codespace as byte ranges, so a code is matched byte by byte.
-    space: Vec<([u8; 2], [u8; 2])>,
-    runs: Vec<Run>,
-    /// Codes the CMap sends to `.notdef`, which must never be drawn.
-    notdef: Vec<(u16, u16)>,
-    /// Whether an identity base CMap fills the codes no run mentions.
+    space: Space,
+    /// Two-byte codes, keyed by value.
+    wide: Table,
+    /// One-byte codes, keyed by value.
+    narrow: Table,
+    /// Whether an identity base CMap fills the two-byte codes no run mentions.
     identity: bool,
 }
 
 impl CidMap {
+    /// The code as it will be written, or `None` when the map cannot draw it.
+    ///
+    /// A map with only two-byte ranges promotes a one-byte `/ToUnicode` code to
+    /// two bytes, which is what a sloppy producer meant. A map with one-byte
+    /// ranges is strict: the width is part of the code, so the code has to be
+    /// declared at that width.
+    fn admit(&self, code: Code) -> Option<Code> {
+        let code = if self.space.has_narrow() { code } else { Code::two(code.value()) };
+        // A code outside the declared space is never decoded, by us or by a
+        // viewer: the entry may be written, but it can never be reached.
+        self.space.contains(code).then_some(code)
+    }
+
     /// The CID `code` selects, or `None` when the code is outside the codespace,
     /// mapped to `.notdef`, or not mapped at all.
-    pub(crate) fn cid(&self, code: u16) -> Option<u16> {
-        let bytes = code.to_be_bytes();
-        let inside = self
-            .space
-            .iter()
-            .any(|(low, high)| (low[0]..=high[0]).contains(&bytes[0]) && (low[1]..=high[1]).contains(&bytes[1]));
-        if !inside {
+    pub(crate) fn cid(&self, code: Code) -> Option<u16> {
+        let code = self.admit(code)?;
+        let table = if code.width() == 1 { &self.narrow } else { &self.wide };
+        let value = code.value();
+        if table.notdef.iter().any(|(low, high)| (*low..=*high).contains(&value)) {
             return None;
         }
-        if self.notdef.iter().any(|(low, high)| (*low..=*high).contains(&code)) {
-            return None;
-        }
-        let index = self.runs.partition_point(|run| run.high < code);
-        match self.runs.get(index) {
-            Some(run) if run.low <= code => run.cid.checked_add(code - run.low),
-            _ if self.identity => Some(code),
+        let index = table.runs.partition_point(|run| run.high < value);
+        match table.runs.get(index) {
+            Some(run) if run.low <= value => run.cid.checked_add(value - run.low),
+            _ if self.identity && code.width() == 2 => Some(value),
             _ => None,
         }
     }
@@ -71,18 +74,20 @@ impl CidMap {
     /// Visits every run boundary; used by the fuzz target to prove that a map
     /// which built successfully never panics while being read.
     #[cfg(any(test, fuzzing))]
-    pub(super) fn probe(&self) -> usize {
+    pub(crate) fn probe(&self) -> usize {
         let mut seen = 0usize;
-        for run in &self.runs {
-            for code in [run.low.saturating_sub(1), run.low, run.high, run.high.saturating_add(1)] {
-                if self.cid(code).is_some() {
-                    seen += 1;
+        for (table, width) in [(&self.wide, 2u8), (&self.narrow, 1)] {
+            for run in &table.runs {
+                for value in [run.low.saturating_sub(1), run.low, run.high, run.high.saturating_add(1)] {
+                    if self.cid(code_of(width, value)).is_some() {
+                        seen += 1;
+                    }
                 }
             }
-        }
-        for (low, high) in &self.notdef {
-            let _ = self.cid(*low);
-            let _ = self.cid(*high);
+            for (low, high) in &table.notdef {
+                let _ = self.cid(code_of(width, *low));
+                let _ = self.cid(code_of(width, *high));
+            }
         }
         seen
     }
@@ -94,33 +99,35 @@ pub(crate) fn read(program: &[u8], dict_base: Option<&[u8]>) -> Option<CidMap> {
     if program.len() > super::MAX_STREAM {
         return None;
     }
-    let text = String::from_utf8_lossy(program);
-    let tokens = super::lex::tokenize(&text);
-    let mut map = CidMap::default();
-    let mut at = 0;
     // The dictionary's `/UseCMap` is a base like any other: only an identity one
     // is understood.
     if dict_base.is_some_and(|name| name != b"Identity-H") {
         return None;
     }
+    let text = String::from_utf8_lossy(program);
+    let tokens = super::lex::tokenize(&text);
+    let mut map = CidMap::default();
+    let mut at = 0;
     let mut base: Option<&[u8]> = dict_base;
     let mut entries = 0usize;
     while at < tokens.len() {
         match &tokens[at] {
             Token::Keyword("begincodespacerange") => {
-                at = codespace(&tokens, at + 1, &mut map)?;
+                let (space, next) = Space::read(&tokens, at + 1, super::MAX_ENTRIES)?;
+                map.space.absorb(space, super::MAX_ENTRIES)?;
+                at = next;
             }
             Token::Keyword("begincidrange") => {
-                at = cid_ranges(&tokens, at + 1, &mut map, &mut entries)?;
+                at = runs(&tokens, at + 1, &mut map, &mut entries)?;
             }
             Token::Keyword("begincidchar") => {
-                at = cid_chars(&tokens, at + 1, &mut map, &mut entries)?;
+                at = singles(&tokens, at + 1, &mut map, &mut entries, false)?;
             }
             Token::Keyword("beginnotdefrange") => {
                 at = notdef_ranges(&tokens, at + 1, &mut map, &mut entries)?;
             }
             Token::Keyword("beginnotdefchar") => {
-                at = notdef_chars(&tokens, at + 1, &mut map, &mut entries)?;
+                at = singles(&tokens, at + 1, &mut map, &mut entries, true)?;
             }
             Token::Keyword("beginbfchar" | "beginbfrange") => return None,
             Token::Name(name) => {
@@ -154,17 +161,38 @@ pub(crate) fn read(program: &[u8], dict_base: Option<&[u8]>) -> Option<CidMap> {
         }
     }
     map.identity = base.is_some();
-    if map.space.is_empty() {
-        if !map.identity {
-            return None;
-        }
-        // An identity base declares the whole two-byte space.
-        map.space.push(([0, 0], [0xFF, 0xFF]));
+    if map.identity {
+        map.space.identity();
     }
-    if map.runs.is_empty() && !map.identity {
+    if map.space.is_empty() || (map.wide.runs.is_empty() && map.narrow.runs.is_empty() && !map.identity) {
         return None;
     }
-    map.normalise()
+    // A one-byte range inside a two-byte lead byte would make a viewer split the
+    // string at the wrong place.
+    if !map.space.prefix_free(map.identity) {
+        return None;
+    }
+    // A declared width is a promise: every entry must fall in a range of its own
+    // width. A two-byte map without one-byte ranges keeps the older, lenient
+    // reading, so the output of documents that work today does not move.
+    let strict = map.space.has_narrow();
+    for (table, width) in [(&map.wide, 2u8), (&map.narrow, 1)] {
+        if !table.runs.is_empty() && !map.space.has_width(width) {
+            return None;
+        }
+        if strict {
+            let inside = |value: u16| map.space.contains(code_of(width, value));
+            if !table.runs.iter().all(|run| inside(run.low) && inside(run.high)) {
+                return None;
+            }
+            if !table.notdef.iter().all(|(low, high)| inside(*low) && inside(*high)) {
+                return None;
+            }
+        }
+    }
+    map.wide.normalise()?;
+    map.narrow.normalise()?;
+    Some(map)
 }
 
 /// Whether a base CMap name is the horizontal identity encoding.
@@ -172,51 +200,39 @@ fn identity_name(name: &str) -> bool {
     name == "Identity-H"
 }
 
-/// Bytes of a two-byte code, or `None` when the hex string is another width.
-fn code(bytes: &[u8]) -> Option<u16> {
-    (bytes.len() == 2).then(|| u16::from_be_bytes([bytes[0], bytes[1]]))
-}
-
-/// A CID operand: a decimal integer that fits the two-byte code space.
-fn cid(token: &Token<'_>) -> Option<u16> {
+/// The CID operand: a decimal integer that fits the two-byte code space.
+fn cid_value(token: &Token<'_>) -> Option<u16> {
     match token {
         Token::Number(value) => u16::try_from(*value).ok(),
         _ => None,
     }
 }
 
-/// Reads `begincodespacerange` entries; every range must be two bytes wide.
-fn codespace(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap) -> Option<usize> {
-    while let Some(Token::Hex(low)) = tokens.get(at) {
-        let Token::Hex(high) = tokens.get(at + 1)? else { return None };
-        let (low, high) = (code(low)?, code(high)?);
-        if high < low {
-            return None;
-        }
-        map.space.push((low.to_be_bytes(), high.to_be_bytes()));
-        at += 2;
-        if map.space.len() > super::MAX_ENTRIES {
-            return None;
-        }
+/// The table a code of this width belongs to.
+fn table_for(map: &mut CidMap, width: u8) -> &mut Table {
+    if width == 1 {
+        &mut map.narrow
+    } else {
+        &mut map.wide
     }
-    closed(tokens, at, "endcodespacerange")
 }
 
 /// Reads `begincidrange` entries: `<low> <high> cid`.
-fn cid_ranges(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &mut usize) -> Option<usize> {
+fn runs(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &mut usize) -> Option<usize> {
     while let Some(Token::Hex(low)) = tokens.get(at) {
         let (Token::Hex(high), cid_token) = (tokens.get(at + 1)?, tokens.get(at + 2)?) else { return None };
-        let (low, high, cid) = (code(low)?, code(high)?, cid(cid_token)?);
+        let (low, high, cid) = (Code::from_bytes(low)?, Code::from_bytes(high)?, cid_value(cid_token)?);
         *entries += 1;
-        if high < low {
+        if low.width() != high.width() || high < low {
             return None;
         }
         // The last code of the run selects the last CID; both must fit.
-        let last = u32::from(cid).checked_add(u32::from(high) - u32::from(low))?;
+        let span = high.value() - low.value();
+        let last = u32::from(cid).checked_add(u32::from(span))?;
         if last > u32::from(u16::MAX) {
             return None;
         }
-        map.runs.push(Run { low, high, cid });
+        table_for(map, low.width()).runs.push(Run { low: low.value(), high: high.value(), cid });
         at += 3;
         if *entries > super::MAX_ENTRIES {
             return None;
@@ -225,19 +241,25 @@ fn cid_ranges(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &m
     closed(tokens, at, "endcidrange")
 }
 
-/// Reads `begincidchar` entries: `<code> cid`.
-fn cid_chars(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &mut usize) -> Option<usize> {
+/// Reads `begincidchar` and `beginnotdefchar` entries: `<code> cid`.
+fn singles(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &mut usize, notdef: bool) -> Option<usize> {
     while let Some(Token::Hex(code_bytes)) = tokens.get(at) {
-        let value = code(code_bytes)?;
-        let cid = cid(tokens.get(at + 1)?)?;
+        let code = Code::from_bytes(code_bytes)?;
+        let cid = cid_value(tokens.get(at + 1)?)?;
         *entries += 1;
-        map.runs.push(Run { low: value, high: value, cid });
+        let table = table_for(map, code.width());
+        if notdef {
+            table.notdef.push((code.value(), code.value()));
+        } else {
+            table.runs.push(Run { low: code.value(), high: code.value(), cid });
+        }
         at += 2;
         if *entries > super::MAX_ENTRIES {
             return None;
         }
     }
-    closed(tokens, at, "endcidchar")
+    let end = if notdef { "endnotdefchar" } else { "endcidchar" };
+    closed(tokens, at, end)
 }
 
 /// Reads `beginnotdefrange` entries: `<low> <high> cid`, where the CID is
@@ -245,12 +267,12 @@ fn cid_chars(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &mu
 fn notdef_ranges(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &mut usize) -> Option<usize> {
     while let Some(Token::Hex(low)) = tokens.get(at) {
         let (Token::Hex(high), Token::Number(_)) = (tokens.get(at + 1)?, tokens.get(at + 2)?) else { return None };
-        let (low, high) = (code(low)?, code(high)?);
+        let (low, high) = (Code::from_bytes(low)?, Code::from_bytes(high)?);
         *entries += 1;
-        if high < low {
+        if low.width() != high.width() || high < low {
             return None;
         }
-        map.notdef.push((low, high));
+        table_for(map, low.width()).notdef.push((low.value(), high.value()));
         at += 3;
         if *entries > super::MAX_ENTRIES {
             return None;
@@ -259,65 +281,11 @@ fn notdef_ranges(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries:
     closed(tokens, at, "endnotdefrange")
 }
 
-/// Reads `beginnotdefchar` entries: `<code> cid`.
-fn notdef_chars(tokens: &[Token<'_>], mut at: usize, map: &mut CidMap, entries: &mut usize) -> Option<usize> {
-    while let Some(Token::Hex(code_bytes)) = tokens.get(at) {
-        let value = code(code_bytes)?;
-        if !matches!(tokens.get(at + 1), Some(Token::Number(_))) {
-            return None;
-        }
-        *entries += 1;
-        map.notdef.push((value, value));
-        at += 2;
-        if *entries > super::MAX_ENTRIES {
-            return None;
-        }
-    }
-    closed(tokens, at, "endnotdefchar")
-}
-
 /// The keyword that must close a block, or the position after it.
 fn closed(tokens: &[Token<'_>], at: usize, end: &str) -> Option<usize> {
     match tokens.get(at) {
         Some(Token::Keyword(keyword)) if *keyword == end => Some(at + 1),
         _ => None,
-    }
-}
-
-impl CidMap {
-    /// Sorts the runs and merges the ones that agree, refusing a conflict.
-    fn normalise(mut self) -> Option<Self> {
-        self.runs.sort_unstable_by_key(|run| (run.low, run.high));
-        let mut runs: Vec<Run> = Vec::with_capacity(self.runs.len());
-        for run in self.runs {
-            match runs.last_mut() {
-                // The same mapping written twice is fine, and so is a run that
-                // continues the previous one with the same offset.
-                Some(last) if last.high >= run.low => {
-                    let last_offset = i64::from(last.cid) - i64::from(last.low);
-                    let run_offset = i64::from(run.cid) - i64::from(run.low);
-                    if last_offset != run_offset {
-                        return None;
-                    }
-                    last.high = last.high.max(run.high);
-                }
-                _ => runs.push(run),
-            }
-        }
-        self.runs = runs;
-        self.notdef.sort_unstable();
-        if self.notdef.windows(2).any(|pair| pair[0].1 >= pair[1].0) {
-            return None;
-        }
-        // A notdef range that covers a mapped code would make the two
-        // disagree, and viewers differ on which one wins.
-        for (low, high) in &self.notdef {
-            let index = self.runs.partition_point(|run| run.high < *low);
-            if self.runs.get(index).is_some_and(|run| run.low <= *high) {
-                return None;
-            }
-        }
-        Some(self)
     }
 }
 

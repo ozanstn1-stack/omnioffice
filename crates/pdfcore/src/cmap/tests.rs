@@ -81,12 +81,18 @@ fn placeholders_are_never_drawn() {
 }
 
 #[test]
-fn a_source_of_the_wrong_length_is_skipped() {
-    // One byte cannot be an Identity-H code.
-    assert!(read(cmap("1 beginbfchar\n<41> <0041>\nendbfchar\n").as_bytes()).is_empty());
+fn a_one_byte_source_is_a_code_and_a_three_byte_one_is_not() {
+    // A one-byte codespace writes `<41>`, so its length is kept.
+    let narrow = read(cmap("1 beginbfchar\n<41> <0041>\nendbfchar\n").as_bytes());
+    assert_eq!(narrow.code('A'), Some(0x41));
+    assert_eq!(narrow.sized('A').map(Code::width), Some(1), "one byte is one byte");
     // Three hex digits are padded to two bytes, so the entry survives.
     let padded = read(cmap("1 beginbfchar\n<041> <0042>\nendbfchar\n").as_bytes());
     assert_eq!(padded.code('B'), Some(0x0410));
+    assert_eq!(padded.sized('B').map(Code::width), Some(2));
+    // Neither one nor two bytes is not a code.
+    let long = read(cmap("1 beginbfchar\n<000041> <0041>\nendbfchar\n").as_bytes());
+    assert!(long.is_empty(), "a three-byte source is skipped");
 }
 
 #[test]

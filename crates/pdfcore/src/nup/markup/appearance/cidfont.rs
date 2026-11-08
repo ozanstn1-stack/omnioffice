@@ -24,7 +24,7 @@ use lopdf::{Dictionary, Document, Object, ObjectId};
 use super::super::super::dests::resolve;
 use super::super::super::links::number;
 use super::drfont;
-use crate::cmap::{self, ToUnicode};
+use crate::cmap::{self, Code, ToUnicode};
 
 mod mapping;
 mod widths;
@@ -62,18 +62,17 @@ impl DocCid {
     /// The code is what `/ToUnicode` inverted and what the appearance writes;
     /// the CID it selects is checked through `/Encoding`, so an unmapped code,
     /// CID 0 and a `.notdef` glyph all cost the character.
-    pub(super) fn code(&self, symbol: char) -> Option<u16> {
-        let code = self.font.to_unicode.code(symbol)?;
-        if code == 0 {
+    pub(super) fn code(&self, symbol: char) -> Option<Code> {
+        let code = self.font.to_unicode.sized(symbol)?;
+        if code.value() == 0 {
             return None;
         }
-        self.font.mapping.cid(code)?;
-        Some(code)
+        self.font.mapping.admit(code)
     }
 
     /// The advance of `code` in 1/1000 em, or `None` when it draws nothing.
     /// `/W` is keyed by CID, not by code.
-    pub(super) fn advance(&self, code: u16) -> Option<f32> {
+    pub(super) fn advance(&self, code: Code) -> Option<f32> {
         let cid = self.font.mapping.cid(code)?;
         let width = self.font.widths.get(cid);
         (width > 0.0).then_some(width)

@@ -1,6 +1,12 @@
 //! Tests for the code -> CID -> glyph id path of a composite font.
 
 use super::*;
+use crate::cmap::Code;
+
+/// A two-byte code, which is what an Identity-H font writes.
+fn two(value: u16) -> Code {
+    Code::two(value)
+}
 use lopdf::{dictionary, Object};
 
 fn doc() -> Document {
@@ -37,8 +43,8 @@ fn an_embedded_stream_is_read() {
     let doc = doc();
     let font = type0(stream(&cmap_body(), lopdf::Dictionary::new()));
     let Some(Encoding::Embedded(map)) = encoding(&doc, &font) else { panic!("embedded map") };
-    assert_eq!(map.cid(0x3042), Some(844));
-    assert_eq!(map.cid(0x4000), None);
+    assert_eq!(map.cid(two(0x3042)), Some(844));
+    assert_eq!(map.cid(two(0x4000)), None);
 }
 
 #[test]
@@ -47,7 +53,7 @@ fn an_encoding_stream_may_be_a_reference() {
     let id = doc.add_object(Object::Stream(lopdf::Stream::new(lopdf::Dictionary::new(), cmap_body())));
     let font = type0(Object::Reference(id));
     let Some(Encoding::Embedded(map)) = encoding(&doc, &font) else { panic!("embedded map") };
-    assert_eq!(map.cid(0x3042), Some(844));
+    assert_eq!(map.cid(two(0x3042)), Some(844));
 }
 
 #[test]
@@ -81,11 +87,9 @@ fn a_corrupt_stream_is_refused() {
     let doc = doc();
     let font = type0(stream(b"1 begincodespacerange\n", lopdf::Dictionary::new()));
     assert!(encoding(&doc, &font).is_none(), "an unclosed block");
-    let one_byte = type0(stream(
-        b"1 begincodespacerange\n<00> <FF>\nendcodespacerange\n1 begincidrange\n<00> <FF> 0\nendcidrange\n",
-        lopdf::Dictionary::new(),
-    ));
-    assert!(encoding(&doc, &one_byte).is_none(), "one-byte codes");
+    let four_byte =
+        type0(stream(b"1 begincodespacerange\n<00000000> <FFFFFFFF>\nendcodespacerange\n", lopdf::Dictionary::new()));
+    assert!(encoding(&doc, &four_byte).is_none(), "four-byte codes");
 }
 
 #[test]
@@ -109,16 +113,16 @@ fn widths_are_keyed_by_cid_and_notdef_never_draws() {
     let font = type0(stream(&cmap_body(), lopdf::Dictionary::new()));
     let child = dictionary! { "Type" => "Font", "Subtype" => "CIDFontType2" };
     let read = mapping(&doc, &font, &child, b"CIDFontType2").expect("mapping");
-    assert_eq!(read.cid(0x3042), Some(844), "the code is not the CID");
-    assert_eq!(read.cid(0x309F), Some(842 + 0x5F));
-    assert_eq!(read.cid(0x0041), None, "no entry for this code");
+    assert_eq!(read.cid(two(0x3042)), Some(844), "the code is not the CID");
+    assert_eq!(read.cid(two(0x309F)), Some(842 + 0x5F));
+    assert_eq!(read.cid(two(0x0041)), None, "no entry for this code");
     // CID 0 is .notdef.
     let zero = type0(stream(
         b"1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n1 begincidchar\n<0001> 0\nendcidchar\n",
         lopdf::Dictionary::new(),
     ));
     let read = mapping(&doc, &zero, &child, b"CIDFontType2").expect("mapping");
-    assert_eq!(read.cid(0x0001), None);
+    assert_eq!(read.admit(two(0x0001)), None);
 }
 
 #[test]
@@ -129,9 +133,9 @@ fn a_glyph_map_that_points_at_notdef_costs_that_code() {
     table[0x41 * 2 + 1] = 7;
     let child = dictionary! { "Subtype" => "CIDFontType2", "CIDToGIDMap" => stream(&table, lopdf::Dictionary::new()) };
     let read = mapping(&doc, &font, &child, b"CIDFontType2").expect("mapping");
-    assert_eq!(read.cid(0x41), Some(0x41), "glyph 7 draws");
-    assert_eq!(read.cid(0x42), None, "past the end of the map");
-    assert_eq!(read.cid(0x00), None, "glyph 0 is .notdef");
+    assert_eq!(read.admit(two(0x41)), Some(two(0x41)), "glyph 7 draws");
+    assert_eq!(read.admit(two(0x42)), None, "past the end of the map");
+    assert_eq!(read.admit(two(0x00)), None, "glyph 0 is .notdef");
 }
 
 #[test]
@@ -140,5 +144,5 @@ fn a_type0_descendant_ignores_the_glyph_map() {
     let font = type0(Object::Name(b"Identity-H".to_vec()));
     let child = dictionary! { "Subtype" => "CIDFontType0", "CIDToGIDMap" => "Never" };
     let read = mapping(&doc, &font, &child, b"CIDFontType0").expect("mapping");
-    assert_eq!(read.cid(0x41), Some(0x41));
+    assert_eq!(read.cid(two(0x41)), Some(0x41));
 }

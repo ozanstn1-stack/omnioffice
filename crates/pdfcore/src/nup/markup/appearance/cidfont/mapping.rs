@@ -10,6 +10,7 @@ use lopdf::{Dictionary, Document, Object};
 
 use super::super::super::super::dests::resolve;
 use crate::cmap::cid::CidMap;
+use crate::cmap::Code;
 
 /// A `/CIDToGIDMap` stream holds two bytes per CID.
 const MAX_GID_MAP: usize = 128 * 1024;
@@ -30,17 +31,23 @@ pub(super) struct Mapping {
 }
 
 impl Mapping {
-    /// The CID `code` selects, or `None` when the font cannot draw it: an
-    /// unmapped code, CID 0 (`.notdef`), or a glyph id of 0.
-    pub(super) fn cid(&self, code: u16) -> Option<u16> {
-        let cid = match &self.encoding {
-            Encoding::IdentityH => code,
-            Encoding::Embedded(map) => map.cid(code)?,
-        };
+    /// The CID `code` selects, or `None` when the map does not admit the code.
+    pub(super) fn cid(&self, code: Code) -> Option<u16> {
+        match &self.encoding {
+            // An identity encoding is two bytes wide by definition.
+            Encoding::IdentityH => Some(code.value()),
+            Encoding::Embedded(map) => map.cid(code),
+        }
+    }
+
+    /// The code as it will be written, or `None` when the font cannot draw it:
+    /// an unmapped code, CID 0 (`.notdef`), or a glyph id of 0.
+    pub(super) fn admit(&self, code: Code) -> Option<Code> {
+        let cid = self.cid(code)?;
         if cid == 0 || !self.has_glyph(cid) {
             return None;
         }
-        Some(cid)
+        Some(code)
     }
 
     /// Whether `/CIDToGIDMap` gives `cid` a glyph other than `.notdef`.
