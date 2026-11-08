@@ -188,3 +188,31 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **Dilim**: `annotate/geometry_util.rs`ine görünen-kutu yardımcısı (CropBox ∩ MediaBox, normalize,
   miras, ters kutu) + iki yol da onu kullanır; prob `annotate_box_probe.rs`.
 - **Sıradaki**: prob kırmızı → düzelt → lib testleri + clippy + `check-file-sizes` → PR.
+
+## v7.28.0 DOĞRULANDI (20 asset) — 2026-11-08 19:55 UTC
+- Release + **Android** ikisi de **success** (Android keystore artık mevcut).
+- **20 asset**: Linux 2 + Windows 3 (Setup, Portable, NSIS `x64-setup`) + `.sig` **444 B** +
+  SHA256SUMS 4 dosya + build-info + latest.json + 2 SBOM + 2 Android zarfı + 4 Android çıktısı
+  (arm64/v7a × apk+aab).
+- Gövde **883 bayt** ve `node scripts/changelog-section.mjs v7.28.0` ile **birebir** (diff boş).
+- `latest.json` → **7.28.0**. `SHA256SUMS.txt` **8 satır**, 8/8 GitHub'ın asset `digest` alanıyla
+  eşleşiyor (indirme gerekmedi: API `sha256:` özeti veriyor).
+- `provenance-subjects.mjs coverage` → *"every published asset is covered by 2 envelope(s)"*, exit 0.
+- `cargo clean`: 16.8 GiB silindi; disk **%61** (39 GB boş).
+
+## PR 9: açıklama görünen kutuya oturur — **#688** açıldı, 2026-11-08 20:05 UTC
+- Dal `feat/annotate-box` (`efc8c21`), **Opus planı `cfc40e22`** (kod okumadan yazıldı; Adım 0 bana kaldı).
+- **Adım 0 = K2**: ön uç gösterilen-kutu uzayı gönderiyor (`src/screens/annotate/geometry.ts` +
+  `Annotate.tsx:401`, boyut pdfium `page.width()` → CropBox ∩ MediaBox, `/Rotate` uygulanmış).
+- **İki gerçek hata**: (1) bake yolu kutu orijinini hiç eklemiyordu → kaydırılmış/ters kutuda işaret
+  kayıyor veya sayfa dışına çıkıyordu; (2) iki yol da `/CropBox`'ı yok sayıyordu → kırpılmış sayfada
+  işaret kırpma ofseti kadar kayıyordu.
+- Prob `tests/annotate_box_probe.rs` **9 vaka**: düzeltme öncesi **7/9 kırmızı**, sonrası **9/9**;
+  düzeltmeden önce de yeşil olan 2 vaka (düz sayfa, crop==media) kayma olmadığını kanıtlıyor.
+- Düzeltme `annotate/geometry_util.rs`: `visible_box(media, crop)` (normalize + kesişim + boş/kopuk
+  crop'ta media'ya dönüş); iki yol boyutu **ve** orijini oradan alıyor; bake `translate(x0,y0)` ekliyor.
+  Sayfa-ağacı yürüyücüleri de oraya taşındı → `annotate.rs` **1475 → 1438**.
+- Kapılar: prob 9/9, eski prob 5/5, lib **344/344**, clippy temiz, `check-file-sizes` OK.
+  `batch_test::batch_watermark_and_compress_all_files` bu VPS'te pdfium yokluğu yüzünden düşüyor
+  (raster stratejisi) — bilinen Gate B sınırı, değişiklikle ilgisiz.
+- **Sıradaki**: #688 CI yeşilse squash merge → **v7.29.0** sürüm treni (kullanıcıya dönük yerleşim düzeltmesi).
