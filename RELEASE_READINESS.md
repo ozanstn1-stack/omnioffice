@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.27.0
+# Release Readiness — OmniOffice 7.28.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Açıklama (annotate) probu
+## Implemented (this cycle, 7.28.0) - Açıklama (annotate) probu
 
 - **An annotation lands where it was drawn on a page that does not start at the
   origin:** the display rectangle was converted into page coordinates as if every
