@@ -23,7 +23,9 @@
 use std::collections::BTreeMap;
 
 pub(crate) mod cid;
+mod code;
 mod lex;
+pub(crate) use code::Code;
 use lex::{tokenize, Token};
 
 /// A stream larger than this is not a map and is refused.
@@ -36,12 +38,17 @@ const MAX_ENTRIES: usize = 1 << 16;
 /// for it, so the result does not depend on the order of the entries.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ToUnicode {
-    to_code: BTreeMap<char, u16>,
+    to_code: BTreeMap<char, Code>,
 }
 
 impl ToUnicode {
     /// The code `symbol` is drawn with, when the map has one.
     pub fn code(&self, symbol: char) -> Option<u16> {
+        self.sized(symbol).map(Code::value)
+    }
+
+    /// The code and its width, which the appearance needs to write it.
+    pub(crate) fn sized(&self, symbol: char) -> Option<Code> {
         self.to_code.get(&symbol).copied()
     }
 
@@ -59,18 +66,17 @@ impl ToUnicode {
         text.chars().filter(|symbol| !matches!(symbol, '\n' | '\r')).all(|symbol| self.to_code.contains_key(&symbol))
     }
 
-    /// The two-byte big-endian codes for `text`, or `None` when a character is
-    /// not mapped.
+    /// The codes for `text`, each at its own width, or `None` when a character
+    /// is not mapped.
     pub fn encode(&self, text: &str) -> Option<Vec<u8>> {
         let mut out = Vec::with_capacity(text.len() * 2);
         for symbol in text.chars() {
-            let code = self.code(symbol)?;
-            out.extend_from_slice(&code.to_be_bytes());
+            out.extend_from_slice(&self.sized(symbol)?.to_bytes());
         }
         Some(out)
     }
 
-    fn insert(&mut self, symbol: char, code: u16) {
+    fn insert(&mut self, symbol: char, code: Code) {
         if self.to_code.len() >= MAX_ENTRIES {
             return;
         }
@@ -102,7 +108,7 @@ pub fn read(bytes: &[u8]) -> ToUnicode {
                     (tokens.get(at), tokens.get(at + 1))
                 {
                     at += 2;
-                    if let (Some(code), Some(symbol)) = (two_byte_code(source), single_symbol(destination)) {
+                    if let (Some(code), Some(symbol)) = (Code::from_bytes(source), single_symbol(destination)) {
                         map.insert(symbol, code);
                     }
                 }
@@ -152,14 +158,15 @@ fn destinations(tokens: &[Token<'_>], at: usize) -> Option<Destinations> {
 /// the first, and the range stops where it would leave the code space or run
 /// into a destination that is not text.
 fn map_range(map: &mut ToUnicode, low: &[u8], high: &[u8], list: &[Vec<u8>]) {
-    let (Some(low), Some(high)) = (two_byte_code(low), two_byte_code(high)) else { return };
-    if high < low {
+    let (Some(low), Some(high)) = (Code::from_bytes(low), Code::from_bytes(high)) else { return };
+    if high < low || low.width() != high.width() {
         return;
     }
+    let span = high.value() - low.value();
     if list.len() == 1 {
         let base = &list[0];
-        for offset in 0..=(high - low) {
-            let Some(code) = low.checked_add(offset) else { break };
+        for offset in 0..=span {
+            let Some(code) = low.offset(offset) else { break };
             let Some(destination) = increment(base, offset) else { break };
             if let Some(symbol) = single_symbol(&destination) {
                 map.insert(symbol, code);
@@ -168,7 +175,8 @@ fn map_range(map: &mut ToUnicode, low: &[u8], high: &[u8], list: &[Vec<u8>]) {
         return;
     }
     for (offset, destination) in list.iter().enumerate() {
-        let Some(code) = low.checked_add(offset as u16) else { break };
+        let Ok(offset) = u16::try_from(offset) else { break };
+        let Some(code) = low.offset(offset) else { break };
         if code > high {
             break;
         }
@@ -219,10 +227,6 @@ fn keep(symbol: char) -> bool {
         && !(0xFDD0..=0xFDEF).contains(&code)
         && code & 0xFFFF != 0xFFFE
         && code & 0xFFFF != 0xFFFF
-}
-
-fn two_byte_code(bytes: &[u8]) -> Option<u16> {
-    (bytes.len() == 2).then(|| u16::from_be_bytes([bytes[0], bytes[1]]))
 }
 
 /// Fuzz entry for the `/Encoding` reader, which has no public API: `cargo fuzz`
