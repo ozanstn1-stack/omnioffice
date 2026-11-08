@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.26.0] - 2026-11-08
+
 ### Fixed
 
 - **Flatten no longer bakes in an annotation the viewer never shows:** an

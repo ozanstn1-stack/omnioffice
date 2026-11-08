@@ -124,3 +124,13 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **Ders (üçüncü kez)**: `str.replace` sessizce başarısız oluyor (anchor metni tutmazsa). Her
   RELEASE_READINESS/CHANGELOG düzenlemesinden sonra `grep` ile doğrula — bu kez 7.25.0 bölümü
   yazılmamıştı, yakalandı ve eklendi.
+
+## KESİNTİ ÇÖZÜLDÜ · v7.25.0 etiketlendi · #681 birleşti · v7.26.0 treni (2026-11-08 11:25 UTC)
+- Kesinti ~90 dk sürdü (pdfium/qpdf/tesseract 504). Çözülünce master'ın kırmızı işleri `rerun-failed-jobs`
+  ile temizlendi → Desktop yeşil → **Auto release tag → v7.25.0 = `78cd033`** → Release + Android koşuyor.
+- **#681 birleşti** (`59d30ad`): flatten gizli açıklamayı artık basmıyor (prob buldu).
+- **v7.26.0**: sürüm 7.26.0, versionCode **7026000**, CHANGELOG `[7.26.0]`, README, RELEASE_READINESS
+  bölümü 7.26.0'a taşındı, fastlane 7026000. Kapılar: `release-guard` OK, `claims:check` **415/575**,
+  `repro:check` OK.
+- **Sıradaki**: v7.25.0 yayın doğrulaması (20 asset) + v7.26.0 push → PR → CI → merge → tag → doğrulama.
+- **Ders**: `str.replace` anchor'ları bu turda `assert` ile korundu (üç kez sessiz düşme olmuştu).

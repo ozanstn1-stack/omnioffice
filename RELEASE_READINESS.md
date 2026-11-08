@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.25.0
+# Release Readiness — OmniOffice 7.26.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Flatten probu
+## Implemented (this cycle, 7.26.0) - Flatten probu
 
 - **Flatten skips a hidden annotation instead of baking it in:** an annotation
   whose `/F` carries the Hidden bit (ISO 32000-1 12.5.3) is never displayed, so
