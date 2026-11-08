@@ -281,3 +281,15 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   (2) R90 için "merkeze uzaklık korunur" varsayımı yanlış (etiket sağ-üst köşeye hizalı olduğu için
   dönüşte uzaklık değişir) — beklenen değer matristen elle hesaplandı.
 - **Sıradaki**: PR aç → CI → merge; sonra vaka seti V/M/E gruplarına genişletilebilir.
+
+## PR 12: evidence verify/match probu (Opus `7767eb27`, V+M grupları) — 2026-11-08 23:40 UTC
+- `crates/pdfcore/tests/evidence_verify_probe.rs` **8 vaka, hepsi yeşil** (kusur yok → sürüm yok).
+- Kapsam: taze bundle doğrular; **sayfa içeriği düzenlenirse** `content_matches` false; **kayıtlı özet
+  bozulursa** false; 200 bayt kesilmiş dosya `Err` (panik yok); manifest'siz PDF `present=false`;
+  aynı orijinal → `Some(1)`; farklı/kısaltılmış/yeniden sıralanmış belge → `None`; boş liste/boş dosya `Err`.
+- Prob yazarken üç fikstür hatası düzelttim: `/Contents` **dizi** olabiliyor (7.8.2); manifest
+  **pretty-printed** olduğu için özet araması `"sha256": "` + `rposition` ile; 10 bayt kesme lopdf'te
+  hâlâ ayrıştığı için 200 bayt kullandım.
+- **Kapı dersi**: yeni test dosyası `git add` edilmeden `check-format.mjs rust --all-changed` "değişen
+  dosya yok" diyor → **önce `cargo fmt -p pdfcore`, sonra `git add`, sonra format kapısı**.
+- **Sıradaki**: PR aç → CI → merge. Sonra E grubu (numaralandırma/bozuk girdi) veya N-up/inspect dilimi.
