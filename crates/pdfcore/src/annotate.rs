@@ -18,6 +18,9 @@ use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
 use crate::textimg::{self, TextRenderRequest};
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 use serde::{Deserialize, Serialize};
+
+mod geometry_util;
+use geometry_util::{normalize_rect, real, to_page_space};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -206,11 +209,6 @@ impl ExtGStateCache {
         self.map.insert(key, id);
         Ok(name)
     }
-}
-
-fn to_page_space(page_h: f64, x: f64, y_top: f64, _w: f64, h: f64) -> (f64, f64) {
-    // UI top-left -> display-space bottom-left.
-    (x, page_h - y_top - h)
 }
 
 /// Draws the annotations into the document (page content and resources).
@@ -418,17 +416,22 @@ struct PageGeometry {
     display_h: f64,
     to_page: Matrix,
     to_display: Matrix,
+    /// The page's own origin, so display space can be placed on the page.
+    origin: (f64, f64),
 }
 
 impl PageGeometry {
     fn new(doc: &Document, page_id: ObjectId) -> PdfResult<Self> {
         let rotation = page_rotation_or_inherited(doc, page_id);
         let media = page_mediabox_or_inherited(doc, page_id)?;
-        let (page_w, page_h) = (media[2] - media[0], media[3] - media[1]);
+        // A page's own coordinates start at its `/MediaBox` origin, and the two
+        // corners may be written in either order (ISO 32000-1 7.9.5).
+        let (x0, y0) = (media[0].min(media[2]), media[1].min(media[3]));
+        let (page_w, page_h) = ((media[2] - media[0]).abs(), (media[3] - media[1]).abs());
         let (_, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
         let to_page = Matrix::display_to_page(rotation, page_w, page_h);
         let to_display = to_page.inverse().unwrap_or(Matrix::IDENTITY);
-        Ok(Self { page_id, rotation, page_w, page_h, display_h, to_page, to_display })
+        Ok(Self { page_id, rotation, page_w, page_h, display_h, to_page, to_display, origin: (x0, y0) })
     }
 }
 
@@ -478,12 +481,15 @@ fn page_rotation_or_inherited(doc: &Document, page_id: ObjectId) -> i32 {
 /// Display rect (top-left) -> page rect [x y w h] (bottom-left, normalized).
 fn display_rect_to_page(geo: &PageGeometry, x: f64, y: f64, w: f64, h: f64) -> [f64; 4] {
     let rect = [x, geo.display_h - y - h, w, h];
-    normalize_rect(display_rect_to_page_rect(geo.rotation, geo.page_w, geo.page_h, rect))
+    let mut placed = normalize_rect(display_rect_to_page_rect(geo.rotation, geo.page_w, geo.page_h, rect));
+    placed[0] += geo.origin.0;
+    placed[1] += geo.origin.1;
+    placed
 }
 
 /// Page rect [x y w h] -> display rect (x, y_top, w, h).
 fn page_rect_to_display(geo: &PageGeometry, rect: [f64; 4]) -> (f64, f64, f64, f64) {
-    let rect = normalize_rect(rect);
+    let rect = normalize_rect([rect[0] - geo.origin.0, rect[1] - geo.origin.1, rect[2], rect[3]]);
     let corners = [
         geo.to_display.apply(rect[0], rect[1]),
         geo.to_display.apply(rect[0] + rect[2], rect[1]),
@@ -497,25 +503,15 @@ fn page_rect_to_display(geo: &PageGeometry, rect: [f64; 4]) -> (f64, f64, f64, f
     (min_x, geo.display_h - max_y, max_x - min_x, max_y - min_y)
 }
 
-fn normalize_rect(rect: [f64; 4]) -> [f64; 4] {
-    let (x0, x1) = if rect[2] >= 0.0 { (rect[0], rect[0] + rect[2]) } else { (rect[0] + rect[2], rect[0]) };
-    let (y0, y1) = if rect[3] >= 0.0 { (rect[1], rect[1] + rect[3]) } else { (rect[1] + rect[3], rect[1]) };
-    [x0, y0, x1 - x0, y1 - y0]
-}
-
-/// lopdf stores numbers as f32; every coordinate conversion lands here.
-fn real(value: f64) -> Object {
-    Object::Real(value as f32)
-}
-
 /// Display point (top-left) -> page point (bottom-left).
 fn display_point_to_page(geo: &PageGeometry, x: f64, y: f64) -> (f64, f64) {
-    geo.to_page.apply(x, geo.display_h - y)
+    let (px, py) = geo.to_page.apply(x, geo.display_h - y);
+    (px + geo.origin.0, py + geo.origin.1)
 }
 
 /// Page point (bottom-left) -> display point (top-left).
 fn page_point_to_display(geo: &PageGeometry, x: f64, y: f64) -> (f64, f64) {
-    let (dx, dy) = geo.to_display.apply(x, y);
+    let (dx, dy) = geo.to_display.apply(x - geo.origin.0, y - geo.origin.1);
     (dx, geo.display_h - dy)
 }
 

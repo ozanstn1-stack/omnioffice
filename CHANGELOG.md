@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An annotation lands where it was placed on a page that does not start at the
+  origin:** the display-space rectangle the annotation screen sends was converted
+  into page coordinates as if every page began at `(0, 0)`. A page whose
+  `/MediaBox` starts elsewhere - the shape a crop or an imposition produces, and
+  one of this app's own resize outputs - put the mark that far off, so a note or a
+  highlight appeared away from where it was drawn. The page's own origin is carried
+  through the conversion now, for both the editable annotations and the drawn
+  stamps.
+- **A reversed `/MediaBox` no longer throws the mark off the page:** a box written
+  as `[595 842 0 0]`, which ISO 32000-1 7.9.5 allows, was measured with a negative
+  width, so the annotation landed outside the page entirely. The box is normalised
+  before it is measured.
+
 ## [7.27.0] - 2026-11-08
 
 ### Fixed

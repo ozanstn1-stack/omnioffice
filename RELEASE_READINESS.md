@@ -65,6 +65,30 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Açıklama (annotate) probu
+
+- **An annotation lands where it was drawn on a page that does not start at the
+  origin:** the display rectangle was converted into page coordinates as if every
+  page began at `(0, 0)`, so a page whose `/MediaBox` starts elsewhere - what a crop
+  or an imposition produces, including this app's own resize output - put the mark
+  that far off. The origin is carried through the conversion now, on the editable
+  annotation path and on the drawn stamps.
+  `test:crates/pdfcore/tests/annotate_probe.rs#a_mark_follows_the_page_box_origin`
+- **A reversed `/MediaBox` keeps the mark on the page:** a box written as
+  `[595 842 0 0]` (ISO 32000-1 7.9.5) gave a negative page width, so the annotation
+  landed outside the page. The box is normalised before it is measured.
+  `test:crates/pdfcore/tests/annotate_probe.rs#a_reversed_box_lands_like_a_normal_one`
+- **The rest of the path is pinned by the same probe:** the baseline page still puts
+  the mark where the display rectangle says, an inherited `/MediaBox` behaves like a
+  direct one, and an existing link survives while an indirect `/Annots` array stays a
+  list.
+  `test:crates/pdfcore/tests/annotate_probe.rs#a_mark_lands_where_the_page_starts_at_the_origin`
+  `test:crates/pdfcore/tests/annotate_probe.rs#an_inherited_box_lands_like_a_direct_one`
+  `test:crates/pdfcore/tests/annotate_probe.rs#an_existing_link_survives_and_an_indirect_list_stays_a_list`
+- **Still open:** rotation, the crop box, ink and line coordinates, and signing are
+  not probed yet.
+  (no test: those paths are outside this slice.)
+
 ## Implemented (this cycle, 7.27.0) - Denetim (inspect) probu
 
 - **A document with no metadata title is reported as such:** the
