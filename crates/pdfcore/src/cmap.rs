@@ -22,6 +22,9 @@
 
 use std::collections::BTreeMap;
 
+mod lex;
+use lex::{tokenize, Token};
+
 /// A stream larger than this is not a text map and is refused.
 const MAX_STREAM: usize = 1 << 20;
 
@@ -80,16 +83,6 @@ impl ToUnicode {
     }
 }
 
-/// One token of a CMap stream: a keyword, a hex string, or the brackets of an
-/// array destination.
-#[derive(Debug, PartialEq, Eq)]
-enum Tok<'a> {
-    Keyword(&'a str),
-    Hex(Vec<u8>),
-    Open,
-    Close,
-}
-
 /// Reads a `/ToUnicode` stream into the inverted map. An oversized or empty
 /// stream gives an empty map.
 pub fn read(bytes: &[u8]) -> ToUnicode {
@@ -102,18 +95,20 @@ pub fn read(bytes: &[u8]) -> ToUnicode {
     let mut at = 0;
     while at < tokens.len() {
         match &tokens[at] {
-            Tok::Keyword("beginbfchar") => {
+            Token::Keyword("beginbfchar") => {
                 at += 1;
-                while let (Some(Tok::Hex(source)), Some(Tok::Hex(destination))) = (tokens.get(at), tokens.get(at + 1)) {
+                while let (Some(Token::Hex(source)), Some(Token::Hex(destination))) =
+                    (tokens.get(at), tokens.get(at + 1))
+                {
                     at += 2;
                     if let (Some(code), Some(symbol)) = (two_byte_code(source), single_symbol(destination)) {
                         map.insert(symbol, code);
                     }
                 }
             }
-            Tok::Keyword("beginbfrange") => {
+            Token::Keyword("beginbfrange") => {
                 at += 1;
-                while let (Some(Tok::Hex(low)), Some(Tok::Hex(high)), Some(destinations)) =
+                while let (Some(Token::Hex(low)), Some(Token::Hex(high)), Some(destinations)) =
                     (tokens.get(at), tokens.get(at + 1), destinations(&tokens, at + 2))
                 {
                     at = destinations.next;
@@ -133,22 +128,22 @@ struct Destinations {
 }
 
 /// Reads the destination of a `bfrange` entry: one hex string, or an array.
-fn destinations(tokens: &[Tok<'_>], at: usize) -> Option<Destinations> {
+fn destinations(tokens: &[Token<'_>], at: usize) -> Option<Destinations> {
     match tokens.get(at)? {
-        Tok::Hex(bytes) => Some(Destinations { list: vec![bytes.clone()], next: at + 1 }),
-        Tok::Open => {
+        Token::Hex(bytes) => Some(Destinations { list: vec![bytes.clone()], next: at + 1 }),
+        Token::Open => {
             let mut list = Vec::new();
             let mut index = at + 1;
             loop {
                 match tokens.get(index)? {
-                    Tok::Hex(bytes) => list.push(bytes.clone()),
-                    Tok::Close => return Some(Destinations { list, next: index + 1 }),
-                    Tok::Open | Tok::Keyword(_) => return None,
+                    Token::Hex(bytes) => list.push(bytes.clone()),
+                    Token::Close => return Some(Destinations { list, next: index + 1 }),
+                    Token::Open | Token::Keyword(_) | Token::Name(_) | Token::Number(_) => return None,
                 }
                 index += 1;
             }
         }
-        Tok::Keyword(_) | Tok::Close => None,
+        Token::Keyword(_) | Token::Close | Token::Name(_) | Token::Number(_) => None,
     }
 }
 
@@ -227,89 +222,6 @@ fn keep(symbol: char) -> bool {
 
 fn two_byte_code(bytes: &[u8]) -> Option<u16> {
     (bytes.len() == 2).then(|| u16::from_be_bytes([bytes[0], bytes[1]]))
-}
-
-/// Splits a CMap into the tokens the two `bf*` sections use, skipping comments,
-/// dictionaries and anything else the sections do not read.
-fn tokenize(text: &str) -> Vec<Tok<'_>> {
-    let bytes = text.as_bytes();
-    let mut tokens = Vec::new();
-    let mut at = 0;
-    while at < bytes.len() {
-        match bytes[at] {
-            byte if byte.is_ascii_whitespace() => at += 1,
-            b'%' => {
-                while at < bytes.len() && bytes[at] != b'\n' {
-                    at += 1;
-                }
-            }
-            b'[' => {
-                tokens.push(Tok::Open);
-                at += 1;
-            }
-            b']' => {
-                tokens.push(Tok::Close);
-                at += 1;
-            }
-            b'<' if bytes.get(at + 1) == Some(&b'<') => at += 2,
-            b'<' => {
-                let start = at + 1;
-                let Some(offset) = text[start..].find('>') else { break };
-                let end = start + offset;
-                let digits: Vec<u8> =
-                    bytes[start..end].iter().copied().filter(|byte| !byte.is_ascii_whitespace()).collect();
-                tokens.push(Tok::Hex(hex_to_bytes(&digits)));
-                at = end + 1;
-            }
-            b'/' => {
-                while at < bytes.len() && !bytes[at].is_ascii_whitespace() {
-                    at += 1;
-                }
-            }
-            byte if byte.is_ascii_alphabetic() => {
-                let start = at;
-                while at < bytes.len() && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_') {
-                    at += 1;
-                }
-                tokens.push(Tok::Keyword(&text[start..at]));
-            }
-            _ => at += 1,
-        }
-        // A bounded number of tokens: a stream of one-digit tokens cannot grow
-        // this list past the stream's own length, and that is already capped.
-        if tokens.len() > MAX_STREAM {
-            break;
-        }
-    }
-    tokens
-}
-
-/// Hex digits to bytes; an odd last digit is padded with a zero.
-fn hex_to_bytes(digits: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(digits.len() / 2 + 1);
-    let mut index = 0;
-    while index < digits.len() {
-        let Some(high) = hex_value(digits[index]) else { break };
-        match digits.get(index + 1).and_then(|byte| hex_value(*byte)) {
-            Some(low) => out.push(high << 4 | low),
-            None if index + 1 == digits.len() => {
-                out.push(high << 4);
-                break;
-            }
-            None => break,
-        }
-        index += 2;
-    }
-    out
-}
-
-fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 #[cfg(test)]
