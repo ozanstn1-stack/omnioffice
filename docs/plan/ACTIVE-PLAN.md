@@ -2684,3 +2684,17 @@ CHANGELOG: "N-up imposition now reads each embedded CID font's `/ToUnicode`, `/E
 output is byte-identical to before."
 PR başlığı: `pdfcore: per-document CID font cache for N-up appearances (parse once, byte-identical output)`
 
+## ÖLÇÜLEN GİRİŞ NOKTALARI (önbellek için)
+- `nup.rs`: `nup_pdf`/`nup_pdf_bytes` → `build_nup(&mut doc, options, progress, cancel)`.
+- `nup/markup.rs`: `carry_markup(doc: &mut Document, sheets)` → `markup_draw(doc, annot, placement,
+  rotation, &field_context)` → `appearance::synthesize(doc, annot, subtype, rect)` (markup.rs:162).
+- `appearance.rs`: `synthesize` → `freetext::synthesize(doc, annot, rect)` (freetext.rs:47).
+- **Önbellek yeri:** `carry_markup` içinde `let mut fonts = FontCache::new();` (belge başına bir kez;
+  okuma zaten immutable doc üzerinden yapılıyor) → `markup_draw` → `appearance::synthesize` →
+  `freetext::synthesize` zincirine `fonts: &mut FontCache` parametresi.
+- Gerçek font yolu: `appearance/cidfont.rs::resolve_font(doc, annot, name)` + `mapping::mapping(..)`;
+  önbellek anahtarı font sözlüğünün `ObjectId`'si (`Object::Reference(id)` — doğrudan sözlük
+  zaten reddediliyor, yani `bypassed` yolu bugün için yok; yine de sayaç tutulacak).
+- `CidFont` bugün `to_unicode`, `widths`, `mapping (encoding + gids)`, `ascent` taşıyor →
+  `Arc<CidFont>`'a alınmaya hazır; `/CIDToGIDMap` çözümü `mapping::gid_map`'te (128 KiB sınırı).
+
