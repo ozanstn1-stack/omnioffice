@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.28.0
+# Release Readiness — OmniOffice 7.29.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (this cycle, 7.28.0) - Açıklama (annotate) probu
+## Implemented (this cycle, 7.29.0) - Açıklama görünen kutuya oturur
 
 - **An annotation lands where it was drawn on a page that does not start at the
   origin:** the display rectangle was converted into page coordinates as if every
@@ -78,6 +78,18 @@ release-train schedule is decided.
   `[595 842 0 0]` (ISO 32000-1 7.9.5) gave a negative page width, so the annotation
   landed outside the page. The box is normalised before it is measured.
   `test:crates/pdfcore/tests/annotate_probe.rs#a_reversed_box_lands_like_a_normal_one`
+- **An annotation lands on the box the viewer shows:** the canvas reports display
+  space against the region a viewer draws - the crop box clipped to the media box
+  (ISO 32000-1 14.11.2) - and both paths sized the page from the media box alone,
+  so every mark on a cropped page moved by the crop offset. The bake path
+  (`annotate_pdf`) also dropped the box origin, moving the mark on any page whose
+  box does not start at `(0, 0)` and pushing it off a reversed one. Both paths take
+  their size and their origin from that box now.
+  `test:crates/pdfcore/tests/annotate_box_probe.rs#a_mark_lands_where_the_crop_box_shows_the_page`
+- **The baked mark follows the same box:** `test:crates/pdfcore/tests/annotate_box_probe.rs#a_baked_mark_lands_where_the_crop_box_shows_the_page`
+  and `test:crates/pdfcore/tests/annotate_box_probe.rs#a_baked_mark_follows_the_box_origin`
+  cover the drawn path, and `test:crates/pdfcore/tests/annotate_box_probe.rs#a_crop_box_is_clipped_to_the_media_box`
+  pins the intersection rule.
 - **The rest of the path is pinned by the same probe:** the baseline page still puts
   the mark where the display rectangle says, an inherited `/MediaBox` behaves like a
   direct one, and an existing link survives while an indirect `/Annots` array stays a
