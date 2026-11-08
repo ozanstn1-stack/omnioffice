@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.24.0] - 2026-11-08
+
 ### Changed
 
 - **The font cache's memory budget is now measured, not estimated:** a counting

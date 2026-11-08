@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.23.0
+# Release Readiness — OmniOffice 7.24.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Önbellek belleği ölçülerek kanıtlandı
+## Implemented (this cycle, 7.24.0) - Önbellek belleği ölçülerek kanıtlandı
 
 - **The font cache holds no more than its budget, measured:** a counting global
   allocator compares the peak of an imposition with the cache against the peak
