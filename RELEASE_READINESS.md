@@ -65,6 +65,28 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Flatten probu
+
+- **Flatten skips a hidden annotation instead of baking it in:** an annotation
+  whose `/F` carries the Hidden bit (ISO 32000-1 12.5.3) is never displayed, so
+  painting its appearance added a stamp or note to the flattened file that was not
+  in the document the user saw. It is now left in place and reported.
+  `test:crates/pdfcore/tests/flatten_probe.rs#a_hidden_annotation_is_not_drawn`
+- **The rest of the contract is pinned by the same probe:** an appearance lands on
+  its `/Rect` (also when the box is smaller or the rectangle reversed), an
+  annotation without the print flag is still drawn because it is visible on screen,
+  and an annotation with no appearance is either drawn or kept and reported rather
+  than silently dropped.
+  `test:crates/pdfcore/tests/flatten_probe.rs#an_appearance_lands_on_its_rect`
+  `test:crates/pdfcore/tests/flatten_probe.rs#a_smaller_bbox_is_scaled_onto_the_rect`
+  `test:crates/pdfcore/tests/flatten_probe.rs#a_reversed_rect_is_normalised`
+  `test:crates/pdfcore/tests/flatten_probe.rs#an_annotation_without_the_print_flag_is_still_drawn`
+  `test:crates/pdfcore/tests/flatten_probe.rs#an_appearance_without_a_box_is_reported`
+- **Still open:** `/AP /Matrix` is read but not pinned by a case yet, widgets and
+  field values are not in this probe, and `/NoRotate`/`/OC` annotations are out of
+  scope.
+  (no test: those paths are untouched by this slice.)
+
 ## Implemented (this cycle, 7.25.0) - Resize ve Crop probu
 
 - **Resize moves a page's annotations with its content:** the content went through
