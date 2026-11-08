@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The document health check no longer passes a document that has no title:** the
+  `a11y.missing-title` finding tested the title the screen *shows*, which falls back
+  to the file name, so a document without a `/Title` in its metadata was reported as
+  fine. Conformance asks for the metadata itself (PDF/UA 7.1), and the file name is
+  only what a screen reader announces when that metadata is empty. The display keeps
+  its fallback; the finding now looks at the document's own title.
+
 ## [7.26.0] - 2026-11-08
 
 ### Fixed

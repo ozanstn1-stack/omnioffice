@@ -134,3 +134,30 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   `repro:check` OK.
 - **Sıradaki**: v7.25.0 yayın doğrulaması (20 asset) + v7.26.0 push → PR → CI → merge → tag → doğrulama.
 - **Ders**: `str.replace` anchor'ları bu turda `assert` ile korundu (üç kez sessiz düşme olmuştu).
+
+## v7.26.0 ETİKETLENDİ · #683 birleşti (2026-11-08 12:30 UTC)
+- **v7.26.0** tag `491f5ad`; Release workflow yayınlıyor (Windows installer sürüyor), Android yine
+  `ANDROID_KEYSTORE_BASE64` yüzünden düştü (kullanıcı adımı).
+- **#683 birleşti** (`a206fc1`): repair probu, **10/10 yeşil, kusur yok** → sürüm çıkarılmadı.
+  Oracle hatası düzeltildi (miras alınan `/MediaBox`, 7.7.3.4).
+- **Sıradaki**: v7.26.0 desktop doğrulaması (14 asset) → sonra `inspect` probu (Opus yedeği:
+  outline round-trip + `evaluate_findings` yanlış "her şey yolunda").
+
+## v7.26.0 DOĞRULANDI (desktop) — 2026-11-08 13:05 UTC
+- Release workflow **success**; **14 asset** (Linux 2 + Windows 2 + 3 SHA256SUMS + build-info +
+  latest.json + 2 SBOM + `.sig` 444 B + desktop zarfı). Gövde == CHANGELOG (389 bayt),
+  `SHA256SUMS.txt` **8/8 OK**, `coverage` → *"every published asset is covered by 1 envelope"*.
+- **Eksik: 5 Android asset + android zarfı** → `ANDROID_KEYSTORE_BASE64` yok (kullanıcı adımı).
+- Disk temizlendi.
+- **Sıradaki**: `inspect` probu (Opus `85f53da8` yedeği) — outline round-trip + `evaluate_findings`.
+
+## PR 8: inspect probu (Opus `57f42463`) — 2026-11-08 14:20 UTC
+- Branch `feat/inspect-probe`, **PR #684**. Prob 8 vaka; **bir gerçek hata**:
+  `a11y.missing-title` ekranın gösterdiği başlığı (dosya adına düşen) test ediyordu → `/Title`'ı
+  olmayan belge "sorun yok" diyordu. Düzeltme: bulgu `title_override`'a bakıyor; gösterim geri
+  düşüşünü koruyor. Mevcut test (`a_file_name_stands_in_for_a_missing_title`) çelişkide ISO'ya
+  (PDF/UA 7.1) göre ikiye ayrıldı.
+- İlk koşudaki 3 kırmızının **ikisi fixture hatasıydı** (pdfa bulgusu gerçekti; outline nesneleri hiç
+  kurulmamıştı) — sınıflandırma PR gövdesinde.
+- Yerel: prob **8/8**, lib **344**, clippy temiz, `inspect.rs` 1078 → **1077** (bütçe içeriden).
+- **Sıradaki**: CI yeşilse squash merge → **v7.27.0 sürüm treni** (kullanıcıya dönük düzeltme var).

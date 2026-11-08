@@ -767,8 +767,8 @@ pub fn evaluate_findings(inspection: &mut DocumentInspection) {
         });
     };
 
-    let title = inspection.title();
-    if title.trim().is_empty() {
+    // The metadata `/Title`, not the file name `title()` shows.
+    if inspection.title_override.trim().is_empty() {
         add(
             Severity::Error,
             "a11y.missing-title",
@@ -915,15 +915,14 @@ mod tests {
     }
 
     #[test]
-    fn a_file_name_stands_in_for_a_missing_title() {
-        // A screen reader announces the file name, so that is a usable title and
-        // must not be reported as a failure.
+    fn a_file_name_stands_in_for_display_but_not_for_conformance() {
+        // Display keeps the file name; conformance wants the metadata (PDF/UA 7.1).
         let mut inspection = base();
         inspection.language = "en".into();
         inspection.struct_tree = true;
         evaluate_findings(&mut inspection);
         let codes: Vec<&str> = inspection.findings.iter().map(|entry| entry.code.as_str()).collect();
-        assert!(!codes.contains(&"a11y.missing-title"), "unexpected findings: {codes:?}");
+        assert!(codes.contains(&"a11y.missing-title"), "the metadata title is what conformance wants: {codes:?}");
         assert_eq!(inspection.title(), "invoice");
     }
 

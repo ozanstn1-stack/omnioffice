@@ -65,6 +65,33 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Denetim (inspect) probu
+
+- **A document with no metadata title is reported as such:** the
+  `a11y.missing-title` finding used to test the title the screen shows, which falls
+  back to the file name, so a document whose `/Title` is empty came back clean. The
+  display keeps that fallback; the finding now reads the document's own title, which
+  is what conformance asks for (PDF/UA 7.1).
+  `test:crates/pdfcore/tests/inspect_probe.rs#a_document_with_no_metadata_is_told_what_is_missing`
+  `test:crates/pdfcore/src/inspect.rs#a_file_name_stands_in_for_display_but_not_for_conformance`
+- **The rest of the inspector is pinned by the same probe:** a complete document
+  reports no accessibility error, a figure without `/Alt` is counted and reported,
+  the page and object counts follow the file, an outline survives read → write →
+  read with its titles, destinations and nesting, the writer refuses a destination
+  outside the document, a document without an outline reports none, and a cyclic
+  `/Next` chain terminates.
+  `test:crates/pdfcore/tests/inspect_probe.rs#a_document_that_is_fine_gets_no_errors`
+  `test:crates/pdfcore/tests/inspect_probe.rs#a_figure_without_alt_text_is_an_error`
+  `test:crates/pdfcore/tests/inspect_probe.rs#the_page_and_object_counts_match_the_file`
+  `test:crates/pdfcore/tests/inspect_probe.rs#an_outline_survives_a_round_trip_through_the_writer`
+  `test:crates/pdfcore/tests/inspect_probe.rs#the_writer_refuses_a_destination_outside_the_document`
+  `test:crates/pdfcore/tests/inspect_probe.rs#a_document_without_an_outline_reports_none`
+  `test:crates/pdfcore/tests/inspect_probe.rs#a_cyclic_outline_terminates`
+- **Still open:** an unembedded font is reported as a `pdfa.*` finding, which this
+  probe leaves alone; link-target resolution, encryption and form-appearance rules
+  are not probed yet.
+  (no test: those paths are outside this slice.)
+
 ## Implemented (this cycle, 7.26.0) - Flatten probu
 
 - **Flatten skips a hidden annotation instead of baking it in:** an annotation
