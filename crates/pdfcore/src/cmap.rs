@@ -22,11 +22,12 @@
 
 use std::collections::BTreeMap;
 
+pub(crate) mod cid;
 mod lex;
 use lex::{tokenize, Token};
 
-/// A stream larger than this is not a text map and is refused.
-const MAX_STREAM: usize = 1 << 20;
+/// A stream larger than this is not a map and is refused.
+pub(crate) const MAX_STREAM: usize = 1 << 20;
 
 /// The most mappings a map may hold: two bytes of code space.
 const MAX_ENTRIES: usize = 1 << 16;
@@ -222,6 +223,15 @@ fn keep(symbol: char) -> bool {
 
 fn two_byte_code(bytes: &[u8]) -> Option<u16> {
     (bytes.len() == 2).then(|| u16::from_be_bytes([bytes[0], bytes[1]]))
+}
+
+/// Fuzz entry for the `/Encoding` reader, which has no public API: `cargo fuzz`
+/// compiles with `--cfg fuzzing`.
+#[cfg(fuzzing)]
+#[doc(hidden)]
+pub fn fuzz_cid(program: &[u8], identity_base: bool) -> Option<usize> {
+    let base = identity_base.then_some(&b"Identity-H"[..]);
+    cid::read(program, base).map(|map| map.probe())
 }
 
 #[cfg(test)]

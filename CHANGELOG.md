@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A note can be drawn with a font that embeds its own `/Encoding` CMap:** a
+  composite font whose `/Encoding` is a stream - `cidrange`/`cidchar` on top of
+  an identity or an `Identity-H` base - is now read, so its codes select the CIDs
+  its `/W` is keyed by and the note keeps its face. The font is still referenced,
+  never copied. Refused, and unchanged in output: a codespace that is not exactly
+  two bytes per code (a one-byte or mixed font would silently shift every glyph
+  after the mistake), a base CMap this build does not ship, vertical writing, and
+  a character whose CID is unmapped, `.notdef`, or has no advance.
+
 ## [7.19.0] - 2026-11-08
 
 ### Added

@@ -308,9 +308,12 @@ Effort estimates assume a single developer.
   frame. A note whose `/DA` font is a document's embedded Type0 font with
   `/Identity-H` codes is drawn in that font when no other face can show it:
   `/ToUnicode` gives the codes, `/W` and `/DW` the advances, and the font is
-  referenced where it already is, never copied (`nup_freetext_cid`).
-  Still open: vertical writing (`/Identity-V`), predefined CMaps and an
-  embedded CMap stream, as are redactions and `/NoZoom`.
+  referenced where it already is, never copied (`nup_freetext_cid`). A font that
+  embeds its own `/Encoding` CMap is read too, as long as its codes are two bytes
+  wide and its base - if it names one - is `Identity-H`
+  (`nup_freetext_cid_cmap`). Still open: vertical writing (`/Identity-V`),
+  predefined CMaps, one-byte and mixed codespaces, as are redactions and
+  `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent
   numbered lists no longer continue each other; the Writer editor and the PDF
