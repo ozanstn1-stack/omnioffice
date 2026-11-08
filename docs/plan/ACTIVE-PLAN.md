@@ -134,3 +134,11 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   `repro:check` OK.
 - **Sıradaki**: v7.25.0 yayın doğrulaması (20 asset) + v7.26.0 push → PR → CI → merge → tag → doğrulama.
 - **Ders**: `str.replace` anchor'ları bu turda `assert` ile korundu (üç kez sessiz düşme olmuştu).
+
+## v7.26.0 ETİKETLENDİ · #683 birleşti (2026-11-08 12:30 UTC)
+- **v7.26.0** tag `491f5ad`; Release workflow yayınlıyor (Windows installer sürüyor), Android yine
+  `ANDROID_KEYSTORE_BASE64` yüzünden düştü (kullanıcı adımı).
+- **#683 birleşti** (`a206fc1`): repair probu, **10/10 yeşil, kusur yok** → sürüm çıkarılmadı.
+  Oracle hatası düzeltildi (miras alınan `/MediaBox`, 7.7.3.4).
+- **Sıradaki**: v7.26.0 desktop doğrulaması (14 asset) → sonra `inspect` probu (Opus yedeği:
+  outline round-trip + `evaluate_findings` yanlış "her şey yolunda").
