@@ -150,3 +150,14 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **Eksik: 5 Android asset + android zarfı** → `ANDROID_KEYSTORE_BASE64` yok (kullanıcı adımı).
 - Disk temizlendi.
 - **Sıradaki**: `inspect` probu (Opus `85f53da8` yedeği) — outline round-trip + `evaluate_findings`.
+
+## PR 8: inspect probu (Opus `57f42463`) — 2026-11-08 14:20 UTC
+- Branch `feat/inspect-probe`, **PR #684**. Prob 8 vaka; **bir gerçek hata**:
+  `a11y.missing-title` ekranın gösterdiği başlığı (dosya adına düşen) test ediyordu → `/Title`'ı
+  olmayan belge "sorun yok" diyordu. Düzeltme: bulgu `title_override`'a bakıyor; gösterim geri
+  düşüşünü koruyor. Mevcut test (`a_file_name_stands_in_for_a_missing_title`) çelişkide ISO'ya
+  (PDF/UA 7.1) göre ikiye ayrıldı.
+- İlk koşudaki 3 kırmızının **ikisi fixture hatasıydı** (pdfa bulgusu gerçekti; outline nesneleri hiç
+  kurulmamıştı) — sınıflandırma PR gövdesinde.
+- Yerel: prob **8/8**, lib **344**, clippy temiz, `inspect.rs` 1078 → **1077** (bütçe içeriden).
+- **Sıradaki**: CI yeşilse squash merge → **v7.27.0 sürüm treni** (kullanıcıya dönük düzeltme var).
