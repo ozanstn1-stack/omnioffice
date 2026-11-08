@@ -2429,3 +2429,22 @@ Davranış ve kabul ölçütleri Opus'un planıyla **aynı**.
 4. Type0 fontu olmayan belge **bayt-aynı**; 5) Latin metin **bayt-aynı**.
 6. İki annotasyon aynı `/DA` fontunu paylaşırsa çıktıda tek `/Type0` + tek descriptor +
    tek program (idempotent).
+
+## NEREDE KALDIM (1b) — 2026-11-08 00:15 UTC
+Branch `feat/doc-cid-face` (master `a294214` üstünde, **henüz push edilmedi**):
+- `bb2e237` plan · `50b1095` slot taşıması (`face/slots.rs`, face 238→114, **saf taşıma**) ·
+  `921229d` özellik (`cidfont.rs` 177 + `cidfont/widths.rs` 226) · `a5bf969` 20 okuyucu testi.
+- Doğrulandı: `cargo test -p pdfcore --lib` **306** (master 286 + 20), clippy `-D warnings`
+  temiz, `files:check` temiz (`face.rs` küçüldü, yeni dosyalar 226/177/224 ≤ 400).
+- **PR #666 birleşti** (`a294214`, squash): 21/21 kontrol yeşil, fuzz hedefi ilk koşuda
+  sekiz-bayt taşmasını buldu ve düzeltildi; dal silindi.
+
+## SIRADAKİ ADIM (1b kalanı)
+1. **N-up entegrasyon testi** (`crates/pdfcore/tests/nup_freetext_cid.rs`): Type0 belge →
+   CJK not belge fontuyla çizilir (operand gerçek CID'ler), eksik glif → **bayt-aynı** çıktı,
+   Latin metin değişmez, iki annotasyon tek font nesnesini paylaşır (idempotent).
+2. `fuzz/fuzz_targets/cid_widths.rs` + `fuzz-pr.yml` adımı (`/W` sayısal ayrıştırıcı).
+3. CHANGELOG `[Unreleased] Added` + `docs/roadmap.md`; `claims:check` her iddiaya test adı ister.
+4. `npm run files:update` (face.rs 114, yeni dosyalar) → baseline sıkılaşır.
+5. Push → PR (gövdede sıra tablosu, reddetme listesi, bütçe tablosu, kapsam dışı) → CI yeşilse merge.
+6. Sonra **v7.19.0 sürüm treni** (1b içinde; 20 asset + iki zarf doğrulaması).
