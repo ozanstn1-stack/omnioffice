@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.18.0
+# Release Readiness — OmniOffice 7.19.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,43 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.19.0) - Belgenin kendi kompozit fontu
+
+- **A document's `/ToUnicode` map is read (and inverted):** a Type0 font names
+  its glyph codes and maps them back to characters; drawing with such a font
+  needs the other direction. The reader is lenient on purpose - a broken entry
+  costs only itself - keeps the lowest code when a character is listed twice,
+  skips any destination that is not exactly one character (a ligature, a lone
+  surrogate) and never draws a placeholder, and bounds the stream before it
+  allocates. The fuzz target found a real overflow on its first run: a
+  destination spanning all eight bytes shifted a `u64` by its own width.
+  `test:crates/pdfcore/src/cmap/tests.rs#a_bfrange_increments_the_destination`
+  `test:crates/pdfcore/src/cmap/tests.rs#a_destination_of_any_width_up_to_eight_bytes_is_fine`
+  `test:crates/pdfcore/src/cmap/tests.rs#the_lowest_code_wins_for_a_character_listed_twice`
+- **A free-text note is drawn in the document's own composite font:** an
+  embedded `Type0` font with `/Identity-H` codes is read from
+  `/DescendantFonts`, its advances from `/W` and `/DW`, its characters from
+  `/ToUnicode`, and the note is printed in it by reference - the font, its
+  descriptor and its program are not copied. A `/CIDToGIDMap` that sends a used
+  code to glyph 0 costs that character. Everything else falls through to
+  WinAnsi, then the bundled face, then no text at all; a malformed `/W` rejects
+  the whole font rather than guess a default width for one code.
+  `test:crates/pdfcore/tests/nup_freetext_cid.rs#a_cjk_note_is_drawn_in_the_document_font`
+  `test:crates/pdfcore/tests/nup_freetext_cid.rs#a_missing_glyph_keeps_the_note_out`
+  `test:crates/pdfcore/tests/nup_freetext_cid.rs#latin_text_still_uses_winansi`
+  `test:crates/pdfcore/tests/nup_freetext_cid.rs#two_notes_share_one_font_object`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/tests.rs#an_identity_h_cid_font_is_read`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/tests.rs#an_identity_v_or_predefined_encoding_is_refused`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/tests.rs#a_font_without_a_program_is_refused`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/tests.rs#broken_widths_reject_the_font`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/widths.rs#both_forms_are_read_and_mixed`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/widths.rs#random_arrays_never_panic`
+- **Still open, unchanged:** vertical writing (`/Identity-V`), predefined and
+  embedded CMaps, non-embedded programs, caption text (a `/Cap` annotation
+  carries no `/DA`), and notes with more than 255 distinct characters.
+  (no test: these are the refusals above, which the reader tests assert one by
+  one; what is missing is the support, not the check.)
 
 ## Implemented (this cycle, 7.18.0) - `/BE` bulut kenarlıklar + iki zarf (desktop + Android)
 
