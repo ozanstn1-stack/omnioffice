@@ -2459,7 +2459,8 @@ Branch `feat/doc-cid-face` (master `a294214` üstünde, **henüz push edilmedi**
   (`Cargo.toml`/`Cargo.lock`/`package*.json`/`tauri.conf.json`), versionCode **7019000**,
   README (sürüm satırı + What's new + indirme bağlantıları), RELEASE_READINESS 7.19.0 bölümü,
   fastlane `7019000.txt` (en-US üretildi, tr-TR elle).
-- Push → PR → CI yeşil → squash merge → auto-tag `v7.19.0` → release workflow.
+- Push → PR **#668** (19/19 yeşil) → squash merge `c0118ee` → **auto-tag `v7.19.0` → `c0118ee`**
+  → Release + Android workflow'ları koşuyor (workflow_dispatch).
   Doğrulama: **20 asset** (`-desktop` + `-android` zarfları), gövde == CHANGELOG bölümü,
   `latest.json` imza, `SHA256SUMS.txt` 8 satır.
 
