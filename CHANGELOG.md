@@ -6,8 +6,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [7.22.0] - 2026-11-08
-
 ### Changed
 
 - **A simple `/DR` font is read once per document too:** `/Widths`, `/Encoding`,
@@ -19,6 +17,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   --example nup_bench`): a composite font went from **896 ms to 183 ms** and a
   simple font from **205 ms to 178 ms**. The benchmark compares the two outputs
   byte for byte before printing, so the cache is measured and proven invisible.
+
+## [7.22.0] - 2026-11-08
 
 ### Changed
 
