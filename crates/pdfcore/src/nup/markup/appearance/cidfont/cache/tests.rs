@@ -60,6 +60,16 @@ fn the_same_font_is_read_once_however_many_notes_use_it() {
     assert_eq!(stats.hits, 199);
     assert_eq!(stats.misses, 1);
     assert_eq!(stats.bypassed, 0);
+    assert_eq!(stats.resident_bytes, font_bytes(&doc, id));
+    assert!(stats.peak_bytes >= stats.resident_bytes, "the peak covers what is resident");
+}
+
+/// The size the cache charges for one font, read back through a fresh load.
+fn font_bytes(doc: &Document, id: ObjectId) -> usize {
+    let dict = doc.get_dictionary(id).expect("font").clone();
+    let mut cache = FontCache::new();
+    let font = cache.get_or_load(doc, id, &dict).expect("font");
+    cache.stats().resident_bytes.max(font.heap_bytes())
 }
 
 #[test]

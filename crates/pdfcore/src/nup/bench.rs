@@ -9,9 +9,29 @@ use lopdf::Document;
 
 use super::{build_nup, CancelToken, NupOptions, PdfError, PdfResult, ProgressEvent};
 
+/// How the font cache should behave for one imposition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CacheMode {
+    /// Read every font on every note, which is how the code behaved before the
+    /// cache. The output is identical; only the work differs.
+    Off,
+    /// Cache up to this many bytes.
+    On { budget_bytes: usize },
+}
+
 /// Imposes `input` with `budget` bytes of room for parsed fonts. Zero reads every
 /// font on every note, which is how this code behaved before the cache.
 pub fn nup_pdf_bytes_with_font_cache(input: &[u8], options: &NupOptions, budget: usize) -> PdfResult<Vec<u8>> {
+    impose_bytes(input, options, budget)
+}
+
+/// Imposes `input` in `mode`; the output is the same either way, only the work
+/// differs, which is what the benchmark and the memory test rely on.
+pub fn nup_pdf_bytes_in_mode(input: &[u8], options: &NupOptions, mode: CacheMode) -> PdfResult<Vec<u8>> {
+    let budget = match mode {
+        CacheMode::Off => 0,
+        CacheMode::On { budget_bytes } => budget_bytes,
+    };
     impose_bytes(input, options, budget)
 }
 

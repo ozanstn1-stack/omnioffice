@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The font cache's memory budget is now measured, not estimated:** a counting
+  allocator in the test suite proves that a 4 MiB budget really holds at most that
+  much while imposing a document with sixty-four composite fonts, and that a cache
+  which fits its fonts *lowers* the peak - on that fixture the cached run peaked at
+  about 6 MB against 21 MB uncached, because reading a map per note builds and
+  drops one map per note. The benchmark also gained a real-size scenario: a
+  twenty-thousand-entry `/ToUnicode` map costs 1.35x a thousand-entry one with the
+  cache on (223 ms against 166 ms for 2000 notes), and 13.3 s without the cache.
+
 ## [7.23.0] - 2026-11-08
 
 ### Changed

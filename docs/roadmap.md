@@ -315,8 +315,9 @@ Effort estimates assume a single developer.
   widths, as Shift-JIS does: every code is written at its own length
   (`nup_freetext_cid_narrow`), and each font's map, glyph map and widths are
   read once per document rather than once per note
-  (`cidfont::cache::tests`), simple fonts' metrics included, and the measurement
-  lives in `cargo run --release -p pdfcore --example nup_bench`.
+  (`cidfont::cache::tests`), simple fonts' metrics included, the budget is held to
+  measured allocations (`font_cache_memory`), and the measurement lives in
+  `cargo run --release -p pdfcore --example nup_bench`.
   Still open: vertical writing (`/Identity-V`),
   predefined CMaps and codes longer than two bytes, as are redactions and
   `/NoZoom`.

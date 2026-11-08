@@ -33,6 +33,10 @@ pub(crate) struct FontCacheStats {
     pub(crate) simple_parses: u32,
     /// Fonts read but not stored because the budget was full.
     pub(crate) bypassed: u32,
+    /// Bytes the cache holds when the imposition returns.
+    pub(crate) resident_bytes: usize,
+    /// The most it held at once.
+    pub(crate) peak_bytes: usize,
 }
 
 /// A stored answer: either a usable font or the fact that it is not usable.
@@ -106,6 +110,8 @@ impl FontCache {
             return Some(font);
         }
         self.bytes += size;
+        self.stats.resident_bytes = self.bytes;
+        self.stats.peak_bytes = self.stats.peak_bytes.max(self.bytes);
         self.entries.insert(id, Entry::Ready(Arc::clone(&font)));
         Some(font)
     }
@@ -135,6 +141,8 @@ impl FontCache {
             return Some(font);
         }
         self.bytes += size;
+        self.stats.resident_bytes = self.bytes;
+        self.stats.peak_bytes = self.stats.peak_bytes.max(self.bytes);
         self.simple_fonts.insert(id, Some(Arc::clone(&font)));
         Some(font)
     }
