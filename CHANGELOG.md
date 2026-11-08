@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.21.0] - 2026-11-08
+
 ### Added
 
 - **A note can be drawn with a font whose codes are one byte wide:** an embedded
