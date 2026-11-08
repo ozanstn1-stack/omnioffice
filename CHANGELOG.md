@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.27.0] - 2026-11-08
+
 ### Fixed
 
 - **The document health check no longer passes a document that has no title:** the
