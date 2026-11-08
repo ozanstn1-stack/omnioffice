@@ -9,10 +9,37 @@
 //! cargo run --release -p pdfcore --example nup_bench -- --pages 500 --notes 4 --runs 5
 //! ```
 
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use lopdf::{dictionary, Dictionary, Document, Object, Stream};
 use pdfcore::nup::{bench::nup_pdf_bytes_with_font_cache, NupOptions, DEFAULT_FONT_CACHE_BYTES};
+
+/// Counts live bytes so a run can report its peak as well as its time.
+struct Counting;
+
+static LIVE: AtomicUsize = AtomicUsize::new(0);
+static PEAK: AtomicUsize = AtomicUsize::new(0);
+
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let pointer = unsafe { System.alloc(layout) };
+        if !pointer.is_null() {
+            let live = LIVE.fetch_add(layout.size(), Ordering::Relaxed) + layout.size();
+            PEAK.fetch_max(live, Ordering::Relaxed);
+        }
+        pointer
+    }
+
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        LIVE.fetch_sub(layout.size(), Ordering::Relaxed);
+        unsafe { System.dealloc(pointer, layout) }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: Counting = Counting;
 
 /// What to measure; the defaults describe a large annotated document.
 struct Args {
@@ -23,7 +50,7 @@ struct Args {
 }
 
 fn parse_args() -> Args {
-    let mut args = Args { pages: 500, notes: 4, runs: 5, fonts: "mixed".to_string() };
+    let mut args = Args { pages: 500, notes: 4, runs: 5, fonts: "all".to_string() };
     let mut items = std::env::args().skip(1);
     while let Some(flag) = items.next() {
         let mut value = || items.next().expect("a value after the flag");
@@ -51,30 +78,49 @@ fn utf16(text: &str) -> Object {
     Object::String(units, lopdf::StringFormat::Literal)
 }
 
+/// How large a composite font to build: a real CJK font carries thousands of
+/// entries, and the lookups have to stay fast at that size.
+struct FontSize {
+    to_unicode: u32,
+    widths: usize,
+    glyph_map: bool,
+}
+
+impl Default for FontSize {
+    fn default() -> Self {
+        Self { to_unicode: 1_000, widths: 2_000, glyph_map: false }
+    }
+}
+
 /// One composite font: Identity-H, an embedded program, `/W` and `/ToUnicode`
 /// for the two ideographs the notes use.
-fn composite_font(doc: &mut Document) -> Object {
+fn composite_font(doc: &mut Document, size: &FontSize) -> Object {
     let program = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), vec![0u8; 4096])));
-    let map = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), to_unicode())));
+    let map = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), to_unicode_entries(size.to_unicode))));
     let descriptor = doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "FontDescriptor",
         "Ascent" => 880i64,
         "FontFile2" => Object::Reference(program),
     }));
-    // 4 000 widths, so parsing `/W` is real work rather than a formality.
-    let mut widths: Vec<Object> = (0..2_000).map(|index| Object::Integer(500 + index % 200)).collect();
-    widths.truncate(2_000);
-    let child = doc.add_object(Object::Dictionary(dictionary! {
+    let widths: Vec<Object> = (0..size.widths).map(|index| Object::Integer(500 + (index % 200) as i64)).collect();
+    let mut child = dictionary! {
         "Type" => "Font",
         "Subtype" => "CIDFontType2",
         "BaseFont" => Object::Name(b"Bench".to_vec()),
         "FontDescriptor" => Object::Reference(descriptor),
         "DW" => 1000i64,
-        "W" => Object::Array(vec![
-            Object::Integer(3),
-            Object::Array(widths),
-        ]),
-    }));
+        "W" => Object::Array(vec![Object::Integer(3), Object::Array(widths)]),
+    };
+    if size.glyph_map {
+        // Two bytes per CID, with every glyph present.
+        let mut table = vec![0u8; 65_536 * 2];
+        for cid in 0u16..65_535 {
+            table[usize::from(cid) * 2 + 1] = (cid % 251) as u8 | 1;
+        }
+        let stream = doc.add_object(Object::Stream(Stream::new(Dictionary::new(), table)));
+        child.set("CIDToGIDMap", Object::Reference(stream));
+    }
+    let child = doc.add_object(Object::Dictionary(child));
     Object::Reference(doc.add_object(Object::Dictionary(dictionary! {
         "Type" => "Font",
         "Subtype" => "Type0",
@@ -85,14 +131,14 @@ fn composite_font(doc: &mut Document) -> Object {
     })))
 }
 
-/// A `/ToUnicode` with a thousand entries, so the read is not trivial.
-fn to_unicode() -> Vec<u8> {
+/// A `/ToUnicode` with `entries` codes, ending with the four the notes use.
+fn to_unicode_entries(entries: u32) -> Vec<u8> {
     let mut body = String::from(
         "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n\
          1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n",
     );
-    body.push_str("1000 beginbfchar\n");
-    for code in 0x0300u32..0x0300 + 1000 {
+    body.push_str(&format!("{entries} beginbfchar\n"));
+    for code in 0x0300u32..0x0300 + entries {
         body.push_str(&format!("<{code:04X}> <{code:04X}>\n"));
     }
     body.push_str("endbfchar\n4 beginbfchar\n<0003> <0020>\n<0024> <4E2D>\n<0025> <4E01>\n<0026> <4E09>\nendbfchar\n");
@@ -121,12 +167,16 @@ fn simple_font(doc: &mut Document) -> Object {
 
 /// A document with `pages` pages, `notes` notes on each, sharing one font.
 fn build(pages: usize, notes: usize, kind: &str) -> Vec<u8> {
+    let size = match kind {
+        "composite-large" => FontSize { to_unicode: 20_000, widths: 4_000, glyph_map: true },
+        _ => FontSize::default(),
+    };
     let mut doc = Document::with_version("1.7");
     let pages_id = doc.new_object_id();
     let composite = kind != "simple";
     let mut fonts = Dictionary::new();
     if composite {
-        fonts.set("F1", composite_font(&mut doc));
+        fonts.set("F1", composite_font(&mut doc, &size));
     } else {
         fonts.set("F1", simple_font(&mut doc));
     }
@@ -200,6 +250,7 @@ fn main() {
     let args = parse_args();
     let kinds: Vec<&str> = match args.fonts.as_str() {
         "mixed" => vec!["composite", "simple"],
+        "all" => vec!["composite", "composite-large", "simple"],
         other => vec![other],
     };
     let options = NupOptions::default();
@@ -222,12 +273,14 @@ fn main() {
             std::process::exit(1);
         }
         let notes = args.pages * args.notes;
+        let peak = PEAK.load(Ordering::Relaxed);
         println!(
-            "{kind}: {} pages x {} notes = {notes} notes\n  cache off: {:?} (median)\n  cache on:  {:?} (median)",
+            "{kind}: {} pages x {} notes = {notes} notes\n  cache off: {:?} (median)\n  cache on:  {:?} (median)\n  peak heap: {:.1} MiB",
             args.pages,
             args.notes,
             median(cold),
             median(warm),
+            peak as f64 / (1024.0 * 1024.0),
         );
     }
 }
