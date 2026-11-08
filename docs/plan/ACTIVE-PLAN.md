@@ -2537,3 +2537,52 @@ Branch `feat/pdfcore-embedded-cmap`, **PR #669 açık**, CI koşuyor.
   (14 `test:` işareti); fastlane `7020000.txt` (en-US üretildi, tr-TR elle).
 - **SIRADAKİ:** push → PR → CI → squash merge → auto-tag `v7.20.0` → 20 asset + iki zarf
   doğrulaması. Sonra PR 3 (tek baytlık codespace + `ToUnicode` kaynak uzunluğu).
+
+---
+
+# v7.20.0 yayınlandı (PR #670 birleşti, `6e34745`) — tag + release koşuyor
+- **#669** `fd089fc` (20/20 yeşil) · **#670** `6e34745` (17 başarı + 2 skip).
+- Tag `v7.20.0` → Release + Android workflow'ları; doğrulama izleyicisi `/tmp/watch_rel20.sh`.
+
+---
+
+# SERİ PR 3: tek baytlık ve karışık codespace'ler
+**Opus planı `eb85fc85`.** Ölçülmesi gereken tek şey: `cid::read` bugün iki baytlık bir girdi
+codespace dışındaysa **reddediyor mu** (Branch A) yoksa yok sayıyor mu (Branch B) — uygulamada
+`grep -n space crates/pdfcore/src/cmap/cid.rs` ile bakılacak.
+
+## Kararlar
+1. **`Code { value: u16, width: u8 }`** (`cmap/code.rs`, yeni ~70): `/ToUnicode` her kaynak kodun
+   **uzunluğunu** saklar. Aksi hâlde `<41>`→A ve `<0041>`→B çiftinde `A` için B'nin glifi
+   çizilir. `ToUnicode::code` sözleşmesi bozulmaz: `sized(char) -> Option<Code>`, `code` onun
+   `value`'su.
+2. **Son genişliği `/Encoding` codespace'i belirler.** İki baytlık-only fontta bugünkü
+   hoşgörü korunur (`<41>` → `0041`); tek bayt/karışık haritada katı.
+3. **`SlotMetrics.codes: [Code; 256]`** (tek dizi, paralel dizi yok); `operand` `Code::hex()`
+   ile `{:02X}` / `{:04X}` yazar. `textfit.rs` ve `freetext.rs` **değişmez** (slot tipi `u8`).
+4. **Karışık notta operand** tek `<hex>` stringi: `A`→`<41>`, `0x20`→`<20>`, `あ`→`<82A0>` ⇒
+   `<412082A0>`. Görüntüleyici aynı şekilde böler **çünkü** her kod kendi genişliğindeki bir
+   aralığa kabul edilmiş ve codespace **prefix-free**.
+5. **`CidMap` anahtarı genişlik taşır:** `cid(&self, code: Code)`; içte `wide` (bugünkü) +
+   `narrow` tabloları, `MAX_ENTRIES` ikisi için ortak. Identity yalnız genişlik 2.
+6. **Prefix kuralı** (programın tamamı okunduktan sonra): dar bir aralık, geniş bir aralığın
+   **ilk bayt** aralığıyla (veya Identity'de `00..FF`) örtüşürse harita reddedilir →
+   `<00><FF>` + `<8140><9FFC>` reddedilir (0x81 tek bayt okunurdu).
+7. **Reddetmeler:** uçları farklı uzunlukta codespace, uzunluk ∉ {1,2} (3-4 bayt kod), kendi
+   genişliğinde codespace'i olmayan girdi, iki ucu farklı genişlikte girdi, dar girdi tek bir
+   dar aralığın dışında, `usecmap` ≠ Identity-H, `/WMode 1`/`/Identity-V`, `MAX_ENTRIES`/`MAX_STREAM`.
+   Tek baytlık `notdef` (dar aralık altında) **font reddi değil**: yalnız o kodları düşürür.
+
+## Yerleşim
+`cmap/code.rs` (~70) + testleri · `cmap/fuzz.rs` (fuzz_cid taşınır, yol aynı kalır) ·
+`cmap/cid/space.rs` (~150, codespace taşınır + narrow/prefix) + testleri · `cmap/cid.rs` 325 → ≤315
+(`Table`, `admit`) · `cmap.rs` 238 → ≤230 · `cidfont/mapping.rs` `Mapping::code(Code)` ·
+`cidfont.rs` `DocCid::code -> Option<Code>` · `face/slots.rs` `[Code; 256]` (±0) ·
+yeni `tests/nup_freetext_cid_narrow.rs` (≤400, 6 vaka).
+
+## Adımlar
+1) `cmap/code.rs` + ToUnicode geçişi (davranış aynı) · 2) codespace'i `space.rs`'e taşı (saf) ·
+3) narrow/karışık + reddetmeler + testler · 4) mapping/cidfont/slots geçişi ·
+5) uçtan uca test · 6) CHANGELOG/roadmap/docs-stats.
+**Kabul:** mevcut `nup_freetext_cid` ve `nup_freetext_cid_cmap` **hiçbir beklenen değer
+değişmeden** geçer; `git diff --stat crates/pdfcore/tests` yalnız yeni dosyayı gösterir.
