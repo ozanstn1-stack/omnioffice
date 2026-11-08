@@ -230,3 +230,27 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: `release-guard` OK (7.29.0 / 7029000), `claims:check` **424 iddia / 593 işaret**, 97 döngü
   bölümü, güncel döngü 7.29.0.
 - **Sıradaki**: PR → CI → squash merge → tag `v7.29.0` → Release + Android → **20 asset** doğrulaması.
+
+## PR 10: filigran, damga ve evidence görünen kutuya oturur (Opus `001b1e05`) — 2026-11-08 21:15 UTC
+- **Opus planı `001b1e05`** (kod okumadan yazıldı; Adım 0 bana kaldı, sonuçlar aşağıda).
+- **Adım 0 sonuçları (doğrulandı):**
+  - `watermark.rs::paint_page` (208-211): boyut `page_mediabox`'tan, `display_to_page(rot, w, h)` —
+    **kutu orijini yok, `/CropBox` yok**. Yerleşim `position_origin(display_w, display_h, …)` ile
+    görünen boyuta göre seçiliyor ama sayfaya yerleştirme orijinsiz → kaydırılmış/kırpılmış sayfada
+    filigran kayıyor, "center" kırpılmış bölgenin ortasına değil medya kutusunun ortasına düşüyor.
+  - `stamp.rs::PageCanvas::new` (145-151): aynı desen; tip **private**, uygulama crate'i kullanmıyor.
+    Metin `Td` ile `canvas.to_page` uzayında yazılıyor → aynı kayma.
+  - `evidence.rs::stamp_page` (376-389): orijini ekliyor (`translate(media[0], media[1])`,
+    kompozisyon sırası doğru) ama **`/CropBox` yok**.
+  - `page_mediabox` normalize **etmiyor** (ham dizi) → ters kutu negatif boy.
+  - Bütçeler: watermark 332, stamp 490, evidence 643, `docutil` 1137 (dolu), `annotate.rs` 1438/1475,
+    `annotate/geometry_util.rs` 98 (taban 200 altı → ratchet dışı).
+- **Yardımcı yeri**: Opus `pagegeom.rs` (yeni dosya, ratchet dışı) önerdi; ben `annotate/geometry_util.rs`
+  içindeki `visible_box`'ı **`docutil.rs`'e taşımadan**, `pagegeom.rs`'e taşıyıp `annotate` tarafında
+  yeniden dışa aktaracağım — böylece annotate bağımlılığı tersine dönmez.
+- **Prob**: `tests/watermark_box_probe.rs` (+ stamp/evidence vakaları aynı dosyada), içerik akışı
+  yürüyücüsü (`q`/`Q`/`cm` yığını, `Do` → birim kare, `Td` → nokta). İki tür doğrulama:
+  (1) **diferansiyel** — aynı seçeneklerle F1 (kutu 0,0) ile F2 (kutu 100,200) arasında matris
+  yalnız `(100,200)` kaymalı; (2) **değişmez** — "center" filigranın merkezi görünen kutunun merkezi,
+  damganın sağ-alt çapası görünen kutunun sağ-alt köşesi eksi kenar boşluğu.
+- **Sıradaki**: prob kırmızı → yardımcı + üç çağrı noktası → kapılar → PR.
