@@ -3,6 +3,7 @@
 
 use crate::docutil::*;
 use crate::error::{PdfError, PdfResult};
+use crate::pagegeom::{display_frame, page_visible_box};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
 use crate::textimg::{self, TextRenderRequest};
 use lopdf::{Document, Object};
@@ -205,10 +206,9 @@ fn paint_page(
     xobject_id: lopdf::ObjectId,
 ) -> PdfResult<()> {
     let rotation = page_rotation(doc, page_id)?;
-    let media = page_mediabox(doc, page_id)?;
-    let (page_w, page_h) = (media[2] - media[0], media[3] - media[1]);
-    let (display_w, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
-    let to_page = Matrix::display_to_page(rotation, page_w, page_h);
+    // Inside the region the viewer shows (crop box clipped to media box,
+    // ISO 32000-1 14.11.2), whose corner is where the page coordinates start.
+    let (to_page, display_w, display_h) = display_frame(rotation, page_visible_box(doc, page_id));
 
     let placements = if options.tile {
         tile_placements(display_w, display_h, artwork.width_pt, artwork.height_pt, options.rotation_deg)
@@ -277,8 +277,7 @@ fn apply_watermark(
 
     let first_page_w = {
         let id = pages[&1];
-        let media = page_mediabox(doc, id)?;
-        media[2] - media[0]
+        page_visible_box(doc, id).2
     };
     let artwork = if options.kind.eq_ignore_ascii_case("image") {
         build_image_artwork(options, first_page_w)?

@@ -67,6 +67,7 @@ pub mod nup;
 pub mod ocr;
 pub mod organize;
 pub mod page_detect;
+pub mod pagegeom;
 pub mod pagelayout;
 pub mod pages;
 pub mod pdf2doc;

@@ -7,10 +7,11 @@
 //! placeholders are substituted per page.
 
 use crate::docutil::{
-    append_page_content, load_document, materialize_all_pages, page_mediabox, page_rotation, resolve_output_path,
-    save_document, Matrix, OverwritePolicy,
+    append_page_content, load_document, materialize_all_pages, page_rotation, resolve_output_path, save_document,
+    Matrix, OverwritePolicy,
 };
 use crate::error::{PdfError, PdfResult};
+use crate::pagegeom::{display_frame, page_visible_box};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
 use crate::textfont::{ensure_page_font_named, TextFont, RESOURCE_NAME};
 use lopdf::{Document, Object, ObjectId};
@@ -142,11 +143,10 @@ struct PageCanvas {
 }
 
 impl PageCanvas {
-    fn new(rotation: i32, media_box: [f64; 4]) -> Self {
-        let page_w = media_box[2] - media_box[0];
-        let page_h = media_box[3] - media_box[1];
-        let (display_width, display_height) = Matrix::displayed_size(rotation, page_w, page_h);
-        Self { to_page: Matrix::display_to_page(rotation, page_w, page_h), display_width, display_height }
+    /// The canvas of the region the viewer shows (ISO 32000-1 14.11.2).
+    fn new(rotation: i32, visible: (f64, f64, f64, f64)) -> Self {
+        let (to_page, display_width, display_height) = display_frame(rotation, visible);
+        Self { to_page, display_width, display_height }
     }
 }
 
@@ -329,7 +329,7 @@ fn apply_stamps(
         cancel.check()?;
         progress(ProgressEvent::new("stamp.page", index as u64, targets.len() as u64));
         let page_id = doc.get_pages().get(page_number).copied().ok_or(PdfError::RangeOutOfBounds)?;
-        let canvas = PageCanvas::new(page_rotation(doc, page_id)?, page_mediabox(doc, page_id)?);
+        let canvas = PageCanvas::new(page_rotation(doc, page_id)?, page_visible_box(doc, page_id));
         let mut draws: Vec<(Slot, String, f64, [u8; 4], f64)> = Vec::new();
         if let Some(options) = header_footer {
             if let Some(position) = header_positions.get(page_number) {

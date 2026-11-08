@@ -20,9 +20,10 @@ use sha2::{Digest, Sha256};
 
 use crate::attachment::{self, RecordKind};
 use crate::certificate::{digest, FileDigest};
-use crate::docutil::{append_page_content, materialize_all_pages, page_mediabox, page_rotation, Matrix};
+use crate::docutil::{append_page_content, materialize_all_pages, page_rotation};
 use crate::error::{PdfError, PdfResult};
 use crate::merge::{merge_documents, MergeOptions};
+use crate::pagegeom::{display_frame, page_visible_box};
 use crate::textfont::{ensure_page_font, TextFont, RESOURCE_NAME};
 
 /// The embedded manifest's file name inside the bundle.
@@ -377,15 +378,11 @@ fn stamp_page(
     stamp: &dyn Fn(f64, f64) -> Vec<Line>,
 ) -> PdfResult<()> {
     let rotation = page_rotation(doc, page_id)?;
-    let media = page_mediabox(doc, page_id)?;
-    let (page_w, page_h) = (media[2] - media[0], media[3] - media[1]);
-    let (display_w, display_h) = Matrix::displayed_size(rotation, page_w, page_h);
-    let to_page = Matrix::display_to_page(rotation, page_w, page_h);
+    // The label belongs on the region the viewer shows (ISO 32000-1 14.11.2).
+    let (to_page, display_w, display_h) = display_frame(rotation, page_visible_box(doc, page_id));
     let lines = stamp(display_w, display_h);
     ensure_page_font(doc, page_id, font)?;
-    // Draw relative to the MediaBox origin, which need not be (0, 0).
-    let origin = Matrix::translate(media[0], media[1]);
-    let content = format!("q\n{}\n{}\n{}Q\n", origin.to_cm(), to_page.to_cm(), draw(font, &lines));
+    let content = format!("q\n{}\n{}Q\n", to_page.to_cm(), draw(font, &lines));
     append_page_content(doc, page_id, content.into_bytes())
 }
 
