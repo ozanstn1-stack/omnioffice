@@ -142,3 +142,11 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   Oracle hatası düzeltildi (miras alınan `/MediaBox`, 7.7.3.4).
 - **Sıradaki**: v7.26.0 desktop doğrulaması (14 asset) → sonra `inspect` probu (Opus yedeği:
   outline round-trip + `evaluate_findings` yanlış "her şey yolunda").
+
+## v7.26.0 DOĞRULANDI (desktop) — 2026-11-08 13:05 UTC
+- Release workflow **success**; **14 asset** (Linux 2 + Windows 2 + 3 SHA256SUMS + build-info +
+  latest.json + 2 SBOM + `.sig` 444 B + desktop zarfı). Gövde == CHANGELOG (389 bayt),
+  `SHA256SUMS.txt` **8/8 OK**, `coverage` → *"every published asset is covered by 1 envelope"*.
+- **Eksik: 5 Android asset + android zarfı** → `ANDROID_KEYSTORE_BASE64` yok (kullanıcı adımı).
+- Disk temizlendi.
+- **Sıradaki**: `inspect` probu (Opus `85f53da8` yedeği) — outline round-trip + `evaluate_findings`.
