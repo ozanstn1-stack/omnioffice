@@ -14,9 +14,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::super::super::FontSpec;
+use super::super::cidfont::DocCid;
 use super::super::textfit::FontMetrics;
 use super::HELVETICA;
-use crate::textfont::SubsetFace;
+use crate::textfont::{SubsetFace, RESOURCE_NAME};
 
 /// The code the wrapper writes for the space between two words.
 pub(crate) const SPACE: u8 = b' ';
@@ -25,6 +27,8 @@ pub(crate) const SPACE: u8 = b' ';
 pub(crate) enum GlyphSource {
     /// The bundled face, written into the document as a subset.
     Bundled(&'static SubsetFace),
+    /// A composite font of the document, referenced where it already is.
+    Document(DocCid),
 }
 
 /// Slot -> character, and slot -> advance, for one note and one font.
@@ -36,6 +40,8 @@ pub(crate) struct SlotMetrics {
     slots: BTreeMap<char, u8>,
     /// Slot -> advance in 1/1000 em, for `width`.
     widths: [f32; 256],
+    /// Slot -> CID, for a document font; the bundled face encodes from `chars`.
+    codes: [u16; 256],
     ascent: f32,
 }
 
@@ -52,15 +58,49 @@ impl SlotMetrics {
         for (symbol, slot) in &slots {
             widths[usize::from(*slot)] = face.measure(&symbol.to_string(), 1000.0) as f32;
         }
-        Some(Self { source: GlyphSource::Bundled(face), chars, slots, widths, ascent: f32::from(HELVETICA.ascent()) })
+        Some(Self {
+            source: GlyphSource::Bundled(face),
+            chars,
+            slots,
+            widths,
+            codes: [0; 256],
+            ascent: f32::from(HELVETICA.ascent()),
+        })
+    }
+
+    /// The same slots for a composite font of the document, or `None` when it
+    /// cannot draw a character of the text or has no width for it.
+    pub(crate) fn for_document(font: DocCid, text: &str) -> Option<Self> {
+        let (chars, slots) = assign_slots(&visible(text))?;
+        let mut widths = [0.0f32; 256];
+        let mut codes = [0u16; 256];
+        for (symbol, slot) in &slots {
+            let code = font.code(*symbol)?;
+            let width = font.advance(code)?;
+            widths[usize::from(*slot)] = width;
+            codes[usize::from(*slot)] = code;
+        }
+        let ascent = font.ascent();
+        Some(Self { source: GlyphSource::Document(font), chars, slots, widths, codes, ascent })
     }
 
     /// The `<hex>` operand for one line of slots.
     pub(crate) fn operand(&self, codes: &[u8]) -> String {
-        match self.source {
+        match &self.source {
             GlyphSource::Bundled(face) => {
                 let text: String = codes.iter().filter_map(|code| self.chars.get(usize::from(*code))).collect();
                 face.encode(&text)
+            }
+            GlyphSource::Document(_) => {
+                // Every slot was given a code by `for_document`, the space
+                // included, so this cannot run short.
+                let mut hex = String::with_capacity(codes.len() * 4 + 2);
+                hex.push('<');
+                for slot in codes {
+                    hex.push_str(&format!("{:04X}", self.codes[usize::from(*slot)]));
+                }
+                hex.push('>');
+                hex
             }
         }
     }
@@ -68,6 +108,21 @@ impl SlotMetrics {
     /// The characters the font has to carry for this note.
     pub(crate) fn charset(&self) -> BTreeSet<char> {
         self.chars.iter().copied().collect()
+    }
+
+    /// The resource name the appearance writes, and the font it declares.
+    pub(crate) fn spec(&self) -> FontSpec {
+        match &self.source {
+            GlyphSource::Bundled(_) => FontSpec::Subset(self.charset()),
+            GlyphSource::Document(font) => FontSpec::Resource { key: font.key().as_bytes().to_vec(), id: font.id() },
+        }
+    }
+
+    pub(crate) fn resource_key(&self) -> String {
+        match &self.source {
+            GlyphSource::Bundled(_) => RESOURCE_NAME.to_string(),
+            GlyphSource::Document(font) => font.key().to_string(),
+        }
     }
 }
 

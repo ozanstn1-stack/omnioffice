@@ -19,6 +19,7 @@ use lopdf::{Dictionary, Document};
 mod bevel;
 mod border;
 mod caption;
+mod cidfont;
 mod cloudy;
 mod drfont;
 mod ends;

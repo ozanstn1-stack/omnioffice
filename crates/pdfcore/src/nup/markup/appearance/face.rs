@@ -14,13 +14,14 @@
 //! face for its `<hex>` operand. A note with more than 256 distinct characters
 //! gives up, which is today's behaviour for text no font could show.
 
-use lopdf::ObjectId;
+use lopdf::{Dictionary, Document, ObjectId};
 
 use super::super::FontSpec;
+use super::cidfont;
 use super::drfont::DrFont;
 use super::std14::{Family, Std14};
 use super::textfit::{FontMetrics, Std14Metrics};
-use crate::textfont::{SubsetFace, RESOURCE_NAME};
+use crate::textfont::SubsetFace;
 
 mod slots;
 pub(super) use slots::SlotMetrics;
@@ -35,7 +36,8 @@ pub(super) enum Face {
     Standard(Std14),
     /// A simple font of the document, referenced as it already is.
     Document { key: String, id: ObjectId, metrics: DrFont },
-    /// The bundled face, for text WinAnsi cannot carry.
+    /// A two-byte font reached through slots: the bundled face, or a composite
+    /// font of the document.
     Subset(SlotMetrics),
 }
 
@@ -52,7 +54,7 @@ impl Face {
         match self {
             Face::Standard(_) => "FOmni0".to_string(),
             Face::Document { key, .. } => key.clone(),
-            Face::Subset(_) => RESOURCE_NAME.to_string(),
+            Face::Subset(metrics) => metrics.resource_key(),
         }
     }
 
@@ -60,7 +62,7 @@ impl Face {
         match self {
             Face::Standard(font) => FontSpec::Standard(*font),
             Face::Document { key, id, .. } => FontSpec::Resource { key: key.as_bytes().to_vec(), id: *id },
-            Face::Subset(metrics) => FontSpec::Subset(metrics.charset()),
+            Face::Subset(metrics) => metrics.spec(),
         }
     }
 
@@ -72,11 +74,22 @@ impl Face {
         }
     }
 
-    /// The bundled face with a slot for every character of `text`, or `None`
-    /// when the face has no glyph for one of them.
-    pub(super) fn subset_for(text: &str) -> Option<Self> {
-        let face = SubsetFace::bundled()?;
-        SlotMetrics::new(face, text).map(Face::Subset)
+    /// Whether the face can draw every character of `text`; the standard 14 and
+    /// a slotted face were chosen for exactly that text.
+    pub(super) fn can_show(&self, text: &str) -> bool {
+        match self {
+            Face::Document { metrics, .. } => metrics.can_show(text),
+            Face::Standard(_) | Face::Subset(_) => true,
+        }
+    }
+
+    /// The face for text WinAnsi cannot carry: the bundled face first, then the
+    /// document's own composite font, and `None` when neither can show it.
+    pub(super) fn script_for(doc: &Document, annot: &Dictionary, name: &str, text: &str) -> Option<Self> {
+        SubsetFace::bundled().and_then(|face| SlotMetrics::new(face, text).map(Face::Subset)).or_else(|| {
+            let font = cidfont::resolve_font(doc, annot, name)?;
+            SlotMetrics::for_document(font, text).map(Face::Subset)
+        })
     }
 }
 

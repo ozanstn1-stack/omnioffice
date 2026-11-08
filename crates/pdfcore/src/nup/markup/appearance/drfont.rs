@@ -109,7 +109,7 @@ pub(super) fn resolve_font(doc: &Document, annot: &Dictionary, name: &str) -> Op
 }
 
 /// The font entry named by `/DA`: the annotation's `/DR` first, then the form's.
-fn font_entry(doc: &Document, annot: &Dictionary, name: &str) -> Option<Object> {
+pub(super) fn font_entry(doc: &Document, annot: &Dictionary, name: &str) -> Option<Object> {
     let own = annot
         .get(b"DR")
         .ok()
