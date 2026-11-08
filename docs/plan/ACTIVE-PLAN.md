@@ -167,3 +167,7 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **v7.28.0**: sürüm 7.28.0, versionCode **7028000**, CHANGELOG, README, RELEASE_READINESS,
   fastlane. Kapılar: `release-guard` OK, `claims:check` **422/589**, `repro:check` OK.
 - **Sıradaki**: CI yeşilse merge → tag → **20 asset** doğrulaması (Android keystore mevcut).
+
+## v7.28.0 birleşti (`f0d2387`) — 2026-11-08 17:52 UTC
+- #687 squash merge; 19 kontrol (17 başarı + 2 skip). Master Desktop → auto-tag bekleniyor.
+- **Sıradaki**: `v7.28.0` tag → Release + Android → **20 asset** doğrulaması; sonra yeni dilim (Opus).
