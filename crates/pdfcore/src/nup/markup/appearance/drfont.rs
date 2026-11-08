@@ -92,8 +92,8 @@ pub(super) fn parse_font(doc: &Document, id: ObjectId, dict: &Dictionary) -> Opt
     {
         return None;
     }
-    let widths = read_widths(doc, &dict)?;
-    let forward = encoding_table(doc, &dict)?;
+    let widths = read_widths(doc, dict)?;
+    let forward = encoding_table(doc, dict)?;
     let mut reverse: HashMap<char, u8> = HashMap::new();
     for (code, symbol) in forward.iter().enumerate() {
         if let Some(symbol) = symbol {
