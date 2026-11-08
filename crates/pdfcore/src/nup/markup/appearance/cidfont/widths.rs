@@ -1,15 +1,10 @@
 //! `/W`, the per-CID advance widths of a composite font, and `/DW`, the width
 //! for every CID the array does not mention.
 //!
-//! `/W` is an untrusted numeric array with two shapes that may be mixed in one
-//! array: `c [w1 w2 …]` gives consecutive widths from CID `c`, and
-//! `c_first c_last w` gives one width to a whole range. A malformed array
-//! rejects the **font**, not just the entry: a dropped entry would silently fall
-//! back to `/DW`, which is a guess about a width we cannot read.
-//!
-//! The runs are kept sorted and searched with a partition point, so memory
-//! follows the number of entries the file actually wrote - a `HashMap` would
-//! expand a single `0 65535 w` into 65 536 entries.
+//! `/W` is an untrusted numeric array with two shapes that may be mixed: `c [w1
+//! w2 …]` for consecutive CIDs and `c_first c_last w` for a range. A malformed
+//! array rejects the **font**: a dropped entry would silently become `/DW`. The
+//! runs stay sorted, so memory follows the entries the file wrote.
 
 use lopdf::{Document, Object};
 
@@ -39,6 +34,11 @@ pub(super) struct Widths {
 }
 
 impl Widths {
+    /// How many runs this table holds, for the cache's budget.
+    pub(super) fn len(&self) -> usize {
+        self.runs.len()
+    }
+
     /// The advance of `cid` in 1/1000 em; `/DW` when no run covers it.
     pub(super) fn get(&self, cid: u16) -> f32 {
         let index = self.runs.partition_point(|run| run.last < cid);

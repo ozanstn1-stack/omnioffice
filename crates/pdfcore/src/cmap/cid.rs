@@ -16,10 +16,12 @@
 //! * overlapping entries that disagree, since neither viewer is authoritative
 //!   about which one wins.
 //!
-//! Entries outside the declared codespace are kept but never matched: a viewer
-//! never decodes those codes either. A map that declares one-byte ranges is
-//! stricter, because the width is part of the code there.
+//! Entries outside the declared codespace never match: a viewer does not decode
+//! those codes either. A map that declares one-byte ranges is stricter, because
+//! the width is part of the code there.
 
+#[cfg(any(test, fuzzing))]
+mod probe;
 mod space;
 mod table;
 
@@ -71,25 +73,11 @@ impl CidMap {
         }
     }
 
-    /// Visits every run boundary; used by the fuzz target to prove that a map
-    /// which built successfully never panics while being read.
-    #[cfg(any(test, fuzzing))]
-    pub(crate) fn probe(&self) -> usize {
-        let mut seen = 0usize;
-        for (table, width) in [(&self.wide, 2u8), (&self.narrow, 1)] {
-            for run in &table.runs {
-                for value in [run.low.saturating_sub(1), run.low, run.high, run.high.saturating_add(1)] {
-                    if self.cid(code_of(width, value)).is_some() {
-                        seen += 1;
-                    }
-                }
-            }
-            for (low, high) in &table.notdef {
-                let _ = self.cid(code_of(width, *low));
-                let _ = self.cid(code_of(width, *high));
-            }
-        }
-        seen
+    /// An estimate of the two tables and the code space, for the cache's budget.
+    pub(crate) fn heap_bytes(&self) -> usize {
+        let runs = self.wide.runs.len() + self.narrow.runs.len();
+        let notdef = self.wide.notdef.len() + self.narrow.notdef.len();
+        runs * std::mem::size_of::<Run>() + notdef * 4 + self.space.heap_bytes()
     }
 }
 

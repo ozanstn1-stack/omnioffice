@@ -50,6 +50,15 @@ impl Mapping {
         Some(code)
     }
 
+    /// An estimate of what the encoding and the glyph map hold.
+    pub(super) fn heap_bytes(&self) -> usize {
+        let map = match &self.encoding {
+            Encoding::IdentityH => 0,
+            Encoding::Embedded(map) => map.heap_bytes(),
+        };
+        map + self.gids.as_ref().map_or(0, Vec::len)
+    }
+
     /// Whether `/CIDToGIDMap` gives `cid` a glyph other than `.notdef`.
     fn has_glyph(&self, cid: u16) -> bool {
         let Some(table) = &self.gids else { return true };

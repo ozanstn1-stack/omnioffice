@@ -13,10 +13,10 @@
 
 use super::super::super::dests::resolve;
 use super::super::super::links::number;
-use super::drfont;
 use super::face::{Face, HELVETICA};
 use super::std14::{Family, Std14};
 use super::textfit::{decode, encode, width_of, wrap_with};
+use super::{cidfont::FontCache, drfont};
 use super::{color, Color, Synth};
 use lopdf::{Dictionary, Document};
 
@@ -44,7 +44,7 @@ struct Style {
 }
 
 /// Builds the appearance of one `FreeText` annotation.
-pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> Option<Synth> {
+pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4], fonts: &mut FontCache) -> Option<Synth> {
     let style = style_of(doc, annot)?;
     let align = match annot.get(b"Q").ok().and_then(|value| value.as_i64().ok()) {
         Some(1) => Align::Center,
@@ -96,7 +96,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, rect: [f64; 4]) -> 
         // font, and a character no face can show still drops the note rather
         // than printing a guess.
         if matches!(style.face, Face::Standard(_)) && encode(&text).is_none() {
-            style.face = Face::script_for(doc, annot, &style.name, &text)?;
+            style.face = Face::script_for(doc, annot, &style.name, &text, fonts)?;
         }
         layout(&style, align, border, [x0, y0, x1, y1], &text, &mut ops);
     }

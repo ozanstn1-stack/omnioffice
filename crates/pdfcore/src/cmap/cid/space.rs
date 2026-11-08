@@ -94,6 +94,12 @@ impl Space {
         !self.narrow.iter().copied().any(overlaps_lead)
     }
 
+    /// An estimate of the declared ranges.
+    pub(super) fn heap_bytes(&self) -> usize {
+        self.wide.len() * std::mem::size_of::<([u8; 2], [u8; 2])>()
+            + self.narrow.len() * std::mem::size_of::<(u8, u8)>()
+    }
+
     /// Whether nothing at all was declared.
     pub(super) fn is_empty(&self) -> bool {
         self.wide.is_empty() && self.narrow.is_empty()

@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Each composite font is read once per document, not once per note:** N-up
+  imposition now remembers each `/DA` font's `/ToUnicode`, `/Encoding` CMap,
+  `/CIDToGIDMap` and `/W` for the length of one imposition call. A refusal is
+  remembered as well, so a font that cannot be used is not re-read for every
+  note either. The memory the cache may hold is capped; a font that would take it
+  past the cap is used but not stored. The output is byte-identical to before.
+
 ## [7.21.0] - 2026-11-08
 
 ### Added
