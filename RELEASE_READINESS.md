@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.26.0
+# Release Readiness — OmniOffice 7.27.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Denetim (inspect) probu
+## Implemented (this cycle, 7.27.0) - Denetim (inspect) probu
 
 - **A document with no metadata title is reported as such:** the
   `a11y.missing-title` finding used to test the title the screen shows, which falls
