@@ -52,3 +52,36 @@ Type3, dört çizim katmanını birleştirme, bellek ölçümü.
 - **v7.23.0**: branch `release/v7.23.0`; CHANGELOG `[7.23.0]`, sürüm 7.23.0, versionCode 7023000,
   README, RELEASE_READINESS, fastlane 7023000. Kapılar: `release-guard` OK, `claims:check` 406/563,
   `repro:check` OK. **Sıradaki:** push → PR → CI → merge → tag → yayın doğrulaması.
+
+---
+
+# v7.23.0 YAYINDA — PR 6: kompozit lookup indeksi + bellek kanıtı (Opus `f168682d`)
+**Karar:** gerçek CJK boyutunda (≈20 000 `/ToUnicode` girdisi) kompozit yolu **önce ölç**; küçük font
+medyanının ≥1.5 katı çıkarsa `CodeIndex`/`AdvanceIndex` (ikili arama) yap, çıkmazsa yalnız bellek
+kanıtını gönder. Ayrıca 32 MiB bütçe **tahminle değil ölçülen tahsisle** kanıtlanır (±25%).
+
+## Neden
+- 183 ms/178 ms sonucu yalnız fixture'ın küçük haritası için geçerli; gerçek Japonca/Çince
+  fontlarda 7k–20k girdi var ve `DocCid::code`/`advance` her karakterde doğrusal yürüyor.
+- Bütçe bugün yalnız insert-time tahmin; koleksiyon overhead'i eksik sayılırsa gerçek tepe 32 MiB'ı
+  aşabilir — Android'de bu OOM demek.
+- Tamamı VPS'te yerel doğrulanabilir (test + clippy + `nup_bench`).
+
+## Adımlar
+0) `nup_bench`'e `composite-large` senaryosu (20k `/ToUnicode`, tam `/CIDToGIDMap`, ~4k `/W`) +
+   sayan global allocator ile tepe heap; **kapı**: büyük medyan ≥1.5× küçük medyan mı?
+1) Ortak test fixture'ı `tests/common/cid_fixture.rs` (üç mevcut test dosyasındaki ~150 satırı
+   paylaşıma açar, yeni ölçek testi dördüncü kez kopyalamasın).
+2) (Kapı ateşlerse) `appearance/cidfont/index.rs`: `CodeIndex` (sorted `(char, u16)`, ikili arama,
+   çift kayıtta **en küçük kod** kuralı korunur) + `AdvanceIndex` (örtüşmeyen run'lar, `/DW` yedeği);
+   naif doğrusal aramayla LCG testleri.
+3) `DocCid` indeksleri `Arc` ile tutar; `widths.rs`'teki per-CID arama silinir (dosya küçülür).
+4) `cache.rs`: `heap_bytes` kapasitelerden; `FontCacheStats`'a `resident_bytes`, `peak_bytes`,
+   `refused_over_budget`. `nup/bench.rs`: `impose_with_cache(doc, opts, CacheMode)`.
+5) `tests/nup_freetext_cid_scale.rs` (bayt-aynı, haritanın başı/ortası/sonu, `refused == 0`) ve
+   `tests/font_cache_memory.rs` (tahmin ±%25, 64 büyük fontta tepe ≤ baseline + 4 MiB×1.1,
+   `peak ≤ budget`).
+
+## Kapsam dışı
+Basit font indeksi (256 girdi zaten hızlı), 32 MiB'ı değiştirmek/LRU, dört katmanı birleştirme,
+Android'de ölçüm, Type3, `/W` fuzz köprüsü.
