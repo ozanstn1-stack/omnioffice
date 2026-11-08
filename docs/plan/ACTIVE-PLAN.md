@@ -2586,3 +2586,22 @@ yeni `tests/nup_freetext_cid_narrow.rs` (≤400, 6 vaka).
 5) uçtan uca test · 6) CHANGELOG/roadmap/docs-stats.
 **Kabul:** mevcut `nup_freetext_cid` ve `nup_freetext_cid_cmap` **hiçbir beklenen değer
 değişmeden** geçer; `git diff --stat crates/pdfcore/tests` yalnız yeni dosyayı gösterir.
+
+## PR 3 NEREDE KALDIM (2026-11-08 02:35 UTC)
+Branch `feat/cid-narrow-codespace` (master `6e34745` üstünde, **push edilmedi**):
+- `8108508` `Code { value, width }` + `ToUnicode` genişliği saklıyor (`sized`, `encode` her kodu
+  kendi genişliğinde yazıyor, `bfrange` genişliği taşıyor); `a_source_of_the_wrong_length_is_skipped`
+  testi **bilinçli değişti** (tek bayt artık koddur; 3 bayt atlanır).
+- `ec72fc1` fuzz kancası `cmap/fuzz.rs`'e taşındı (cmap.rs 238 → **237**).
+- Ölçüldü: `cid::read` codespace dışı girdileri **reddetmiyor** → Opus'un **Branch B**'si.
+- Durum: lib **336** test yeşil, `files:check` tık, clippy `-D warnings` şu an **kırmızı**
+  (beklenen: `Code::one`/`hex` henüz kullanılmıyor — adım 4 bağlayacak).
+- **SIRADAKİ:** adım 2-3: `cmap/cid/space.rs` (codespace taşıması + `narrow` + prefix kuralı),
+  `cid.rs`'te `Table`/`admit`/`cid(Code)`; sonra adım 4 wiring (`Mapping::code`, `DocCid`,
+  `slots.codes: [Code; 256]`), adım 5 `tests/nup_freetext_cid_narrow.rs`, adım 6 docs.
+
+## v7.20.0 DOĞRULAMA (bekliyor)
+Tag auto-tag ile 6e34745'a gelecek; izleyici `/tmp/watch_rel20.sh` (`/tmp/rel20_state.txt`).
+Beklenen: 20 asset, gövde == CHANGELOG `[7.20.0]`, `latest.json` 7.20.0 + imza, `SHA256SUMS.txt`
+8 satır, desktop 12 + android 5 subject.
+
