@@ -1,0 +1,1 @@
+7.24.0: Font önbelleğinin bellek bütçesi artık tahminle değil ölçümle kanıtlanıyor — sayan bir test, 64 kompozit fontlu bir belgede 4 MiB bütçenin gerçekten tutulduğunu ve fontlar sığdığında tepe belleğin düştüğünü gösteriyor (bu fixture'da ~6 MB'a karşı ~21 MB). Ayrıca yirmi bin girdili gerçek CJK haritası ölçüldü: önbellekle 223 ms, önbelleksiz 13.3 s.

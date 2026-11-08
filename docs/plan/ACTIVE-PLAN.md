@@ -85,3 +85,14 @@ kanıtını gönder. Ayrıca 32 MiB bütçe **tahminle değil ölçülen tahsisl
 ## Kapsam dışı
 Basit font indeksi (256 girdi zaten hızlı), 32 MiB'ı değiştirmek/LRU, dört katmanı birleştirme,
 Android'de ölçüm, Type3, `/W` fuzz köprüsü.
+
+## v7.23.0 DOĞRULANDI · PR #677 BİRLEŞTİ · v7.24.0 TRENİ (2026-11-08 07:20 UTC)
+- **v7.23.0**: tag `a6e0802`, **20 asset**, gövde 760 bayt (CHANGELOG ile birebir), `latest.json`
+  7.23.0, `.sig` 444 B, `SHA256SUMS.txt` 8 satır / 8 OK, `coverage` exit 0.
+- **#677 `304cc0e`**: bellek kanıtı (18 başarı + 2 skip). Ölçüm: kompozit 808→166 ms,
+  kompozit-büyük 13.27 s→223 ms (1.35× küçük harita → indeks YOK), basit 223→179 ms;
+  tepe heap sığan önbellekte ~6 MB vs ~21 MB önbelleksiz.
+- **v7.24.0**: branch `release/v7.24.0`; CHANGELOG `[7.24.0]`, sürüm 7.24.0, versionCode 7024000,
+  README, RELEASE_READINESS, fastlane 7024000. Kapılar: `release-guard` OK, `claims:check`
+  409/566, `repro:check` OK, `changelog-section v7.23.0` yayınlanan gövdeyle eşleşiyor.
+  **Sıradaki:** push → PR → CI → merge → tag → yayın doğrulaması.
