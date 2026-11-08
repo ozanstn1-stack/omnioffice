@@ -161,3 +161,30 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   kurulmamıştı) — sınıflandırma PR gövdesinde.
 - Yerel: prob **8/8**, lib **344**, clippy temiz, `inspect.rs` 1078 → **1077** (bütçe içeriden).
 - **Sıradaki**: CI yeşilse squash merge → **v7.27.0 sürüm treni** (kullanıcıya dönük düzeltme var).
+
+## #686 birleşti · v7.28.0 sürüm PR'ı açıldı — 2026-11-08 17:25 UTC
+- **#686** `c60bc9f`: annotate koordinat düzeltmeleri (20 kontrol, 18 başarı + 2 skip).
+- **v7.28.0**: sürüm 7.28.0, versionCode **7028000**, CHANGELOG, README, RELEASE_READINESS,
+  fastlane. Kapılar: `release-guard` OK, `claims:check` **422/589**, `repro:check` OK.
+- **Sıradaki**: CI yeşilse merge → tag → **20 asset** doğrulaması (Android keystore mevcut).
+
+## v7.28.0 birleşti (`f0d2387`) — 2026-11-08 17:52 UTC
+- #687 squash merge; 19 kontrol (17 başarı + 2 skip). Master Desktop → auto-tag bekleniyor.
+- **Sıradaki**: `v7.28.0` tag → Release + Android → **20 asset** doğrulaması; sonra yeni dilim (Opus).
+
+## PR 9: açıklama görünen kutuya oturur (Opus `cfc40e22`) — 2026-11-08 17:2x UTC
+- **Opus planı `cfc40e22`** (kod okumadan yazıldı; Adım 0 kapısı bana bırakıldı).
+- **Adım 0 sonucu: K2.** Ön uç `pointToDisplay` ile **gösterilen** sayfaya göre nokta üretiyor
+  (`src/screens/annotate/geometry.ts`), boyut `geometry.display_width_pt` = pdfium
+  `page.width()`/`height()` → **CropBox ∩ MediaBox**, `/Rotate` uygulanmış
+  (`src/screens/Annotate.tsx:401`). Yani sözleşme "görünen kutu" uzayı; arka uç yalnız
+  `/MediaBox` kullanıyor.
+- **Bulunan iki gerçek hata:**
+  1. `apply_annotations` (bake: `annotate_pdf`, `annotate_pdf_incremental`) kutu **orijinini**
+     hiç eklemiyor → `[100 200 695 1042]` sayfada işaret (100,200) kayıyor; ters `/MediaBox`
+     negatif boy üretiyor (v7.28.0'ın düzelttiği hatanın bake yolundaki eşi).
+  2. `/CropBox` yok sayılıyor: kırpılmış sayfada tuval kırpılmış bölgeyi gösterdiği hâlde işaret
+     `(crop.x0 − media.x0, crop.y0 − media.y0)` kayıyor.
+- **Dilim**: `annotate/geometry_util.rs`ine görünen-kutu yardımcısı (CropBox ∩ MediaBox, normalize,
+  miras, ters kutu) + iki yol da onu kullanır; prob `annotate_box_probe.rs`.
+- **Sıradaki**: prob kırmızı → düzelt → lib testleri + clippy + `check-file-sizes` → PR.
