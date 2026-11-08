@@ -16,8 +16,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stream as untrusted input: a broken entry costs only itself, a destination
   that is not exactly one character (a ligature, a lone surrogate) is skipped,
   placeholders and private-use codes never become drawable, and the stream is
-  bounded before anything is allocated. Nothing draws with it yet - the next
-  step wires it into synthesized annotation text, which is what CJK notes need.
+  bounded before anything is allocated.
+- **A note can be drawn in the document's own composite font:** when a free-text
+  note's `/DA` font is an embedded Type0 font with `/Identity-H` codes, and
+  neither WinAnsi nor the bundled face can show its text, the note is now
+  printed in that font - by reference, so the font, its descriptor and its
+  program are not copied into the output. Codes come from `/ToUnicode`, advances
+  from `/W` and `/DW`, and a `/CIDToGIDMap` that sends a used code to glyph 0
+  costs that character. Anything else is still left out rather than guessed:
+  vertical writing (`/Identity-V`), predefined or embedded CMaps, a missing
+  `/ToUnicode`, a non-embedded program, a malformed `/W` (which rejects the
+  whole font, because dropping one entry would silently give that code the
+  default width), and notes with more than 255 distinct characters.
 
 ## [7.18.0] - 2026-11-07
 

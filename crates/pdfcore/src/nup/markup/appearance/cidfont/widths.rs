@@ -223,4 +223,37 @@ mod tests {
         let w = Object::Array(vec![Object::Integer(0), Object::Array(inner)]);
         assert!(parsed(w, None).is_none());
     }
+
+    #[test]
+    fn random_arrays_never_panic() {
+        // A fixed-seed generator: the point is determinism, not statistics.
+        let mut seed: u64 = 0x5DEE_CE66_D1CE_1234;
+        let mut next = move || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (seed >> 33) as i64
+        };
+        let doc = doc();
+        for _ in 0..10_000 {
+            let length = (next().unsigned_abs() % 12) as usize;
+            let mut items = Vec::with_capacity(length);
+            for _ in 0..length {
+                let roll = next().unsigned_abs() % 4;
+                let value = match roll {
+                    0 => Object::Integer(next() % 70_000),
+                    1 => Object::Integer(next() % 6_000),
+                    2 => Object::Array(vec![Object::Integer(next() % 1_200); (next().unsigned_abs() % 4) as usize]),
+                    _ => Object::Real(next() as f32 / 97.0),
+                };
+                items.push(value);
+            }
+            let w = Object::Array(items);
+            if let Some(widths) = parse(&doc, Some(&w), None) {
+                // Whatever it accepted must answer every CID without panicking.
+                for cid in [0u16, 1, 3, 65_535] {
+                    let width = widths.get(cid);
+                    assert!(width.is_finite() && (0.0..=MAX_ADVANCE).contains(&width));
+                }
+            }
+        }
+    }
 }
