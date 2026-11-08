@@ -311,8 +311,10 @@ Effort estimates assume a single developer.
   referenced where it already is, never copied (`nup_freetext_cid`). A font that
   embeds its own `/Encoding` CMap is read too, as long as its codes are two bytes
   wide and its base - if it names one - is `Identity-H`
-  (`nup_freetext_cid_cmap`). Still open: vertical writing (`/Identity-V`),
-  predefined CMaps, one-byte and mixed codespaces, as are redactions and
+  (`nup_freetext_cid_cmap`), and a codespace may be one byte wide or mix both
+  widths, as Shift-JIS does: every code is written at its own length
+  (`nup_freetext_cid_narrow`). Still open: vertical writing (`/Identity-V`),
+  predefined CMaps and codes longer than two bytes, as are redactions and
   `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
   real Word tables, and per-list numbering (`startOverride`) so adjacent

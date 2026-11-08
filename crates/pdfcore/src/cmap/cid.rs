@@ -114,7 +114,7 @@ pub(crate) fn read(program: &[u8], dict_base: Option<&[u8]>) -> Option<CidMap> {
         match &tokens[at] {
             Token::Keyword("begincodespacerange") => {
                 let (space, next) = Space::read(&tokens, at + 1, super::MAX_ENTRIES)?;
-                map.space = space;
+                map.space.absorb(space, super::MAX_ENTRIES)?;
                 at = next;
             }
             Token::Keyword("begincidrange") => {

@@ -85,7 +85,7 @@ release-train schedule is decided.
   `test:crates/pdfcore/src/cmap/cid/tests.rs#an_identity_equivalent_stream_selects_each_code_as_its_cid`
   `test:crates/pdfcore/src/cmap/cid/tests.rs#an_identity_base_fills_the_codes_the_stream_does_not_map`
   `test:crates/pdfcore/src/cmap/cid/tests.rs#a_vertical_or_unknown_base_is_refused`
-  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_codespace_that_is_not_two_bytes_is_refused`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_codespace_wider_than_two_bytes_is_refused`
   `test:crates/pdfcore/src/cmap/cid/tests.rs#a_malformed_entry_rejects_the_map`
   `test:crates/pdfcore/src/cmap/cid/tests.rs#entries_that_disagree_are_refused_and_ones_that_agree_merge`
   `test:crates/pdfcore/src/nup/markup/appearance/cidfont/mapping/tests.rs#an_encoding_stream_may_be_a_reference`

@@ -99,6 +99,14 @@ impl Space {
         self.wide.is_empty() && self.narrow.is_empty()
     }
 
+    /// Appends another block's ranges; a CMap may declare more than one, and
+    /// merging keeps every range instead of the last block winning.
+    pub(super) fn absorb(&mut self, other: Self, limit: usize) -> Option<()> {
+        self.wide.extend(other.wide);
+        self.narrow.extend(other.narrow);
+        (self.ranges() <= limit).then_some(())
+    }
+
     /// Declares the whole two-byte space, which an identity base stands for.
     pub(super) fn identity(&mut self) {
         if self.wide.is_empty() {

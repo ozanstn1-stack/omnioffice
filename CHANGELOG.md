@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A note can be drawn with a font whose codes are one byte wide:** an embedded
+  `/Encoding` CMap that declares a one-byte codespace, or one-byte and two-byte
+  ranges together (the Shift-JIS shape), is now read. Each code is written at its
+  own length, so a note may mix `<41>` and `<8140>`, and `/W` and `/CIDToGIDMap`
+  are still looked up by CID. A codespace whose one-byte ranges overlap the lead
+  byte of a two-byte code is refused - a viewer would split the string at the
+  wrong place and draw the wrong glyphs with no error - as are vertical writing,
+  unknown base CMaps and codes longer than two bytes; those notes fall back
+  exactly as before.
+
 ## [7.20.0] - 2026-11-08
 
 ### Added
