@@ -2448,3 +2448,18 @@ Branch `feat/doc-cid-face` (master `a294214` üstünde, **henüz push edilmedi**
 4. `npm run files:update` (face.rs 114, yeni dosyalar) → baseline sıkılaşır.
 5. Push → PR (gövdede sıra tablosu, reddetme listesi, bütçe tablosu, kapsam dışı) → CI yeşilse merge.
 6. Sonra **v7.19.0 sürüm treni** (1b içinde; 20 asset + iki zarf doğrulaması).
+
+---
+
+# PR #667 birleşti → v7.19.0 sürüm treni
+- **#667 `34c2e8c`** (squash): belge kompozit fontu; **20/20 kontrol yeşil**; dal silindi.
+  Yerel kanıt: `cargo test -p pdfcore --lib` **307**, yeni `tests/nup_freetext_cid.rs` 4 test,
+  `/W` için 10 000 rastgele dizi taraması.
+- **Sıradaki:** v7.19.0 — CHANGELOG `[7.19.0] - 2026-11-08`, sürüm 7.19.0
+  (`Cargo.toml`/`Cargo.lock`/`package*.json`/`tauri.conf.json`), versionCode **7019000**,
+  README (sürüm satırı + What's new + indirme bağlantıları), RELEASE_READINESS 7.19.0 bölümü,
+  fastlane `7019000.txt` (en-US üretildi, tr-TR elle).
+- Push → PR → CI yeşil → squash merge → auto-tag `v7.19.0` → release workflow.
+  Doğrulama: **20 asset** (`-desktop` + `-android` zarfları), gövde == CHANGELOG bölümü,
+  `latest.json` imza, `SHA256SUMS.txt` 8 satır.
+

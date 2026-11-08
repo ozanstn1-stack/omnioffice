@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.19.0] - 2026-11-08
+
 ### Added
 
 - **A document's own `/ToUnicode` map can now be read:** the first piece of the
