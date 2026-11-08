@@ -2503,3 +2503,16 @@ Branch `feat/doc-cid-face` (master `a294214` üstünde, **henüz push edilmedi**
 ## Sıradaki (bu dilimden sonra)
 PR 3: tek baytlık/karışık codespace + `ToUnicode` kaynak uzunluğu (`CodeWidth`), PR 4: predefined
 CMaps (Adobe kaynaklarını gemide taşımak gerekir) ve dikey yazı — ikisi de **planlanmıyor**.
+
+## v7.19.0 DOĞRULANDI (2026-11-08 01:30 UTC)
+- Tag **`v7.19.0` → `c0118ee`**; Release + Android workflow'ları yeşil.
+- **20 asset**: 4 Android paketi + 2 Linux + 2 Windows + `OmniOffice_7.19.0_x64-setup.exe.sig`
+  (444 B) + 4 `SHA256SUMS*` + `build-info.json` + `latest.json` + 2 zarf + 2 SBOM.
+- Release gövdesi CHANGELOG `[7.19.0]` ile **birebir** (1539/1539 bayt, `changelog-section.mjs`).
+- `latest.json` **7.19.0**, gömülü imza `untrusted comment:` ile başlıyor, işaret ettiği dosya
+  `OmniOffice_7.19.0_x64-setup.exe`; `SHA256SUMS.txt` **8 satır**; setup hash'i manifestle aynı
+  (`29465f23…`).
+- Zarflar: desktop **12 subject**, android **5 subject**; birlikte **17 = 20 − latest.json −
+  2 zarf**; `provenance-subjects.mjs coverage` → *"every published asset is covered by
+  2 envelope(s)"*, exit 0.
+
