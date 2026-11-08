@@ -2516,3 +2516,24 @@ CMaps (Adobe kaynaklarını gemide taşımak gerekir) ve dikey yazı — ikisi d
   2 zarf**; `provenance-subjects.mjs coverage` → *"every published asset is covered by
   2 envelope(s)"*, exit 0.
 
+
+## PR 2 DURUMU — 2026-11-08 02:50 UTC
+Branch `feat/pdfcore-embedded-cmap`, **PR #669 açık**, CI koşuyor.
+- `c15529e` lexer taşıması (cmap 316 → 238) · `d360967` gömülü CMap (cmap/cid.rs 325,
+  cidfont/mapping.rs 123, cidfont.rs 177 → 144).
+- Yerel: lib **331**, yeni entegrasyon `nup_freetext_cid_cmap` **5/5**, clippy iki config'de temiz,
+  bütçe sıkılaştı (`files:update`, +2 dosya), README 1741, `claims:check` 398/534,
+  `release-guard` 7.19.0.
+- **SIRADAKİ:** CI yeşilse squash merge + dal sil → **v7.20.0 sürüm treni** (aynı desen: CHANGELOG
+  `[7.20.0]`, versionCode 7020000, README/RELEASE_READINESS, fastlane, tag → 20 asset + iki zarf).
+  Sonra PR 3 (tek baytlık codespace + `ToUnicode` kaynak uzunluğu).
+
+## PR 3 SONRASI: v7.20.0 sürüm treni (2026-11-08 03:00 UTC)
+- **#669 birleşti** (`fd089fc`, squash), **20/20 kontrol yeşil** (18 başarı + 2 skip; fuzz hedefi
+  `fuzz_cid` kancasıyla koştu), dal silindi.
+- Sürüm **7.20.0**: `Cargo.toml`/`Cargo.lock`, `package.json`/`package-lock.json`,
+  `tauri.conf.json`, Android versionCode **7020000**; CHANGELOG `[7.20.0] - 2026-11-08`;
+  README sürüm satırı + What's new + 7 indirme bağlantısı; RELEASE_READINESS 7.20.0 bölümü
+  (14 `test:` işareti); fastlane `7020000.txt` (en-US üretildi, tr-TR elle).
+- **SIRADAKİ:** push → PR → CI → squash merge → auto-tag `v7.20.0` → 20 asset + iki zarf
+  doğrulaması. Sonra PR 3 (tek baytlık codespace + `ToUnicode` kaynak uzunluğu).
