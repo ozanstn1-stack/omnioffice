@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.28.0] - 2026-11-08
+
 ### Fixed
 
 - **An annotation lands where it was placed on a page that does not start at the
