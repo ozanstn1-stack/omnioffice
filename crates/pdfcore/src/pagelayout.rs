@@ -1,11 +1,15 @@
 //! Page size conversion (Fit / Stretch / Actual) and cropping via CropBox.
 
 use crate::docutil::*;
+
+mod annotations;
+mod size;
+
 use crate::error::{PdfError, PdfResult};
-use crate::images::page_size_points;
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
 use lopdf::{Document, Object};
 use serde::{Deserialize, Serialize};
+use size::resolve_target_size;
 use std::path::{Path, PathBuf};
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -52,36 +56,6 @@ impl Default for ResizeOptions {
             pages: Vec::new(),
         }
     }
-}
-
-fn resolve_target_size(options: &ResizeOptions, current_w: f64, current_h: f64) -> PdfResult<(f64, f64)> {
-    let (mut w, mut h) = match options.page_size.to_lowercase().as_str() {
-        "custom" => (options.custom_width_pt.max(1.0), options.custom_height_pt.max(1.0)),
-        other => {
-            page_size_points(other).ok_or_else(|| PdfError::InvalidInput(format!("unknown page size '{other}'")))?
-        }
-    };
-    let current_landscape = current_w > current_h;
-    match options.orientation.to_lowercase().as_str() {
-        "landscape" => {
-            if w < h {
-                std::mem::swap(&mut w, &mut h);
-            }
-        }
-        "portrait" => {
-            if w > h {
-                std::mem::swap(&mut w, &mut h);
-            }
-        }
-        _ => {
-            // auto: follow the current orientation
-            let target_landscape = w > h;
-            if current_landscape != target_landscape {
-                std::mem::swap(&mut w, &mut h);
-            }
-        }
-    }
-    Ok((w, h))
 }
 
 pub fn resize_pages(
@@ -135,6 +109,7 @@ pub fn resize_pages(
         let matrix =
             Matrix::translate(offset_x, offset_y).mul(Matrix::scale(scale_x, scale_y)).mul(Matrix::translate(-x0, -y0));
         wrap_page_content_transform(&mut doc, page_id, matrix)?;
+        annotations::transform_page_annotations(&mut doc, page_id, matrix)?;
         let page = doc.get_object_mut(page_id)?.as_dict_mut()?;
         page.set(
             "MediaBox",
@@ -197,7 +172,10 @@ pub fn crop_pages(
         // UI top-left -> display bottom-left
         let display_rect =
             [crop.x.max(0.0), (display_h - crop.y - crop.h).max(0.0), crop.w.min(display_w), crop.h.min(display_h)];
-        let page_rect = display_rect_to_page_rect(rotation, page_w, page_h, display_rect);
+        let mut page_rect = display_rect_to_page_rect(rotation, page_w, page_h, display_rect);
+        // The rectangle is in display space, which starts at the page's own origin.
+        page_rect[0] += media[0];
+        page_rect[1] += media[1];
         let page = doc.get_object_mut(page_id)?.as_dict_mut()?;
         page.set(
             "CropBox",
