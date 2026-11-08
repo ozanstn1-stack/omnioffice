@@ -172,3 +172,6 @@ fn read_to_unicode(doc: &Document, dict: &Dictionary) -> Option<ToUnicode> {
     let map = cmap::read(&data);
     (!map.is_empty()).then_some(map)
 }
+
+#[cfg(test)]
+mod tests;
