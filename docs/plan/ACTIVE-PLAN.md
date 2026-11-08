@@ -96,3 +96,19 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   README, RELEASE_READINESS, fastlane 7024000. Kapılar: `release-guard` OK, `claims:check`
   409/566, `repro:check` OK, `changelog-section v7.23.0` yayınlanan gövdeyle eşleşiyor.
   **Sıradaki:** push → PR → CI → merge → tag → yayın doğrulaması.
+
+---
+
+# v7.24.0 YAYINDA — Opus `403fc6b3` KAPISI: CJK metin çıkarma
+**Karar:** metin çıkarmayı CJK fontlarında ölç, bozuksa çizim için kurulan CMap yığınıyla düzelt.
+**Kapı A sonucu: DÜŞTÜ — dilim yapılmayacak.**
+- Uygulamanın metin yolu `pdfcore::render::extract_page_text` → **pdfium** (`page.text()`); pdfium
+  CJK'yı zaten doğru okuyor.
+- `lopdf::Document::extract_text` yalnız **testlerde** kullanılıyor (`tests/common/mod.rs`,
+  `stamp_test`, `incremental_mark_test`, `perf_test`); hiçbir Tauri komutu ona gitmiyor
+  (`src-tauri` yalnız `render::extract_page_text` çağırıyor: commands.rs:266, ai.rs:718,
+  office_tools.rs:170, office.rs:990/1051).
+- Opus'un kendi kuralı: "hiçbir kullanıcıya dönük özellik bu koda ulaşmıyorsa dur" → duruldu.
+  Bu kapı bir dilimi (ve bir sürüm trenini) boşa gitmekten kurtardı.
+- **Sıradaki adaylar** (hepsi kullanıcıya dönük değil ya da araç kısıtlı): (i) fixture dedupe,
+  (ii) `/W` fuzz köprüsü, (iii) Type3, (iv)/(v) editör/Android (VPS'te derlenemiyor).

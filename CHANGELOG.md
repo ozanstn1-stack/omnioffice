@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Resize keeps a page's annotations on the content they mark:** the page content
+  moved through the resize matrix, but the marks on it did not, so a highlight, a
+  note, an ink stroke or a line ended up somewhere else on the page. Their `/Rect`,
+  `/QuadPoints`, `/InkList`, `/L` and `/Vertices` now go through the same matrix.
+- **Crop lands on the right region when the page does not start at the origin:** a
+  `/MediaBox` such as `[10 20 605 862]` - the shape a scan or a print-ready export
+  often has - shifted the cropped region by its own origin, so the rectangle the
+  user drew selected a different part of the page.
+
 ## [7.24.0] - 2026-11-08
 
 ### Changed

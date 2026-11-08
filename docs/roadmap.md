@@ -318,7 +318,8 @@ Effort estimates assume a single developer.
   (`cidfont::cache::tests`), simple fonts' metrics included, the budget is held to
   measured allocations (`font_cache_memory`), and the measurement lives in
   `cargo run --release -p pdfcore --example nup_bench`.
-  Still open: vertical writing (`/Identity-V`),
+  Resize and Crop were probed against those expectations and fixed where they
+  failed (`pagelayout_probe`). Still open: vertical writing (`/Identity-V`),
   predefined CMaps and codes longer than two bytes, as are redactions and
   `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to
