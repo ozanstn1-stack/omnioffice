@@ -254,3 +254,30 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   yalnız `(100,200)` kaymalı; (2) **değişmez** — "center" filigranın merkezi görünen kutunun merkezi,
   damganın sağ-alt çapası görünen kutunun sağ-alt köşesi eksi kenar boşluğu.
 - **Sıradaki**: prob kırmızı → yardımcı + üç çağrı noktası → kapılar → PR.
+
+## v7.29.0 DOĞRULANDI · #690 birleşti (`ce03a50`) — 2026-11-08 22:30 UTC
+- **v7.29.0** tag `8c2650e`; Release + Android **success**, **20 asset** (14 desktop + 6 Android).
+- Gövde **647 bayt** == `node scripts/changelog-section.mjs v7.29.0` (diff boş). `latest.json` **7.29.0**,
+  `.sig` **444 B**, `SHA256SUMS.txt` **8/8** API `digest` eşleşmesi, `coverage` → *"every published
+  asset is covered by 2 envelope(s)"*.
+- **#690** squash merge (`ce03a50`): filigran, sayfa numarası ve kanıt etiketi görünen kutuya oturuyor;
+  kural `pagegeom.rs` (`visible_box`, `page_visible_box`, `display_frame`). Prob 8 vaka: önce **7/8
+  kırmızı** (kaydırılmış sayfada `(300,400)` yerine `(400,600)`, ters kutuda `(-300,-400)`, kırpılmış
+  sayfada medya kutusunun merkezi), sonra **8/8 yeşil**.
+- **Flake notu**: macOS Rust işi `synccore` LAN testinde `Address already in use (os error 48)` ile
+  düştü; `jobs/<id>/rerun` ile yeşile döndü — kodla ilgisiz, tekrarında rerun yeterli.
+- **Sıradaki**: yeni dilim (Opus'a sorulacak). Adaylar: evidence kendi testleri, N-up markup,
+  inspect'in kalan kuralları (link hedefi, şifreleme).
+
+## PR 11: evidence etiketi probu (Opus `7767eb27`) — 2026-11-08 22:55 UTC
+- **Opus planı `7767eb27`**: evidence bundle için E/G/C/V/M gruplarında ~60 vaka önerdi. **Kapsam
+  daraltıldı**: bu oturumda yalnız **G grubu** (etiket geometrisi) + çok kanıtlı numaralandırma
+  yapıldı; V/M/E grupları bir sonraki dilime kaldı (gerekçe: süre + sessiz saat 01:00 UTC).
+- Yeni prob `crates/pdfcore/tests/evidence_label_probe.rs` (4 vaka, hepsi **yeşil**):
+  kutu orijini kaydırılmış sayfa, `/CropBox` içeride, `/Rotate 90`, iki kanıtlı bundle.
+- **Kusur bulunamadı** → sürüm çıkarılmadı (repair probu deseni). Prob, son dilimde değiştirdiğim
+  `evidence.rs::stamp_page` çağrısını (tek test edilmeyen çağrı noktasıydı) sabitliyor.
+- Prob yazarken iki **fikstür hatası** düzelttim: (1) `cm` kompozisyon sırası ters (CTM·M olmalı),
+  (2) R90 için "merkeze uzaklık korunur" varsayımı yanlış (etiket sağ-üst köşeye hizalı olduğu için
+  dönüşte uzaklık değişir) — beklenen değer matristen elle hesaplandı.
+- **Sıradaki**: PR aç → CI → merge; sonra vaka seti V/M/E gruplarına genişletilebilir.
