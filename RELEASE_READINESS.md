@@ -65,6 +65,24 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Filigran, damga ve kanıt etiketi görünen kutuda
+
+- **A watermark sits on the region the viewer shows:** the artwork was placed from
+  the media box alone, so a page whose box starts away from `(0, 0)` moved the
+  mark with the origin, a reversed box turned the page size negative, and a
+  cropped page centred the watermark on the media box instead of the visible
+  region. The placement now uses the crop box clipped to the media box
+  (ISO 32000-1 14.11.2), whose corner starts the page coordinates (7.7.3.3).
+  `test:crates/pdfcore/tests/visible_box_marks_probe.rs#a_centre_watermark_sits_at_the_centre_of_the_crop_box`
+- **Page numbers and headers follow the same box:**
+  `test:crates/pdfcore/tests/visible_box_marks_probe.rs#a_footer_follows_the_page_box_origin`
+  and `test:crates/pdfcore/tests/visible_box_marks_probe.rs#a_footer_sits_on_the_crop_box_corner`
+  cover the stamp path.
+- **The exhibit label follows it too:**
+  `test:crates/pdfcore/tests/visible_box_marks_probe.rs#a_watermark_on_a_rotated_cropped_page_stays_inside_the_box`
+  pins the rotation case, and the shared rule lives in `pagegeom` so the three
+  call sites cannot drift apart again.
+
 ## Implemented (this cycle, 7.29.0) - Açıklama görünen kutuya oturur
 
 - **An annotation lands where it was drawn on a page that does not start at the
