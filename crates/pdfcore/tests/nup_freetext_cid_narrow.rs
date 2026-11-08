@@ -52,10 +52,7 @@ fn ops_of(doc: &Document, sheet: ObjectId, name: &str) -> String {
 }
 
 fn operands(doc: &Document, sheet: ObjectId, name: &str) -> String {
-    ops_of(doc, sheet, name)
-        .split_whitespace()
-        .filter(|token| token.starts_with('<') && token.ends_with('>'))
-        .collect()
+    ops_of(doc, sheet, name).split_whitespace().filter(|token| token.starts_with('<') && token.ends_with('>')).collect()
 }
 
 /// `/ToUnicode` for the fixture: `中` is code `<41>`, `丁` is `<8140>`, and the
@@ -65,7 +62,7 @@ fn to_unicode() -> String {
      1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n\
      3 beginbfchar\n<20> <0020>\n<41> <4E2D>\n<8140> <4E01>\nendbfchar\n\
      endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
-    .to_string()
+        .to_string()
 }
 
 /// One-byte ASCII plus two-byte leads: the Shift-JIS shape.
@@ -100,10 +97,7 @@ fn widths() -> Object {
 
 fn cid_font(fixture: &mut Fixture, encoding: Object) -> ObjectId {
     let program = fixture.add_object(Object::Stream(lopdf::Stream::new(Dictionary::new(), vec![0u8; 32])));
-    let map = fixture.add_object(Object::Stream(lopdf::Stream::new(
-        Dictionary::new(),
-        to_unicode().into_bytes(),
-    )));
+    let map = fixture.add_object(Object::Stream(lopdf::Stream::new(Dictionary::new(), to_unicode().into_bytes())));
     let descriptor = fixture.add_object(Object::Dictionary(dictionary! {
         "Type" => "FontDescriptor",
         "Ascent" => 880i64,
