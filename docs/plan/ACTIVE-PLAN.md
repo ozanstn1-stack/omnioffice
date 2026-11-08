@@ -2605,3 +2605,11 @@ Tag auto-tag ile 6e34745'a gelecek; izleyici `/tmp/watch_rel20.sh` (`/tmp/rel20_
 Beklenen: 20 asset, gövde == CHANGELOG `[7.20.0]`, `latest.json` 7.20.0 + imza, `SHA256SUMS.txt`
 8 satır, desktop 12 + android 5 subject.
 
+
+## PR 3 AÇILDI — **PR #671** (2026-11-08 03:50 UTC)
+Branch `feat/cid-narrow-codespace`, CI koşuyor. Yerel kanıt: lib **339**, üç entegrasyon
+dosyası **4/4 + 5/5 + 3/3** (yeni `nup_freetext_cid_narrow`), clippy iki config'de temiz,
+bütçe içeriden ödendi (`cmap.rs` 238→237, `cid.rs` 325→293; yeni `space.rs` 112, `table.rs` 71).
+- **Sıradaki:** CI yeşilse squash merge + dal sil → **v7.21.0 sürüm treni**; sonra PR 4
+  (predefined CMaps: Adobe kaynaklarını gemide taşımak gerekir — Opus'a danışılacak).
+- v7.20.0 yayını hâlâ derleniyor (tag `6e34745`); doğrulama izleyicisi `/tmp/watch_rel20.sh`.
