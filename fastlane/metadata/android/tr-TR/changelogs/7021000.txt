@@ -1,0 +1,1 @@
+7.21.0: Gömülü /Encoding CMap'i tek baytlık ya da karışık (bir + iki bayt, Shift-JIS biçimi) kod uzayı bildiren kompozit fontlar da okunuyor; her kod kendi uzunluğunda yazılıyor ve genişlikler CID'e göre aranıyor. Bir baytlık aralık iki baytlık kodun ilk baytıyla örtüşürse font reddediliyor: görüntüleyici metni yanlış yerden böler ve hiçbir hata vermez.

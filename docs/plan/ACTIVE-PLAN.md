@@ -2613,3 +2613,20 @@ bütçe içeriden ödendi (`cmap.rs` 238→237, `cid.rs` 325→293; yeni `space.
 - **Sıradaki:** CI yeşilse squash merge + dal sil → **v7.21.0 sürüm treni**; sonra PR 4
   (predefined CMaps: Adobe kaynaklarını gemide taşımak gerekir — Opus'a danışılacak).
 - v7.20.0 yayını hâlâ derleniyor (tag `6e34745`); doğrulama izleyicisi `/tmp/watch_rel20.sh`.
+
+## v7.20.0 DOĞRULANDI + PR 3 BİRLEŞTİ (2026-11-08 03:40 UTC)
+- **v7.20.0 yayınlandı ve doğrulandı**: tag `6e34745`, **20 asset**, gövde == CHANGELOG
+  `[7.20.0]` (670 bayt, diff boş), `latest.json` 7.20.0 + gömülü imza, `.sig` 444 B,
+  `SHA256SUMS.txt` **8 satır ve 8'i de `sha256sum -c` ile OK**, zarflar desktop **12** +
+  android **5** = 17 = 20 − latest.json − 2 zarf, `coverage` exit 0.
+- **#671 birleşti** (`1849dbb`): tek baytlık/karışık codespace; 18 başarı + 2 skip; dal silindi.
+- Disk: `cargo clean` → **18.7 GiB** silindi, %79 → **%61** (38 GB boş).
+
+## v7.21.0 SÜRÜM TRENİ (devam ediyor)
+- Branch `release/v7.21.0`: CHANGELOG `[7.21.0] - 2026-11-08`, sürüm 7.21.0 (cargo/lock/npm/
+  tauri), versionCode **7021000**, README (sürüm + What's new + 7 bağlantı), RELEASE_READINESS
+  7.21.0 bölümü (**7 `test:` işareti**), fastlane `7021000.txt` (en-US üretildi, tr-TR elle).
+- Kapılar: `release-guard` `7.21.0 (versionCode 7021000) OK`, `claims:check` **402/555**,
+  `repro:check` OK, `docs:stats` + `files:check` temiz.
+- **SIRADAKİ:** push → PR → CI → squash merge → auto-tag `v7.21.0` → 20 asset + iki zarf doğrulaması.
+  Sonra PR 4 adayı: predefined CMaps (Adobe kaynaklarını gemide taşımak gerekir) — Opus'a sorulacak.

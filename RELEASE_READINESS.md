@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.20.0
+# Release Readiness — OmniOffice 7.21.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,30 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.21.0) - Tek baytlık ve karışık kod uzayları
+
+- **A note can be drawn with a font whose codes are one byte wide:** an embedded
+  `/Encoding` CMap may declare a one-byte codespace, or one-byte and two-byte
+  ranges together (the Shift-JIS shape). The width is part of the code, so the
+  map keeps a table per width, admits a code only inside a range of its own
+  width, and writes each code at its own length - a note may carry `<41>` and
+  `<8140>` in one string. `/W` and `/CIDToGIDMap` are still looked up by CID.
+  A one-byte range inside a two-byte lead byte refuses the whole font: a viewer
+  would split the string at the wrong place and draw wrong glyphs with no error.
+  A map with only two-byte ranges keeps the older, lenient reading, so a
+  document that works today keeps its exact bytes.
+  `test:crates/pdfcore/tests/nup_freetext_cid_narrow.rs#a_mixed_codespace_writes_each_code_at_its_length`
+  `test:crates/pdfcore/tests/nup_freetext_cid_narrow.rs#a_one_byte_space_is_not_word_spacing`
+  `test:crates/pdfcore/tests/nup_freetext_cid_narrow.rs#an_overlapping_codespace_falls_back_byte_identical`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_one_byte_codespace_selects_one_byte_codes`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_shift_jis_codespace_mixes_widths`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_one_byte_range_inside_a_two_byte_lead_is_refused`
+  `test:crates/pdfcore/src/cmap/code/tests.rs#the_hex_body_follows_the_width`
+- **Still open, unchanged:** predefined CMap names, `/UseCMap` pointing at a
+  stream, vertical writing, and codes longer than two bytes.
+  (no test: these are the refusals asserted above; what is missing is the
+  support, not the check.)
 
 ## Implemented (this cycle, 7.20.0) - Gömülü `/Encoding` CMap
 
