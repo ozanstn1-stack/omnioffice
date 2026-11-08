@@ -51,7 +51,7 @@ fn font_of(doc: &Document, id: ObjectId) -> Dictionary {
 fn the_same_font_is_read_once_however_many_notes_use_it() {
     let (doc, id) = document();
     let dict = font_of(&doc, id);
-    let mut cache = FontCache::new();
+    let mut cache = FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES);
     for _ in 0..200 {
         assert!(cache.get_or_load(&doc, id, &dict).is_some());
     }
@@ -73,7 +73,7 @@ fn two_fonts_get_two_entries() {
     };
     let a = font_of(&doc, first);
     let b = font_of(&doc, second);
-    let mut cache = FontCache::new();
+    let mut cache = FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES);
     for _ in 0..3 {
         assert!(cache.get_or_load(&doc, first, &a).is_some());
         assert!(cache.get_or_load(&doc, second, &b).is_some());
@@ -92,7 +92,7 @@ fn a_font_that_cannot_be_used_is_remembered_too() {
     broken.remove(b"ToUnicode");
     let broken_id = doc.add_object(Object::Dictionary(broken));
     let broken = font_of(&doc, broken_id);
-    let mut cache = FontCache::new();
+    let mut cache = FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES);
     assert!(cache.get_or_load(&doc, broken_id, &broken).is_none());
     assert!(cache.get_or_load(&doc, broken_id, &broken).is_none());
     let stats = cache.stats();
@@ -119,8 +119,8 @@ fn a_font_past_the_budget_is_used_but_not_stored() {
 fn the_heap_estimate_grows_with_the_font() {
     let (doc, id) = document();
     let dict = font_of(&doc, id);
-    let mut cache = FontCache::new();
+    let mut cache = FontCache::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES);
     let font = cache.get_or_load(&doc, id, &dict).expect("font");
     assert!(font.heap_bytes() > 0, "a font with a map, widths and a program is not free");
-    assert!(font.heap_bytes() < DEFAULT_BUDGET_BYTES);
+    assert!(font.heap_bytes() < crate::nup::DEFAULT_FONT_CACHE_BYTES);
 }

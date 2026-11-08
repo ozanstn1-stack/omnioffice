@@ -67,6 +67,12 @@ impl Default for NupOptions {
     }
 }
 
+/// What one document's parsed fonts may hold while it is imposed.
+pub const DEFAULT_FONT_CACHE_BYTES: usize = 32 * 1024 * 1024;
+
+#[doc(hidden)]
+pub mod bench;
+
 /// A4 portrait in points.
 const A4_PORTRAIT: (f64, f64) = (595.28, 841.89);
 /// US Letter portrait in points.
@@ -86,7 +92,7 @@ pub fn nup_pdf(
     cancel: &CancelToken,
 ) -> PdfResult<PathBuf> {
     let mut doc = load_document(input, password)?;
-    build_nup(&mut doc, options, progress, cancel)?;
+    build_nup(&mut doc, options, progress, cancel, DEFAULT_FONT_CACHE_BYTES)?;
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
     Ok(final_path)
@@ -95,19 +101,7 @@ pub fn nup_pdf(
 /// In-memory variant of [`nup_pdf`] for callers that already hold the bytes
 /// (and for tests). Encrypted input must be decrypted by the caller first.
 pub fn nup_pdf_bytes(input: &[u8], options: &NupOptions) -> PdfResult<Vec<u8>> {
-    let mut doc = Document::load_mem(input).map_err(|error| PdfError::from_lopdf(error, None))?;
-    if doc.is_encrypted() {
-        return Err(PdfError::PasswordRequired);
-    }
-    let cancel = CancelToken::new();
-    let no_progress = |_event: ProgressEvent| {};
-    build_nup(&mut doc, options, &no_progress, &cancel)?;
-    doc.compress();
-    doc.prune_objects();
-    doc.renumber_objects();
-    let mut bytes = Vec::new();
-    doc.save_to(&mut bytes).map_err(PdfError::from_io)?;
-    Ok(bytes)
+    bench::impose_bytes(input, options, DEFAULT_FONT_CACHE_BYTES)
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +216,7 @@ fn build_nup(
     options: &NupOptions,
     progress: &ProgressCallback,
     cancel: &CancelToken,
+    budget: usize,
 ) -> PdfResult<()> {
     let per_sheet = options.per_sheet;
     if !matches!(per_sheet, 2 | 4) {
@@ -288,6 +283,8 @@ fn build_nup(
     // 1-based page number -> source object, for zero-based integer destinations.
     let page_order: Vec<ObjectId> = (1..=total_pages).map(|page| page_ids[&page]).collect();
     links::carry_navigation(doc, &sheets, &page_order);
+    // Printable markup is painted into the sheet stream, not copied.
+    markup::carry_markup(doc, &sheets, budget);
     let sheet_ids: Vec<ObjectId> = sheets.iter().map(|(id, _)| *id).collect();
     install_page_tree(doc, &sheet_ids)?;
     Ok(())

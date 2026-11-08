@@ -105,8 +105,8 @@ pub(super) struct Alpha {
 /// Paints every printable annotation of the source pages onto its sheet. Never
 /// fails: a broken appearance is skipped on its own, and a sheet with nothing to
 /// paint is left byte-identical.
-pub(super) fn carry_markup(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)]) {
-    let mut fonts = appearance::FontCache::new();
+pub(super) fn carry_markup(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], budget: usize) {
+    let mut fonts = appearance::FontCache::with_budget(budget);
     // Read against an immutable document first, then write.
     let field_context = widget::AcroCtx::from_doc(doc);
     let mut pending: Vec<(ObjectId, Vec<Draw>)> = Vec::with_capacity(sheets.len());

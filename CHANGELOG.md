@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **A simple `/DR` font is read once per document too:** `/Widths`, `/Encoding`,
+  `/Differences` and the descriptor were re-read for every note, which is the same
+  waste the composite path had before 7.22.0. Both kinds now share one cache, keyed
+  by the font's object id - never its resource name, since two pages may call
+  different fonts `/F1`. On a 500-page document with four notes per page (2000
+  notes, release build, median of five runs, `cargo run --release -p pdfcore
+  --example nup_bench`): a composite font went from **896 ms to 183 ms** and a
+  simple font from **205 ms to 178 ms**. The benchmark compares the two outputs
+  byte for byte before printing, so the cache is measured and proven invisible.
+
 ## [7.22.0] - 2026-11-08
 
 ### Changed

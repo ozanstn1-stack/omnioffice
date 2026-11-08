@@ -18,15 +18,13 @@ const COPIED_KEYS: [&str; 7] = ["Border", "BS", "C", "H", "F", "Contents", "NM"]
 
 /// Copies the source pages' link annotations onto the sheets that carry them.
 ///
-/// Never fails: an annotation that cannot be mapped (unreadable dictionary, a
+/// Never fails: an annotation that cannot be mapped (an unreadable dictionary, a
 /// destination outside the imposed pages, an unsupported action) is dropped on
-/// its own and the imposition goes on.
+/// its own.
 pub(super) fn carry_navigation(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], page_order: &[ObjectId]) {
     let dests = DestMap::new(sheets, page_order);
     carry_links(doc, sheets, &dests);
     super::outline::carry_outline(doc, &dests);
-    // Printable markup is painted into the sheet stream, not copied (`markup`).
-    super::markup::carry_markup(doc, sheets);
 }
 
 fn carry_links(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)], dests: &DestMap) {
