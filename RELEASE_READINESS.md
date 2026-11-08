@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.21.0
+# Release Readiness — OmniOffice 7.22.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,26 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.22.0) - Font başına tek okuma
+
+- **Each composite font is read once per document, not once per note:** N-up
+  imposition creates a cache inside the call that carries the annotations and
+  drops it when that call returns, because an object id means something in one
+  document and nothing in another. A refusal is cached as well as a success - the
+  reads that prove a font unusable are the same reads - so a font that cannot be
+  used is not re-read for every note. The budget is enforced at insert time: a
+  font that would take the cache past it is used but not stored, and nothing is
+  ever evicted. The output is byte-identical.
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#the_same_font_is_read_once_however_many_notes_use_it`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#two_fonts_get_two_entries`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#a_font_that_cannot_be_used_is_remembered_too`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#a_font_past_the_budget_is_used_but_not_stored`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/cache/tests.rs#the_heap_estimate_grows_with_the_font`
+- **Still open, unchanged:** the cache covers the composite-font path only;
+  simple fonts' `/Widths`, rendering and text extraction still read per call,
+  and no wall-clock benchmark is published.
+  (no test: those are the paths this slice deliberately leaves alone.)
 
 ## Implemented (this cycle, 7.21.0) - Tek baytlık ve karışık kod uzayları
 
