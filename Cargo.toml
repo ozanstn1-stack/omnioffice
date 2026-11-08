@@ -39,6 +39,11 @@ authors = ["OmniOffice contributors"]
 # The CI gate is `cargo clippy --workspace --all-targets -- -D warnings`
 # (npm run lint:rust). Everything is denied by default; the entries below are
 # deliberate exceptions with a reason, not a way to silence findings.
+[workspace.lints.rust]
+# `cargo fuzz` compiles with `--cfg fuzzing`; the readers expose a probe under it
+# so the fuzz target can exercise the private parsers without a public API.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+
 [workspace.lints.clippy]
 # Long, flat parameter lists are the shape of this code base's drawing and
 # export helpers (page, x, y, width, height, colour, ...). Bundling them into a

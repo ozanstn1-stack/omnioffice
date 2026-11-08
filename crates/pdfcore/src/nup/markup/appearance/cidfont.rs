@@ -26,13 +26,11 @@ use super::super::super::links::number;
 use super::drfont;
 use crate::cmap::{self, ToUnicode};
 
+mod mapping;
 mod widths;
 
 /// The `/ToUnicode` stream of one font stops here, as in [`crate::cmap`].
 const MAX_TO_UNICODE: usize = 1 << 20;
-
-/// A `/CIDToGIDMap` stream holds two bytes per CID.
-const MAX_GID_MAP: usize = 128 * 1024;
 
 /// A composite font of the document, ready to be referenced by an appearance.
 pub(super) struct DocCid {
@@ -46,8 +44,7 @@ pub(super) struct DocCid {
 struct CidFont {
     to_unicode: ToUnicode,
     widths: widths::Widths,
-    /// `None` for the identity mapping, which is also the default.
-    gids: Option<Vec<u8>>,
+    mapping: mapping::Mapping,
     ascent: f32,
 }
 
@@ -60,38 +57,30 @@ impl DocCid {
         self.id
     }
 
-    /// The CID `symbol` is drawn with, when the font can really draw it.
+    /// The code `symbol` is drawn with, when the font can really draw it.
+    ///
+    /// The code is what `/ToUnicode` inverted and what the appearance writes;
+    /// the CID it selects is checked through `/Encoding`, so an unmapped code,
+    /// CID 0 and a `.notdef` glyph all cost the character.
     pub(super) fn code(&self, symbol: char) -> Option<u16> {
         let code = self.font.to_unicode.code(symbol)?;
-        // CID 0 is `.notdef`, and a glyph id of 0 is the box a viewer draws for
-        // a glyph the program does not have: both are worse than no text.
-        if code == 0 || !self.font.has_glyph(code) {
+        if code == 0 {
             return None;
         }
+        self.font.mapping.cid(code)?;
         Some(code)
     }
 
     /// The advance of `code` in 1/1000 em, or `None` when it draws nothing.
+    /// `/W` is keyed by CID, not by code.
     pub(super) fn advance(&self, code: u16) -> Option<f32> {
-        let width = self.font.widths.get(code);
+        let cid = self.font.mapping.cid(code)?;
+        let width = self.font.widths.get(cid);
         (width > 0.0).then_some(width)
     }
 
     pub(super) fn ascent(&self) -> f32 {
         self.font.ascent
-    }
-}
-
-impl CidFont {
-    /// Whether `/CIDToGIDMap` gives `code` a glyph other than `.notdef`.
-    fn has_glyph(&self, code: u16) -> bool {
-        let Some(table) = &self.gids else { return true };
-        let index = usize::from(code) * 2;
-        match (table.get(index), table.get(index + 1)) {
-            (Some(high), Some(low)) => u16::from_be_bytes([*high, *low]) != 0,
-            // A CID past the end of the map has no glyph.
-            _ => false,
-        }
     }
 }
 
@@ -106,18 +95,10 @@ pub(super) fn resolve_font(doc: &Document, annot: &Dictionary, name: &str) -> Op
     if dict.get(b"Subtype").ok()?.as_name().ok()? != b"Type0" {
         return None;
     }
-    // `/Encoding` has no default, and only horizontal identity codes are drawn.
-    match dict.get(b"Encoding").ok()? {
-        Object::Name(name) if name == b"Identity-H" => {}
-        _ => return None,
-    }
     let child = descendant(doc, dict)?;
     let subtype = child.get(b"Subtype").ok()?.as_name().ok()?;
-    let gids = match subtype {
-        b"CIDFontType2" => gid_map(doc, child)?,
-        b"CIDFontType0" => None,
-        _ => return None,
-    };
+    // `/Encoding` has no default; a vertical or unknown one is refused there.
+    let mapping = mapping::mapping(doc, dict, child, subtype)?;
     let descriptor = resolve(doc, child.get(b"FontDescriptor").ok()?).as_dict().ok()?;
     if !embedded(doc, descriptor) {
         return None;
@@ -131,7 +112,7 @@ pub(super) fn resolve_font(doc: &Document, annot: &Dictionary, name: &str) -> Op
         .filter(|value| value.is_finite() && *value > 0.0 && *value <= 2000.0)
         .map(|value| (value / 1000.0) as f32)
         .unwrap_or(0.718);
-    Some(DocCid { key: name.to_string(), id, font: CidFont { to_unicode, widths, gids, ascent } })
+    Some(DocCid { key: name.to_string(), id, font: CidFont { to_unicode, widths, mapping, ascent } })
 }
 
 /// The one descendant CID font, as the spec's one-element array allows.
@@ -141,20 +122,6 @@ fn descendant<'a>(doc: &'a Document, dict: &'a Dictionary) -> Option<&'a Diction
         return None;
     }
     resolve(doc, array.first()?).as_dict().ok()
-}
-
-/// The `/CIDToGIDMap` of a `CIDFontType2`: identity when absent, a table when
-/// it is a stream, and nothing when it says something else.
-fn gid_map(doc: &Document, child: &Dictionary) -> Option<Option<Vec<u8>>> {
-    let Ok(value) = child.get(b"CIDToGIDMap") else { return Some(None) };
-    match resolve(doc, value) {
-        Object::Name(name) if name == b"Identity" => Some(None),
-        Object::Stream(stream) => {
-            let data = stream.decompressed_content_with_limit(MAX_GID_MAP).ok()?;
-            Some(Some(data))
-        }
-        _ => None,
-    }
 }
 
 /// Whether the descriptor names a font program the viewer will find.

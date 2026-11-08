@@ -2459,7 +2459,60 @@ Branch `feat/doc-cid-face` (master `a294214` üstünde, **henüz push edilmedi**
   (`Cargo.toml`/`Cargo.lock`/`package*.json`/`tauri.conf.json`), versionCode **7019000**,
   README (sürüm satırı + What's new + indirme bağlantıları), RELEASE_READINESS 7.19.0 bölümü,
   fastlane `7019000.txt` (en-US üretildi, tr-TR elle).
-- Push → PR → CI yeşil → squash merge → auto-tag `v7.19.0` → release workflow.
+- Push → PR **#668** (19/19 yeşil) → squash merge `c0118ee` → **auto-tag `v7.19.0` → `c0118ee`**
+  → Release + Android workflow'ları koşuyor (workflow_dispatch).
   Doğrulama: **20 asset** (`-desktop` + `-android` zarfları), gövde == CHANGELOG bölümü,
   `latest.json` imza, `SHA256SUMS.txt` 8 satır.
+
+
+---
+
+# SERİ PR 2: gömülü `/Encoding` CMap akışları
+**Opus planı `9228920b`.** Ölçülen bilinmeyen: `cmap` `pub mod` (lib.rs:44) → Opus'un **Branch A**'sı
+(fuzz kancası `#[cfg(fuzzing)] pub fn fuzz_cid`).
+
+## Kararlar
+1. **Kod genişliği: yalnız iki baytlık codespace kabul edilir.** Tek bayt / karışık / 3-4 bayt
+   reddedilir. Gerekçe: `ToUnicode::code(char)->u16` kaynak kodun **uzunluğunu** söylemiyor, yani
+   `<41>` ile `<0041>` ayırt edilemez; yanlış genişlik sessizce sonraki tüm glifleri kaydırır
+   ("asla tahmin etme"). Bu yüzden `slots::operand`'ın `{:04X}`'i bugünkü gibi kalır ve
+   `slots.rs`/`textfit.rs`/`freetext.rs`/`face.rs` **hiç değişmez**.
+2. **`usecmap`:** yalnız `/Identity-H` taban kabul; çocuğun kendi girdileri tabanı ezer (pdf.js ve
+   MuPDF aynı). Bilinmeyen taban **fontu reddeder**: `90ms-RKSJ-H` gibi bir taban kendi
+   codespace'ini de getirir (tek baytlık aralıklar) ve kodu ikiye böler — sessiz yanlış çizim.
+3. **`code→CID` haritası:** sıralı `Vec<Run{lo,hi,cid}>` + `notdef` + bayt-bayt codespace;
+   `HashMap` `<0000><FFFF> 0` satırını 65 536 girdiye açardı. Örtüşen girdiler **aynı ofsetle**
+   uyuşuyorsa birleştirilir, çelişiyorsa font reddedilir. Taşma `checked_add` + `u16::try_from`.
+4. **Yerleşim:** lexer `cmap/lex.rs`'e taşınır (cmap 316 → ≤240; yer açmak zorunlu), yeni
+   `cmap/cid.rs` (≤300) + `cmap/cid/tests.rs`; belge tarafı `cidfont/mapping.rs` (≤160) +
+   `mapping/tests.rs`; `cidfont.rs` 177 → ≤165. `cidfont/tests.rs` **büyümez** (tek baytlık
+   codespace fixture'ı yerinde değişir).
+5. **Genişlikler CID'e göre anahtarlanır:** `DocCid::code` = ToUnicode kodu → `mapping.cid(code)`;
+   `advance(code)` = `widths.get(cid)`. Identity-H'de CID==kod olduğu için bugünkü davranış aynı.
+6. **Fuzz:** yeni hedef yok; `fuzz_targets/cmap.rs` üç çağrı yapar (`read`, `fuzz_cid(false)`,
+   `fuzz_cid(true)`). `check-cfg = ['cfg(fuzzing)']` eklenmeli, yoksa `clippy -D warnings` düşer.
+
+## Adımlar (Opus)
+0) master'dan dal + master'ın `/AP` baytlarını referans olarak yakala ·
+1) lexer taşıması (saf, `cmap/tests.rs` değişmeden) · 2) `cmap/cid.rs` okuyucusu ·
+3) birim testleri (kabul/red listesi) · 4) `cidfont/mapping.rs` taşıması (davranış aynı) ·
+5) `/Encoding` akışını kabul + fuzz kancası · 6) belge düzeyi testler ·
+7) bütçe kontrolü · 8) `tests/nup_freetext_cid_cmap.rs` (8 uçtan uca test) ·
+9) CHANGELOG/roadmap/PR · 10) kapılar + `cargo clean`.
+
+## Sıradaki (bu dilimden sonra)
+PR 3: tek baytlık/karışık codespace + `ToUnicode` kaynak uzunluğu (`CodeWidth`), PR 4: predefined
+CMaps (Adobe kaynaklarını gemide taşımak gerekir) ve dikey yazı — ikisi de **planlanmıyor**.
+
+## v7.19.0 DOĞRULANDI (2026-11-08 01:30 UTC)
+- Tag **`v7.19.0` → `c0118ee`**; Release + Android workflow'ları yeşil.
+- **20 asset**: 4 Android paketi + 2 Linux + 2 Windows + `OmniOffice_7.19.0_x64-setup.exe.sig`
+  (444 B) + 4 `SHA256SUMS*` + `build-info.json` + `latest.json` + 2 zarf + 2 SBOM.
+- Release gövdesi CHANGELOG `[7.19.0]` ile **birebir** (1539/1539 bayt, `changelog-section.mjs`).
+- `latest.json` **7.19.0**, gömülü imza `untrusted comment:` ile başlıyor, işaret ettiği dosya
+  `OmniOffice_7.19.0_x64-setup.exe`; `SHA256SUMS.txt` **8 satır**; setup hash'i manifestle aynı
+  (`29465f23…`).
+- Zarflar: desktop **12 subject**, android **5 subject**; birlikte **17 = 20 − latest.json −
+  2 zarf**; `provenance-subjects.mjs coverage` → *"every published asset is covered by
+  2 envelope(s)"*, exit 0.
 
