@@ -24,6 +24,10 @@ use std::collections::BTreeMap;
 
 pub(crate) mod cid;
 mod code;
+#[cfg(fuzzing)]
+mod fuzz;
+#[cfg(fuzzing)]
+pub use fuzz::fuzz_cid;
 mod lex;
 pub(crate) use code::Code;
 use lex::{tokenize, Token};
@@ -227,15 +231,6 @@ fn keep(symbol: char) -> bool {
         && !(0xFDD0..=0xFDEF).contains(&code)
         && code & 0xFFFF != 0xFFFE
         && code & 0xFFFF != 0xFFFF
-}
-
-/// Fuzz entry for the `/Encoding` reader, which has no public API: `cargo fuzz`
-/// compiles with `--cfg fuzzing`.
-#[cfg(fuzzing)]
-#[doc(hidden)]
-pub fn fuzz_cid(program: &[u8], identity_base: bool) -> Option<usize> {
-    let base = identity_base.then_some(&b"Identity-H"[..]);
-    cid::read(program, base).map(|map| map.probe())
 }
 
 #[cfg(test)]
