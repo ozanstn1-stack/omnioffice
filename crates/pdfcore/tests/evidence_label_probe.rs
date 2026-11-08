@@ -169,14 +169,8 @@ fn a_rotated_exhibit_keeps_the_label_on_the_page() {
     let label = anchors[0];
     // The label is 22 points below the top edge of the 792-point-tall view, so
     // its page x is 612 - 590 = 22; its anchor sits 768 points along the view.
-    assert!(
-        (label.0 - 22.0).abs() < 12.0,
-        "the label stays inside the page near its left edge: {label:?}"
-    );
-    assert!(
-        label.1 > 700.0 && label.1 < 792.0,
-        "the label sits near the top of the unrotated page: {label:?}"
-    );
+    assert!((label.0 - 22.0).abs() < 12.0, "the label stays inside the page near its left edge: {label:?}");
+    assert!(label.1 > 700.0 && label.1 < 792.0, "the label sits near the top of the unrotated page: {label:?}");
 }
 
 #[test]
@@ -184,8 +178,16 @@ fn every_exhibit_page_carries_one_label() {
     // Two exhibits of two pages each: the labels follow the manifest's page
     // numbers, not the order the bytes happen to sit in.
     let files = vec![
-        EvidenceFile { label: "Ek-1".into(), file_name: "ek-1.pdf".into(), bytes: exhibit([0.0, 0.0, 612.0, 792.0], None, 0) },
-        EvidenceFile { label: "Ek-2".into(), file_name: "ek-2.pdf".into(), bytes: exhibit([0.0, 0.0, 612.0, 792.0], None, 0) },
+        EvidenceFile {
+            label: "Ek-1".into(),
+            file_name: "ek-1.pdf".into(),
+            bytes: exhibit([0.0, 0.0, 612.0, 792.0], None, 0),
+        },
+        EvidenceFile {
+            label: "Ek-2".into(),
+            file_name: "ek-2.pdf".into(),
+            bytes: exhibit([0.0, 0.0, 612.0, 792.0], None, 0),
+        },
     ];
     let (bundle, manifest) = build_evidence_bundle(files, &details()).expect("bundle");
     assert_eq!(manifest.entries.len(), 2);
