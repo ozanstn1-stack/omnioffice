@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Flatten no longer bakes in an annotation the viewer never shows:** an
+  annotation whose `/F` carries the Hidden bit (2) was painted onto the page like
+  any other, so a hidden stamp or note appeared in the flattened file that was not
+  in the document the user was looking at. It is now left in place and reported in
+  the flatten report instead.
+
 ## [7.25.0] - 2026-11-08
 
 ### Fixed

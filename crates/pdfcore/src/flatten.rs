@@ -22,8 +22,11 @@ use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
 use serde::{Deserialize, Serialize};
 
 use crate::docutil::{self, add_resource_entry, append_page_content, pdf_text_value, Matrix};
+
+mod policy;
 use crate::error::PdfResult;
 use crate::progress::{CancelToken, ProgressCallback, ProgressReporter};
+use policy::annotation_label;
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,15 +271,6 @@ fn burn_annotation(
     append_page_content(doc, page_id, snippet.into_bytes())
 }
 
-fn annotation_label(annot: &Dictionary) -> String {
-    annot
-        .get(b"Subtype")
-        .ok()
-        .and_then(|value| value.as_name().ok())
-        .map(|value| String::from_utf8_lossy(value).to_string())
-        .unwrap_or_else(|| "annotation".into())
-}
-
 fn annots_storage(doc: &Document, page_id: ObjectId) -> Option<(AnnotsStorage, Vec<Object>)> {
     let page = doc.get_dictionary(page_id).ok()?;
     match page.get(b"Annots").ok()? {
@@ -489,6 +483,12 @@ pub fn flatten_pdf(
             };
             let is_field = annot_id.map(|id| field_ids.contains(&id)).unwrap_or(false);
             let flatten = options.annotations || (options.forms && is_field);
+            // Hidden bit 2 (12.5.3): the viewer never shows it, so painting it
+            // would add something the user never saw.
+            if flatten && policy::is_hidden(&annot) {
+                report.warnings.push(policy::hidden_warning(*page_number, &annot));
+                continue;
+            }
 
             if flatten {
                 let mut appearance = appearance_stream_id(&doc, &annot);
