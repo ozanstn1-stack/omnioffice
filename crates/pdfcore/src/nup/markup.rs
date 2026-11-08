@@ -102,12 +102,12 @@ pub(super) struct Alpha {
     pub(super) blend: Option<Vec<u8>>,
 }
 
-/// Paints every printable annotation of the source pages onto its sheet.
-///
-/// Never fails: an annotation with a broken appearance is skipped on its own,
-/// and a sheet with nothing to paint is left byte-identical.
+/// Paints every printable annotation of the source pages onto its sheet. Never
+/// fails: a broken appearance is skipped on its own, and a sheet with nothing to
+/// paint is left byte-identical.
 pub(super) fn carry_markup(doc: &mut Document, sheets: &[(ObjectId, Vec<Placement>)]) {
-    // Read everything against an immutable document first, then write.
+    let mut fonts = appearance::FontCache::new();
+    // Read against an immutable document first, then write.
     let field_context = widget::AcroCtx::from_doc(doc);
     let mut pending: Vec<(ObjectId, Vec<Draw>)> = Vec::with_capacity(sheets.len());
     for (sheet_id, placements) in sheets {
@@ -118,7 +118,7 @@ pub(super) fn carry_markup(doc: &mut Document, sheets: &[(ObjectId, Vec<Placemen
                 if draws.len() >= MAX_MARKUP_PER_SHEET {
                     break;
                 }
-                if let Some(draw) = markup_draw(doc, &annot, placement, rotation, &field_context) {
+                if let Some(draw) = markup_draw(doc, &annot, placement, rotation, &mut fonts, &field_context) {
                     draws.push(draw);
                 }
             }
@@ -138,6 +138,7 @@ fn markup_draw(
     annot: &Dictionary,
     placement: &Placement,
     rotation: i32,
+    fonts: &mut appearance::FontCache,
     context: &widget::AcroCtx,
 ) -> Option<Draw> {
     let subtype = annot.get(b"Subtype").ok()?.as_name().ok()?;
@@ -159,7 +160,7 @@ fn markup_draw(
         let (stream, bbox, appearance_matrix) = appearance_of(doc, annot)?;
         (Look::Stream(stream), fit_to_rect(bbox, appearance_matrix, rect)?, rect)
     } else {
-        let synth = appearance::synthesize(doc, annot, subtype, rect)?;
+        let synth = appearance::synthesize(doc, annot, subtype, rect, fonts)?;
         let boxed = synth.bbox;
         (Look::Synth(synth), Matrix::IDENTITY, boxed)
     };
@@ -225,9 +226,8 @@ fn fit_to_rect(bbox: [f64; 4], matrix: Matrix, rect: [f64; 4]) -> Option<Matrix>
     )
 }
 
-/// `/NoRotate` keeps the appearance upright around the rectangle's top-left
-/// corner; the placement matrix already carries the page rotation, so undoing
-/// it here leaves the two rotations cancelling out.
+/// `/NoRotate` keeps the appearance upright: the placement matrix already carries
+/// the page rotation, so undoing it here leaves the two rotations cancelling out.
 fn no_rotate(rect: [f64; 4], rotation: i32) -> Matrix {
     let anchor = (rect[0], rect[3]);
     Matrix::translate(anchor.0, anchor.1)

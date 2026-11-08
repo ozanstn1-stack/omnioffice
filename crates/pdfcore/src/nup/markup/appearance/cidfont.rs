@@ -19,6 +19,8 @@
 //! consulted - with Identity-H and an embedded program it only matters for the
 //! substitution we never do.
 
+use std::sync::Arc;
+
 use lopdf::{Dictionary, Document, Object, ObjectId};
 
 use super::super::super::dests::resolve;
@@ -26,8 +28,11 @@ use super::super::super::links::number;
 use super::drfont;
 use crate::cmap::{self, Code, ToUnicode};
 
+mod cache;
 mod mapping;
 mod widths;
+
+pub(crate) use cache::FontCache;
 
 /// The `/ToUnicode` stream of one font stops here, as in [`crate::cmap`].
 const MAX_TO_UNICODE: usize = 1 << 20;
@@ -38,10 +43,11 @@ pub(super) struct DocCid {
     key: String,
     /// The font dictionary object, which the form's `/Resources` references.
     id: ObjectId,
-    font: CidFont,
+    /// Shared with the cache: one read serves every note that uses it.
+    font: Arc<CidFont>,
 }
 
-struct CidFont {
+pub(crate) struct CidFont {
     to_unicode: ToUnicode,
     widths: widths::Widths,
     mapping: mapping::Mapping,
@@ -85,33 +91,48 @@ impl DocCid {
 
 /// Resolves the composite font named by `/DA` in the annotation's `/DR`, then
 /// in the form's; `None` when it cannot be used for metrics.
-pub(super) fn resolve_font(doc: &Document, annot: &Dictionary, name: &str) -> Option<DocCid> {
+pub(super) fn resolve_font(doc: &Document, annot: &Dictionary, name: &str, fonts: &mut FontCache) -> Option<DocCid> {
     let entry = drfont::font_entry(doc, annot, name)?;
     // Only an indirect font can be referenced by the appearance: a direct
-    // dictionary would have to be copied into every form.
+    // dictionary would have to be copied into every form, and it has no id for
+    // the cache either.
     let Object::Reference(id) = entry else { return None };
     let dict = doc.get_dictionary(id).ok()?;
-    if dict.get(b"Subtype").ok()?.as_name().ok()? != b"Type0" {
-        return None;
+    let font = fonts.get_or_load(doc, id, dict)?;
+    Some(DocCid { key: name.to_string(), id, font })
+}
+
+impl CidFont {
+    /// Reads one composite font, or `None` when any of the four things drawing
+    /// needs is missing or refused.
+    fn load(doc: &Document, dict: &Dictionary) -> Option<Self> {
+        if dict.get(b"Subtype").ok()?.as_name().ok()? != b"Type0" {
+            return None;
+        }
+        let child = descendant(doc, dict)?;
+        let subtype = child.get(b"Subtype").ok()?.as_name().ok()?;
+        // `/Encoding` has no default; a vertical or unknown one is refused there.
+        let mapping = mapping::mapping(doc, dict, child, subtype)?;
+        let descriptor = resolve(doc, child.get(b"FontDescriptor").ok()?).as_dict().ok()?;
+        if !embedded(doc, descriptor) {
+            return None;
+        }
+        let widths = widths::parse(doc, child.get(b"W").ok(), child.get(b"DW").ok())?;
+        let to_unicode = read_to_unicode(doc, dict)?;
+        let ascent = descriptor
+            .get(b"Ascent")
+            .ok()
+            .and_then(number)
+            .filter(|value| value.is_finite() && *value > 0.0 && *value <= 2000.0)
+            .map(|value| (value / 1000.0) as f32)
+            .unwrap_or(0.718);
+        Some(Self { to_unicode, widths, mapping, ascent })
     }
-    let child = descendant(doc, dict)?;
-    let subtype = child.get(b"Subtype").ok()?.as_name().ok()?;
-    // `/Encoding` has no default; a vertical or unknown one is refused there.
-    let mapping = mapping::mapping(doc, dict, child, subtype)?;
-    let descriptor = resolve(doc, child.get(b"FontDescriptor").ok()?).as_dict().ok()?;
-    if !embedded(doc, descriptor) {
-        return None;
+
+    /// An estimate of what this font holds, which is what the cache budgets.
+    pub(super) fn heap_bytes(&self) -> usize {
+        self.to_unicode.len() * 8 + self.widths.len() * 4 + self.mapping.heap_bytes()
     }
-    let widths = widths::parse(doc, child.get(b"W").ok(), child.get(b"DW").ok())?;
-    let to_unicode = read_to_unicode(doc, dict)?;
-    let ascent = descriptor
-        .get(b"Ascent")
-        .ok()
-        .and_then(number)
-        .filter(|value| value.is_finite() && *value > 0.0 && *value <= 2000.0)
-        .map(|value| (value / 1000.0) as f32)
-        .unwrap_or(0.718);
-    Some(DocCid { key: name.to_string(), id, font: CidFont { to_unicode, widths, mapping, ascent } })
 }
 
 /// The one descendant CID font, as the spec's one-element array allows.

@@ -17,7 +17,7 @@
 use lopdf::{Dictionary, Document, ObjectId};
 
 use super::super::FontSpec;
-use super::cidfont;
+use super::cidfont::{self, FontCache};
 use super::drfont::DrFont;
 use super::std14::{Family, Std14};
 use super::textfit::{FontMetrics, Std14Metrics};
@@ -85,9 +85,15 @@ impl Face {
 
     /// The face for text WinAnsi cannot carry: the bundled face first, then the
     /// document's own composite font, and `None` when neither can show it.
-    pub(super) fn script_for(doc: &Document, annot: &Dictionary, name: &str, text: &str) -> Option<Self> {
+    pub(super) fn script_for(
+        doc: &Document,
+        annot: &Dictionary,
+        name: &str,
+        text: &str,
+        fonts: &mut FontCache,
+    ) -> Option<Self> {
         SubsetFace::bundled().and_then(|face| SlotMetrics::new(face, text).map(Face::Subset)).or_else(|| {
-            let font = cidfont::resolve_font(doc, annot, name)?;
+            let font = cidfont::resolve_font(doc, annot, name, fonts)?;
             SlotMetrics::for_document(font, text).map(Face::Subset)
         })
     }

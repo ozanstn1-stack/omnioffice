@@ -313,7 +313,9 @@ Effort estimates assume a single developer.
   wide and its base - if it names one - is `Identity-H`
   (`nup_freetext_cid_cmap`), and a codespace may be one byte wide or mix both
   widths, as Shift-JIS does: every code is written at its own length
-  (`nup_freetext_cid_narrow`). Still open: vertical writing (`/Identity-V`),
+  (`nup_freetext_cid_narrow`), and each font's map, glyph map and widths are
+  read once per document rather than once per note
+  (`cidfont::cache::tests`). Still open: vertical writing (`/Identity-V`),
   predefined CMaps and codes longer than two bytes, as are redactions and
   `/NoZoom`.
 - **PDF to Word**: password-protected PDFs, simple table recovery mapped to

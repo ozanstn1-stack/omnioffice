@@ -2630,3 +2630,71 @@ bütçe içeriden ödendi (`cmap.rs` 238→237, `cid.rs` 325→293; yeni `space.
   `repro:check` OK, `docs:stats` + `files:check` temiz.
 - **SIRADAKİ:** push → PR → CI → squash merge → auto-tag `v7.21.0` → 20 asset + iki zarf doğrulaması.
   Sonra PR 4 adayı: predefined CMaps (Adobe kaynaklarını gemide taşımak gerekir) — Opus'a sorulacak.
+
+---
+
+# v7.21.0 YAYINDA (tag bekleniyor) — sonra PR 4
+**#672 birleşti** (`eb66530`, 17 başarı + 2 beklenen skip). İzleyici `/tmp/watch_rel21.sh`.
+
+# Opus kararı `2b09aef9` — sıradaki dilim: belge başına CID font önbelleği
+
+## Karar
+`/ToUnicode`, `/Encoding` CMap, `/CIDToGIDMap` ve `/W` her notta değil, **kaynak belge başına
+bir kez** okunur; anahtar font sözlüğünün `ObjectId`'si. Yanında 500 sayfalık N-up ölçümü.
+
+## Gerekçe
+- (a) ve (b) aynı değişiklik: aynı önbellek, aynı anahtar, aynı çizim yolu.
+- Tamamı `pdfcore` içinde → VPS'te yerel doğrulanabilir (uygulama crate'i, libpdfium, emülatör yok).
+- Her iddia testle kanıtlanabilir: deterministik parse sayacı + önbellekli/önbelleksiz çıktının
+  bayt-aynı olması.
+- Gerçek DoS riskini kaldırır: 1 000 notlu düşmanca belge bugün ~1 000 × (1 MiB + 128 KiB) çözüyor.
+- (c) düşük değer: `/W` ayrıştırıcısı `pdf_parse` fuzz hedefi + 3 uçtan uca dosyayla zaten kapsanıyor.
+- (d)/(e) tek PR'a sığmaz; Android önce emülatör kurulumu ister.
+
+## Adımlar (gerçek yollar)
+0) #672 birleştikten sonra master'dan dal (aynı karışık-genişlik yoluna dokunuyor).
+1) **Önce ölçüm**: `crates/pdfcore/examples/nup_bench.rs` (<150) — 500 sayfa × 4 not, tek
+   Identity-H font, ~200 KiB `/ToUnicode` + 128 KiB `/CIDToGIDMap`; `cargo run -p pdfcore
+   --release --example nup_bench` önce/sonra sayıları PR gövdesine (sürüm notlarına değil).
+2) `CidFont` kendi kendine yetsin: `to_unicode`, `encoding`, `cid_to_gid`
+   (`enum CidToGid { Identity, Table(Box<[u16]>) }`), `widths`; tek yükleyici
+   `load(doc, font_dict)`; `heap_bytes()`.
+3) Yeni `cidfont/cache.rs` (<200): `FontCache { entries: HashMap<ObjectId, Entry>, bytes, budget,
+   stats }`; `Entry::{Ready(Arc<CidFont>), Unsupported}`; `DEFAULT_BUDGET_BYTES = 32 MiB`;
+   `get_or_load(doc, font_ref, font_dict)`; başarısızlıklar da önbelleğe yazılır; bütçe aşılırsa
+   saklanmaz (`bypassed`); önbellek **çağrı başına** yaşar (ObjectId yalnız bir belgede anlamlı).
+4) Önbelleği çizim yoluna geçir: FreeText sentezi `fonts: &mut FontCache` alır; N-up girişi
+   `FontCache::new()` yaratır; kamuya açık imza değişmez (gerekirse
+   `impose_with_cache(...)` crate-içi).
+
+## Kanıt (testler `cidfont/cache_tests.rs`, ~450 satır)
+`same_font_parsed_once_across_notes` (200 not → parses == 1, hits == 199) ·
+`cached_output_is_byte_identical_to_uncached` (`with_budget(0)` vs `new()`; Identity-H, gömülü
+Encoding, Shift-JIS karışık) · `distinct_fonts_get_distinct_entries` (parses == 2) ·
+`unsupported_font_is_cached_as_negative` · `inline_font_dict_bypasses_cache` ·
+`budget_overflow_stores_nothing_and_stays_correct`.
+
+## Kapsam dışı
+Belgeler arası/process geneli önbellek ve LRU; basit font `/Widths` önbelleği; render/metin
+çıkarma yolları; `/W` fuzz köprüsü; sürüm notlarında hız iddiası; paralelleştirme; Tauri/Android.
+
+## Metin
+CHANGELOG: "N-up imposition now reads each embedded CID font's `/ToUnicode`, `/Encoding` CMap,
+`/CIDToGIDMap` and `/W` once per document instead of once per note. Memory use is capped, and the
+output is byte-identical to before."
+PR başlığı: `pdfcore: per-document CID font cache for N-up appearances (parse once, byte-identical output)`
+
+## ÖLÇÜLEN GİRİŞ NOKTALARI (önbellek için)
+- `nup.rs`: `nup_pdf`/`nup_pdf_bytes` → `build_nup(&mut doc, options, progress, cancel)`.
+- `nup/markup.rs`: `carry_markup(doc: &mut Document, sheets)` → `markup_draw(doc, annot, placement,
+  rotation, &field_context)` → `appearance::synthesize(doc, annot, subtype, rect)` (markup.rs:162).
+- `appearance.rs`: `synthesize` → `freetext::synthesize(doc, annot, rect)` (freetext.rs:47).
+- **Önbellek yeri:** `carry_markup` içinde `let mut fonts = FontCache::new();` (belge başına bir kez;
+  okuma zaten immutable doc üzerinden yapılıyor) → `markup_draw` → `appearance::synthesize` →
+  `freetext::synthesize` zincirine `fonts: &mut FontCache` parametresi.
+- Gerçek font yolu: `appearance/cidfont.rs::resolve_font(doc, annot, name)` + `mapping::mapping(..)`;
+  önbellek anahtarı font sözlüğünün `ObjectId`'si (`Object::Reference(id)` — doğrudan sözlük
+  zaten reddediliyor, yani `bypassed` yolu bugün için yok; yine de sayaç tutulacak).
+- `CidFont` bugün `to_unicode`, `widths`, `mapping (encoding + gids)`, `ascent` taşıyor →
+  `Arc<CidFont>`'a alınmaya hazır; `/CIDToGIDMap` çözümü `mapping::gid_map`'te (128 KiB sınırı).
+

@@ -20,6 +20,7 @@ mod bevel;
 mod border;
 mod caption;
 mod cidfont;
+pub(crate) use cidfont::FontCache;
 mod cloudy;
 mod drfont;
 mod ends;
@@ -37,7 +38,13 @@ pub(super) use textfit::{differences, extra_base};
 /// Bézier constant for a quarter circle.
 pub(super) const KAPPA: f64 = 0.552_284_749_8;
 /// Builds the appearance of one annotation, or `None` when it cannot be drawn.
-pub(super) fn synthesize(doc: &Document, annot: &Dictionary, subtype: &[u8], rect: [f64; 4]) -> Option<Synth> {
+pub(super) fn synthesize(
+    doc: &Document,
+    annot: &Dictionary,
+    subtype: &[u8],
+    rect: [f64; 4],
+    fonts: &mut cidfont::FontCache,
+) -> Option<Synth> {
     match subtype {
         b"Highlight" => quads::synthesize(doc, annot, rect, quads::QuadKind::Highlight),
         b"Underline" => quads::synthesize(doc, annot, rect, quads::QuadKind::Underline),
@@ -49,7 +56,7 @@ pub(super) fn synthesize(doc: &Document, annot: &Dictionary, subtype: &[u8], rec
         b"Ink" => paths::ink(doc, annot, rect),
         b"Polygon" => paths::polygon(doc, annot, rect, true),
         b"PolyLine" => paths::polygon(doc, annot, rect, false),
-        b"FreeText" => freetext::synthesize(doc, annot, rect),
+        b"FreeText" => freetext::synthesize(doc, annot, rect, fonts),
         _ => None,
     }
 }
