@@ -1,0 +1,1 @@
+7.22.0: Her kompozit font artık not başına değil belge başına bir kez okunuyor — /ToUnicode, /Encoding CMap, /CIDToGIDMap ve /W verisi tek seferde çözülüp belge boyunca paylaşılıyor; kullanılamayan bir font da hatırlanıyor, böylece her notta yeniden okunmuyor. Bellek sınırlı, çıktı ise öncekiyle bayt-aynı.

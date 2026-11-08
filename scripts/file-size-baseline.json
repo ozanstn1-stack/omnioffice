@@ -80,7 +80,7 @@
     "crates/pdfcore/src/attachment.rs": 212,
     "crates/pdfcore/src/certificate.rs": 346,
     "crates/pdfcore/src/cmap.rs": 237,
-    "crates/pdfcore/src/cmap/cid.rs": 293,
+    "crates/pdfcore/src/cmap/cid.rs": 281,
     "crates/pdfcore/src/cmap/cid/tests.rs": 234,
     "crates/pdfcore/src/compare.rs": 478,
     "crates/pdfcore/src/compress.rs": 304,
