@@ -161,3 +161,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   kurulmamıştı) — sınıflandırma PR gövdesinde.
 - Yerel: prob **8/8**, lib **344**, clippy temiz, `inspect.rs` 1078 → **1077** (bütçe içeriden).
 - **Sıradaki**: CI yeşilse squash merge → **v7.27.0 sürüm treni** (kullanıcıya dönük düzeltme var).
+
+## #686 birleşti · v7.28.0 sürüm PR'ı açıldı — 2026-11-08 17:25 UTC
+- **#686** `c60bc9f`: annotate koordinat düzeltmeleri (20 kontrol, 18 başarı + 2 skip).
+- **v7.28.0**: sürüm 7.28.0, versionCode **7028000**, CHANGELOG, README, RELEASE_READINESS,
+  fastlane. Kapılar: `release-guard` OK, `claims:check` **422/589**, `repro:check` OK.
+- **Sıradaki**: CI yeşilse merge → tag → **20 asset** doğrulaması (Android keystore mevcut).
