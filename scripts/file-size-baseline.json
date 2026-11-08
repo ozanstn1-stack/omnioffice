@@ -142,6 +142,7 @@
     "crates/pdfcore/tests/common/outline_fixtures.rs": 236,
     "crates/pdfcore/tests/core_ops_test.rs": 295,
     "crates/pdfcore/tests/editable_annotations_test.rs": 565,
+    "crates/pdfcore/tests/flatten_probe.rs": 291,
     "crates/pdfcore/tests/flatten_test.rs": 231,
     "crates/pdfcore/tests/forms_test.rs": 942,
     "crates/pdfcore/tests/hostile_inputs.rs": 240,
