@@ -216,3 +216,17 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   `batch_test::batch_watermark_and_compress_all_files` bu VPS'te pdfium yokluğu yüzünden düşüyor
   (raster stratejisi) — bilinen Gate B sınırı, değişiklikle ilgisiz.
 - **Sıradaki**: #688 CI yeşilse squash merge → **v7.29.0** sürüm treni (kullanıcıya dönük yerleşim düzeltmesi).
+
+## #688 birleşti (`eee0033`) · v7.29.0 sürüm PR'ı — 2026-11-08 20:50 UTC
+- **#688** squash merge (`eee0033`), dal silindi. Master Desktop → auto-tag **no-op** (sürüm dosyası
+  hâlâ 7.28.0), beklenen davranış.
+- **Ders**: yeni test dosyası README istatistik bloğunu bayatlatıyor → Lint işinin "Project statistics"
+  adımı düştü (Rust tests 1822 → 1831). **Push'tan önce `npm run docs:stats`**; bu bir sürüm dilimi
+  değil, her yeni test dosyasında geçerli.
+- **v7.29.0**: sürüm 7.29.0, versionCode **7029000**, CHANGELOG `[7.29.0]` bölümü + `[Unreleased]`
+  korunuyor, README (sürüm, "What's new (6.2 to 7.29.0)", indirme bağlantıları), RELEASE_READINESS
+  başlığı + `(this cycle, 7.29.0)` bölümü, fastlane 7029000 (en-US üretildi, tr-TR elle),
+  `cargo update --workspace --offline`, `files:update`, `docs:stats`.
+- Kapılar: `release-guard` OK (7.29.0 / 7029000), `claims:check` **424 iddia / 593 işaret**, 97 döngü
+  bölümü, güncel döngü 7.29.0.
+- **Sıradaki**: PR → CI → squash merge → tag `v7.29.0` → Release + Android → **20 asset** doğrulaması.

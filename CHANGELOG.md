@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.29.0] - 2026-11-08
+
+### Fixed
+
+- **An annotation lands where the viewer shows it:** a mark is now placed against
+  the region a PDF viewer shows - the crop box clipped to the media box
+  (ISO 32000-1 14.11.2) - so a cropped page no longer shifts every note and
+  highlight by the crop offset. The bake path (`annotate_pdf`, which draws stamps
+  and flattened marks into the content stream) also ignored the box origin
+  entirely: on a page whose box does not start at `(0, 0)` the mark moved with
+  the origin, and a reversed box (`[600 800 0 0]`, 7.9.5) put it outside the
+  page. Both paths now size and place the mark from that same box.
+
 ## [7.28.0] - 2026-11-08
 
 ### Fixed
