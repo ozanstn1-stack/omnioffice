@@ -118,7 +118,7 @@
     "crates/pdfcore/src/ocr.rs": 833,
     "crates/pdfcore/src/page_detect.rs": 498,
     "crates/pdfcore/src/page_detect/lines.rs": 286,
-    "crates/pdfcore/src/pagelayout.rs": 224,
+    "crates/pdfcore/src/pagelayout.rs": 202,
     "crates/pdfcore/src/pdf2doc.rs": 2009,
     "crates/pdfcore/src/pdfa.rs": 821,
     "crates/pdfcore/src/provenance.rs": 295,

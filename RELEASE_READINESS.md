@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.24.0
+# Release Readiness — OmniOffice 7.25.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,25 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.25.0) - Resize ve Crop probu
+
+- **Resize moves a page's annotations with its content:** the content went through
+  the resize matrix while the marks on it stayed put, so a highlight, a note, an
+  ink stroke and a line ended up beside the words they were drawn on. Their
+  `/Rect`, `/QuadPoints`, `/InkList`, `/L` and `/Vertices` now go through the same
+  matrix.
+  `test:crates/pdfcore/tests/pagelayout_probe.rs#a_highlight_stays_on_the_text_after_resize`
+- **Crop honours the page's own origin:** a `/MediaBox` that does not start at
+  `(0, 0)` - common in scans and print-ready exports - shifted the cropped region
+  by that origin, so the rectangle the user drew selected a different part of the
+  page.
+  `test:crates/pdfcore/tests/pagelayout_probe.rs#crop_lands_on_the_visible_region_of_an_offset_page`
+  `test:crates/pdfcore/tests/pagelayout_probe.rs#resize_sets_the_requested_media_box`
+- **Still open:** link and outline destinations are not moved by a resize (a
+  follow-up), and `/UserUnit` pages are reported but not converted.
+  (no test: those paths are untouched by this slice and their expectations are not
+  settled.)
 
 ## Implemented (this cycle, 7.24.0) - Önbellek belleği ölçülerek kanıtlandı
 

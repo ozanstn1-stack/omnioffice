@@ -1,0 +1,1 @@
+7.25.0: İki sayfa düzeni hatası düzeltildi — "Yeniden boyutlandır" artık sayfadaki vurguları, notları ve çizimleri içerikle birlikte taşıyor (önce metin küçülürken işaretler eski yerinde kalıyordu), ve "Kırp" sayfası (0,0)'dan başlamayan PDF'lerde doğru bölgeyi seçiyor (taranmış/dışa aktarılmış dosyalarda yaygın).
