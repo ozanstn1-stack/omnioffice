@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.19.0
+# Release Readiness — OmniOffice 7.20.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,37 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.20.0) - Gömülü `/Encoding` CMap
+
+- **A note can be drawn with a font that embeds its own `/Encoding` CMap:** the
+  stream is a small code-to-CID program, and it is read so a font whose codes are
+  not their own CIDs keeps its face instead of falling back to Helvetica. Only a
+  two-byte codespace is accepted: `/ToUnicode` does not report the length of the
+  code it inverted, so a one-byte font would shift every glyph after the mistake
+  without any error. An unknown base CMap (`90ms-RKSJ-H` and friends) is refused
+  for the same reason - it brings its own codespace with it - while `Identity-H`
+  as a base is accepted and overridden by the stream's own entries. Advances are
+  looked up by CID, which is what `/W` is keyed by, and `/W` itself still refuses
+  the whole font when it is malformed rather than guessing a default width.
+  `test:crates/pdfcore/tests/nup_freetext_cid_cmap.rs#an_embedded_cmap_draws_the_code_keyed_widths_by_cid`
+  `test:crates/pdfcore/tests/nup_freetext_cid_cmap.rs#a_one_byte_codespace_falls_back_like_a_refused_encoding`
+  `test:crates/pdfcore/tests/nup_freetext_cid_cmap.rs#latin_text_is_byte_identical_with_or_without_the_font`
+  `test:crates/pdfcore/tests/nup_freetext_cid_cmap.rs#a_character_the_map_does_not_cover_leaves_the_note_out`
+  `test:crates/pdfcore/tests/nup_freetext_cid_cmap.rs#the_font_is_referenced_and_its_cmap_kept_once`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#an_identity_equivalent_stream_selects_each_code_as_its_cid`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#an_identity_base_fills_the_codes_the_stream_does_not_map`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_vertical_or_unknown_base_is_refused`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_codespace_that_is_not_two_bytes_is_refused`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#a_malformed_entry_rejects_the_map`
+  `test:crates/pdfcore/src/cmap/cid/tests.rs#entries_that_disagree_are_refused_and_ones_that_agree_merge`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/mapping/tests.rs#an_encoding_stream_may_be_a_reference`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/mapping/tests.rs#widths_are_keyed_by_cid_and_notdef_never_draws`
+  `test:crates/pdfcore/src/nup/markup/appearance/cidfont/mapping/tests.rs#a_vertical_stream_is_refused`
+- **Still open, unchanged:** one-byte and mixed code spaces, predefined CMap
+  names, `/UseCMap` pointing at a stream, vertical writing, and caption text.
+  (no test: these are the refusals asserted above; what is missing is the
+  support, not the check.)
 
 ## Implemented (this cycle, 7.19.0) - Belgenin kendi kompozit fontu
 
