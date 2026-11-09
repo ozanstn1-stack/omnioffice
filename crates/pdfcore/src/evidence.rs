@@ -24,7 +24,7 @@ use crate::docutil::{append_page_content, materialize_all_pages, page_rotation};
 use crate::error::{PdfError, PdfResult};
 use crate::merge::{merge_documents, MergeOptions};
 use crate::pagegeom::{display_frame, page_visible_box};
-use crate::textfont::{ensure_page_font, TextFont, RESOURCE_NAME};
+use crate::textfont::{register_page_font, TextFont};
 
 /// The embedded manifest's file name inside the bundle.
 pub const MANIFEST_FILE_NAME: &str = "omni-evidence-manifest.json";
@@ -313,12 +313,12 @@ fn fit(font: &TextFont, text: &str, size: f64, width: f64) -> String {
     "…".into()
 }
 
-fn draw(font: &TextFont, lines: &[Line]) -> String {
+fn draw(font: &TextFont, lines: &[Line], resource: &str) -> String {
     let mut out = String::new();
     for line in lines {
         let x = if line.right { line.x - font.measure(&line.text, line.size) } else { line.x };
         out.push_str(&format!(
-            "BT\n{g:.2} {g:.2} {g:.2} rg\n/{RESOURCE_NAME} {size:.2} Tf\n{x:.2} {y:.2} Td\n{text} Tj\nET\n",
+            "BT\n{g:.2} {g:.2} {g:.2} rg\n/{resource} {size:.2} Tf\n{x:.2} {y:.2} Td\n{text} Tj\nET\n",
             g = line.grey,
             size = line.size,
             y = line.y,
@@ -366,8 +366,8 @@ fn load_exhibit(file: &EvidenceFile) -> PdfResult<Document> {
 
 /// Draws `lines` on a bundle page (a cover or index page, never rotated).
 fn draw_front_page(doc: &mut Document, page_id: ObjectId, font: &TextFont, lines: &[Line]) -> PdfResult<()> {
-    ensure_page_font(doc, page_id, font)?;
-    append_page_content(doc, page_id, format!("q\n{}Q\n", draw(font, lines)).into_bytes())
+    let resource = register_page_font(doc, page_id, font)?;
+    append_page_content(doc, page_id, format!("q\n{}Q\n", draw(font, lines, &resource)).into_bytes())
 }
 
 /// Draws `lines` in the displayed (rotation-corrected) frame of an exhibit page.
@@ -381,8 +381,8 @@ fn stamp_page(
     // The label belongs on the region the viewer shows (ISO 32000-1 14.11.2).
     let (to_page, display_w, display_h) = display_frame(rotation, page_visible_box(doc, page_id));
     let lines = stamp(display_w, display_h);
-    ensure_page_font(doc, page_id, font)?;
-    let content = format!("q\n{}\n{}Q\n", to_page.to_cm(), draw(font, &lines));
+    let resource = register_page_font(doc, page_id, font)?;
+    let content = format!("q\n{}\n{}Q\n", to_page.to_cm(), draw(font, &lines, &resource));
     append_page_content(doc, page_id, content.into_bytes())
 }
 

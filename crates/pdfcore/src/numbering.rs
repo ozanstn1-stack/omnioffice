@@ -5,7 +5,7 @@
 use crate::docutil::*;
 use crate::error::{PdfError, PdfResult};
 use crate::progress::{CancelToken, ProgressCallback, ProgressEvent};
-use crate::textfont::{ensure_page_font, TextFont, RESOURCE_NAME};
+use crate::textfont::{register_page_font, TextFont};
 use lopdf::Document;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -165,14 +165,14 @@ fn apply_page_numbers(
             _ => ((display_w - text_w) / 2.0, margin + baseline_offset),
         };
 
-        ensure_page_font(doc, page_id, &font)?;
+        let resource = register_page_font(doc, page_id, &font)?;
         let content = format!(
             "q\n{}\nBT\n{r} {g} {b} rg\n/{resource} {size:.2} Tf\n{x:.2} {y:.2} Td\n{text} Tj\nET\nQ\n",
             to_page.to_cm(),
             r = color[0] as f64 / 255.0,
             g = color[1] as f64 / 255.0,
             b = color[2] as f64 / 255.0,
-            resource = RESOURCE_NAME,
+            resource = resource,
             size = options.font_size_pt,
             x = x,
             y = y,

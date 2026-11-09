@@ -300,3 +300,18 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   A→`3..5`, B→`6..7`. Girdi sırası ters verilince sıra korunuyor (B→`3..4`, A→`5..7`). İç içe sayfa
   ağacında nesne numarası değil **ağaç sırası** okunuyor (7.7.3.2). 0 baytlık kanıt `Err`.
 - **Sıradaki**: PR aç (00:45'ten önce), CI'yı sessiz saat sonrası (04:00 UTC) kontrol et ve merge et.
+
+## PR 14: font adı çakışması — GERÇEK HATA (Opus `a03f0e81` C grubu) — 2026-11-09 05:20 UTC
+- **Bulunan gerçek hata**: damga/sayfa numarası/kanıt etiketi fontunu sayfaya `/OmniTr` adıyla
+  yazıyordu. Bu uygulamanın daha önce damgaladığı her dosyada o ad zaten var → **üzerine yazılıyordu**;
+  eski damga metni yeni subset fontla çizilip bozuk görünüyordu. Prob kırmızıydı, düzeltme olmadan
+  kırmızı kaldığı stash'li ağaçta doğrulandı.
+- **Düzeltme**: `textfont::register_page_font` — sayfada kullanılmayan adı seçer (`OmniTr`, `OmniTr2`…),
+  kaydeder ve **kullanılan adı döndürür**; çizilen metin o adı kullanır. `evidence.rs`, `stamp.rs`
+  (private kopyası silindi) ve `numbering.rs` aynı yardımcıya geçti.
+- Prob `crates/pdfcore/tests/evidence_content_probe.rs` **4 vaka**: miras `/Resources`, paylaşılan
+  `/Contents`, Flate içerik, font adı çakışması (kırmızıydı → yeşil).
+- Bütçeler: `stamp.rs` 490 → **452**, `evidence.rs` 640 → **641** (sınır 643), `numbering.rs` 241 (sınır),
+  `textfont.rs` 87 → 136 (taban altı, izlenmiyor).
+- Kapılar: lib **344**, evidence probları 4+4+4+8, clippy temiz, `docs:stats` güncel, `files` OK.
+- **Sürüm gerekli**: kullanıcıya dönük düzeltme → **v7.29.1** (sıradaki pencerede 10:00 UTC sonrası).
