@@ -151,7 +151,7 @@
     "crates/pdfcore/tests/flatten_test.rs": 231,
     "crates/pdfcore/tests/forms_test.rs": 942,
     "crates/pdfcore/tests/hostile_inputs.rs": 240,
-    "crates/pdfcore/tests/inspect_links_probe.rs": 216,
+    "crates/pdfcore/tests/inspect_links_probe.rs": 215,
     "crates/pdfcore/tests/inspect_probe.rs": 303,
     "crates/pdfcore/tests/nup_appearance_test.rs": 397,
     "crates/pdfcore/tests/nup_freetext_cid_cmap.rs": 297,

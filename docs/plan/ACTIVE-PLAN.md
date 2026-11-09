@@ -363,3 +363,16 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Prob `tests/inspect_links_probe.rs` **6 vaka yeşil** + **mutasyon kontrolü** (bit indeksi kaydır, `/A`
   önceliğini boz, kırık sayımını kaldır → her biri en az bir vakayı kırmızıya döndürdü).
 - **Sürüm**: yeni kullanıcıya dönük özellik → **v7.30.0** (minor) sıradaki pencerede.
+
+## v7.29.1 DOĞRULANDI · #697 birleşti (`20e2c8f`) · v7.30.0 sürüm PR'ı — 2026-11-09 11:50 UTC
+- **v7.29.1**: **20 asset** (14 desktop + 6 Android), gövde 759 bayt == `changelog-section v7.29.1`,
+  `latest.json` 7.29.1, `.sig` 444 B, `SHA256SUMS` **8/8**, provenance → "every published asset is
+  covered by 2 envelope(s)". (Tag gecikmesinin sebebi E2E "Secret store (Xvfb)" flake'iydi; rerun yeşil.)
+- **#697** squash merge: sağlık raporu kırık linkleri (`link.broken-internal`) ve belgenin beyan ettiği
+  `/P` kısıtlarını (`security.permissions`) bulgu olarak veriyor. `inspect.rs` **1077 → 1064**.
+- **v7.30.0**: sürüm 7.30.0, versionCode **7030000**, CHANGELOG `[7.30.0]`, README, RELEASE_READINESS
+  (`(this cycle, 7.30.0)`), fastlane 7030000 (en-US üretildi, tr-TR elle), `cargo update --offline`,
+  `files:update`, `docs:stats`.
+- Kapılar: `release-guard` 7.30.0 (7030000) OK; `claims:check` **429 iddia / 599 işaret**, 99 döngü
+  bölümü (bir iddiaya `(no test: …)` gerekçesi eklendi — kapı yakaladı).
+- **Sıradaki**: PR → CI → merge → tag `v7.30.0` → Release + Android → 20 asset doğrulaması.
