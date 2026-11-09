@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.30.2] - 2026-11-09
+
+### Fixed
+
+- **Deleting a page now really deletes it.** Dropping a page from the page tree left
+  everything that named it behind: a link's destination, an outline entry, the
+  catalog's `/OpenAction`, the `/Names /Dests` tree, a structure element's `/Pg` with
+  its parent-tree key, a form field whose widget sat on the page, and an article
+  thread's bead. A reader then offered links that opened onto nothing - and, because a
+  reference keeps an object alive, **the content of the deleted page was still in the
+  file**. Every one of those is pruned now, before the file is written, and an outline
+  entry keeps its title so the reading order survives. The same cleanup covers
+  extracting a page range, where the pages left out were previously still reachable.
+
+  **Files produced before this version keep the old content:** delete the page again
+  (or re-extract) to get a file that no longer carries it.
+
+
 ## [7.30.1] - 2026-11-09
 
 ### Fixed
