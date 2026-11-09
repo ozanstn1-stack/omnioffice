@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.29.1
+# Release Readiness — OmniOffice 7.30.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Sağlık raporu bağlantıları ve belgenin kendi kısıtları
+## Implemented (this cycle, 7.30.0) - Sağlık raporu bağlantıları ve belgenin kendi kısıtları
 
 - **A health report notices a link that points at a page the document no longer
   has:** a `/Link` annotation's destination is resolved through the page tree and
@@ -83,7 +83,8 @@ release-train schedule is decided.
   covers; a fully open document reports nothing.
 - **Neither finding changes a document:** they are report rows, so no new struct
   field, no binding change and no screen work - the findings list already renders
-  whatever the backend sends.
+  whatever the backend sends. (no test: the claim is about what the change does not
+  do; the behaviour it adds is covered by the two markers above.)
 
 ## Implemented (this cycle, 7.29.1) - Kendi font adını koruyan belgeler
 

@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.30.0] - 2026-11-09
+
+### Added
+
+- **The health check reports links that go nowhere:** a `/Link` annotation's
+  destination is resolved through the page tree and through the document's own name
+  tree (ISO 32000-1 12.3.2). One that names a page the document no longer has earns
+  a `link.broken-internal` warning, and web links are counted as `link.external`.
+  When a producer writes both an action and a destination, the action is what a
+  reader runs (12.6.2), so only that one is counted.
+- **The health check repeats the restrictions a document declares:** the `/P` bits
+  of the file's own `/Encrypt` dictionary (7.6.4.2) are read from the bytes - a PDF
+  library decrypts on load and drops that dictionary - and the report names what the
+  document denies, such as printing or copying. It is the document's statement about
+  itself; this app neither sets nor enforces it.
+
+
 ## [7.29.1] - 2026-11-09
 
 ### Fixed
