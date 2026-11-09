@@ -65,6 +65,23 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Kendi font adını koruyan belgeler
+
+- **A second stamp no longer draws the first one in the wrong font:** a stamp,
+  page number or bundle label registers its font as `/OmniTr` on the page. A page
+  that already carried one - every file this app has stamped before - had that
+  resource overwritten, so the earlier text was drawn with the new subset and came
+  out garbled. Registration now takes the next free name (ISO 32000-1 7.8.3) and
+  the drawn text refers to the name it was given.
+  `test:crates/pdfcore/tests/evidence_content_probe.rs#a_font_name_the_exhibit_already_uses_is_not_reused`
+- **An exhibit's own resources survive a bundle:** inherited `/Resources` are
+  resolved onto the page rather than replaced,
+  `test:crates/pdfcore/tests/evidence_content_probe.rs#an_inherited_resource_stays_on_the_page`;
+  two pages that share one content stream each get their own label,
+  `test:crates/pdfcore/tests/evidence_content_probe.rs#two_pages_sharing_a_content_stream_each_get_their_own_label`;
+  and compressed content still decodes to the exhibit's own text,
+  `test:crates/pdfcore/tests/evidence_content_probe.rs#a_compressed_exhibit_keeps_its_text`.
+
 ## Implemented (unreleased) - Filigran, damga ve kanıt etiketi görünen kutuda
 
 - **A watermark sits on the region the viewer shows:** the artwork was placed from
