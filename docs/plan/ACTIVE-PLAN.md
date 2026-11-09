@@ -326,3 +326,12 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: `release-guard` 7.29.1 (7029001) OK; `claims:check` **426 iddia / 597 işaret**, 98 döngü
   bölümü; `fastlane-changelogs --check` OK; `files` OK (363 dosya).
 - **Sıradaki**: PR → CI → squash merge → tag `v7.29.1` → Release + Android → **20 asset** doğrulaması.
+
+## PR 15: sayfa kaynak kaydı bütünlüğü (Opus `85b34163`) — 2026-11-09 10:30 UTC
+- **Opus planı `85b34163`**: son düzeltmenin (`/OmniTr` çakışması) kök nedenini komşu yollarda sına:
+  aynı sayfaya iki damga (header + Bates), paylaşılan `/Resources`, miras alınan `/Font`, sayfa 2'ye
+  dokunmama, orijinal içerikten sızan CTM.
+- **Planın "prob gücü kontrolü"** şartı uygulanacak: `register_page_font` geçici olarak sabit ada
+  döndürülüp probun kırmızıya döndüğü gösterilecek (dönmezse prob zayıftır).
+- Kapsam: **V2–V5** (kaynak kaydı) + **V6** (sızan CTM) — V1 (ExtGState) elendi: kodda sabit
+  ExtGState/XObject adı yok, hepsi nesne kimliğinden türetiliyor (`GS{id}`, `WM{id}`, `AN{id}`).
