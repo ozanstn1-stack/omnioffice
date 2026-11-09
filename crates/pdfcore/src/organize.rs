@@ -72,7 +72,12 @@ pub fn delete_pages(
         .map(|p| PagePlanItem { source_page: p, ..Default::default() })
         .collect();
     materialize_all_pages(&mut doc)?;
+    // The pages that are about to leave the tree, so everything that points at
+    // them can be cleaned up instead of dangling.
+    let removed: std::collections::HashSet<lopdf::ObjectId> =
+        delete.iter().filter_map(|page| doc.get_pages().get(page).copied()).collect();
     rebuild_page_tree(&mut doc, &plan)?;
+    crate::dest_prune::prune_references_to(&mut doc, &removed);
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
     Ok(final_path)

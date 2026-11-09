@@ -46,6 +46,7 @@ pub mod compare;
 pub mod compress;
 pub mod content;
 pub mod convert;
+pub mod dest_prune;
 pub mod docutil;
 pub mod engines;
 pub mod error;

@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use lopdf::{Document, Object};
 
 /// The page number a destination points at, if it points at one.
-pub(super) fn destination_page(doc: &Document, value: &Object) -> Option<u32> {
+pub(crate) fn destination_page(doc: &Document, value: &Object) -> Option<u32> {
     let array = match value {
         Object::Array(items) => items.clone(),
         Object::Dictionary(entry) => match entry.get(b"D").ok() {
