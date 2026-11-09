@@ -65,6 +65,30 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Yapı ağacı, form alanları ve makale iplikleri de temizlenir
+
+- **A deleted page no longer survives through the structure tree:** tagged documents
+  describe each page with `/Pg` (ISO 32000-1 14.7.2) and index the page's content in
+  the `/ParentTree` (14.7.4.4). `apply_page_plan` now walks the tree, drops the
+  elements that describe a page the plan left out, and removes their parent-tree keys,
+  so the page object - and the text on it - is no longer reachable.
+  `test:crates/pdfcore/tests/organize_pageref_probe.rs#the_structure_tree_drops_the_deleted_page`
+- **Form fields on the deleted page go with it:** a widget names its page with `/P`
+  (12.5.6.19) and the form lists it through `/Fields`/`/Kids` (12.7.3.1); a field whose
+  widgets all sat there is dropped, or its `/V` would keep the page alive.
+  `test:crates/pdfcore/tests/organize_pageref_probe.rs#a_form_field_on_the_deleted_page_goes_with_it`
+- **Article threads skip the page:** beads are relinked (`/N`, `/V`) and the thread
+  points at the first bead that survives (12.4.3); a thread with no bead left is
+  removed from `/Threads`.
+  `test:crates/pdfcore/tests/organize_pageref_probe.rs#an_article_thread_skips_the_deleted_page`
+- **Extraction gets the same cleanup:** leaving a page out of `extract_pages` is a
+  deletion for the output, so the pruning now lives in `apply_page_plan` and covers
+  every plan (delete, extract, reorder).
+  `test:crates/pdfcore/tests/organize_pageref_probe.rs#extraction_leaves_no_destination_to_a_missing_page`
+- **Reordering stays correct without touching destinations:** a destination names a
+  page object (12.3.2), so it follows the page.
+  `test:crates/pdfcore/tests/organize_pageref_probe.rs#reordering_keeps_a_destination_on_its_page`
+
 ## Implemented (unreleased) - Silinen sayfaya giden her başvuru temizlenir
 
 - **Deleting a page no longer leaves everything that pointed at it behind:** a link's
