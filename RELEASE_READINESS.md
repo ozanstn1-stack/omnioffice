@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Yapı ağacı, form alanları ve makale iplikleri de temizlenir
+## Implemented (this cycle, 7.30.2) - Yapı ağacı, form alanları ve makale iplikleri de temizlenir
 
 - **A deleted page no longer survives through the structure tree:** tagged documents
   describe each page with `/Pg` (ISO 32000-1 14.7.2) and index the page's content in
@@ -89,7 +89,7 @@ release-train schedule is decided.
   page object (12.3.2), so it follows the page.
   `test:crates/pdfcore/tests/organize_pageref_probe.rs#reordering_keeps_a_destination_on_its_page`
 
-## Implemented (unreleased) - Silinen sayfaya giden her başvuru temizlenir
+## Implemented (this cycle, 7.30.2) - Silinen sayfaya giden her başvuru temizlenir
 
 - **Deleting a page no longer leaves everything that pointed at it behind:** a link's
   destination, an outline entry, the catalog's `/OpenAction` and the `/Names /Dests`

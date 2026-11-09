@@ -473,3 +473,14 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: lib testleri yeşil (ortam kaynaklı 4 kırmızı değişmedi), clippy temiz, `files` OK,
   `claims` 432/603, `docs:stats` güncel.
 - **Sürüm**: **v7.30.2** — #702 ile aynı yamaya katılıyor (henüz yayımlanmadı).
+
+## #703 birleşti (`8d19bfb`) · v7.30.2 sürüm PR'ı — 2026-11-09 17:45 UTC
+- **#703**: yapı ağacı, form alanları ve makale iplikleri de temizleniyor; temizlik
+  `apply_page_plan`'a taşındı (silme + çıkarma + her plan). Prob 5/5, mutasyon kontrolü geçti.
+- **v7.30.2**: sürüm 7.30.2, **versionCode 7030002**, CHANGELOG (gizlilik yönü + "eski dosyalar
+  kendiliğinden düzelmez, yeniden silin/çıkarın" uyarısı), README, RELEASE_READINESS (iki bölüm
+  `(this cycle, 7.30.2)`), fastlane 7030002 (en-US üretildi, tr-TR elle), `cargo update --offline`,
+  `files:update`, `docs:stats`.
+- Kapılar: `release-guard` 7.30.2 (7030002) OK; `claims:check` **441 iddia / 612 işaret**, 102 döngü
+  bölümü; `fastlane --check` OK; `files` OK.
+- **Sıradaki**: PR → CI → merge → tag `v7.30.2` → Release + Android → 20 asset doğrulaması.
