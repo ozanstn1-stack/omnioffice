@@ -65,6 +65,26 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Sağlık raporu bağlantıları ve belgenin kendi kısıtları
+
+- **A health report notices a link that points at a page the document no longer
+  has:** a `/Link` annotation's destination is resolved through the page tree and
+  through the document's own name tree (ISO 32000-1 12.3.2), and an unresolved one
+  earns a `link.broken-internal` warning; a web link is reported as
+  `link.external`. When a producer writes both an action and a destination, the
+  action is what a reader runs (12.6.2), so only that one is counted.
+  `test:crates/pdfcore/tests/inspect_links_probe.rs#a_link_to_a_page_that_is_gone_is_reported`
+- **A declared restriction is repeated, not enforced:** the report reads `/P` from
+  the file's own `/Encrypt` dictionary (7.6.4.2) - the parsed document cannot answer
+  it, because a PDF library decrypts on load and drops the dictionary - and says
+  which permissions the document denies. An owner-password file with an empty user
+  password opens without a prompt and still declares restrictions, which is the case
+  `test:crates/pdfcore/tests/inspect_links_probe.rs#a_declared_restriction_is_reported_and_a_fully_open_document_is_not`
+  covers; a fully open document reports nothing.
+- **Neither finding changes a document:** they are report rows, so no new struct
+  field, no binding change and no screen work - the findings list already renders
+  whatever the backend sends.
+
 ## Implemented (this cycle, 7.29.1) - Kendi font adını koruyan belgeler
 
 - **A second stamp no longer draws the first one in the wrong font:** a stamp,

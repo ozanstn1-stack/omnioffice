@@ -350,3 +350,16 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   sabit ada döndürülünce yeşil kalıyordu (zayıf prob) → gerçek senaryo eklendi (damgalanmış dosyaya
   tekrar damga), sabit adla kırmızı / düzeltmeyle yeşil.
 - **Sıradaki**: v7.29.1 asset doğrulaması (20 asset); sonra Opus'a sor.
+
+## PR 16: sağlık raporu bağlantıları + belgenin kendi kısıtları (Opus `e3c4b597`) — 2026-11-09 11:20 UTC
+- **K1 sonucu**: `DocumentInspection`'a yeni **alan** eklemek UI sözleşme testini kırar (`src/screens/contract.test.ts`
+  her alanın `Inspect.tsx`'te kullanılmasını şart koşuyor) ve bindings üretimi CI'da. Bu yüzden dilim
+  **bulgu (finding)** olarak tasarlandı: bulgu listesi UI'da jenerik çiziliyor → yeni alan/binding/UI yok.
+- **K2 sonucu**: lopdf şifreli dosyayı yüklerken **çözüyor ve trailer'daki `/Encrypt`'i düşürüyor**, bu yüzden
+  `/P` yalnız **ham baytlardan** okunabiliyor (`declared_permissions(path)`: `/Encrypt N G R` → nesne → `/P`).
+- Yeni modül `crates/pdfcore/src/inspect/links.rs` (277 satır): `count_links` (URI/GoTo/kırık/diğer, `/A` > `/Dest`
+  12.6.2, isim ağacı çözümü 12.3.2.4, döngü koruması), `declared_permissions` (7.6.4.2), `findings`.
+  `inspect.rs` **1077 → 1064** (bütçe içinde, `destination_page` modüle taşındı).
+- Prob `tests/inspect_links_probe.rs` **6 vaka yeşil** + **mutasyon kontrolü** (bit indeksi kaydır, `/A`
+  önceliğini boz, kırık sayımını kaldır → her biri en az bir vakayı kırmızıya döndürdü).
+- **Sürüm**: yeni kullanıcıya dönük özellik → **v7.30.0** (minor) sıradaki pencerede.

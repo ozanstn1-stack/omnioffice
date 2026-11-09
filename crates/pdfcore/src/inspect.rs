@@ -13,6 +13,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
+mod links;
+
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use serde::{Deserialize, Serialize};
 
@@ -378,7 +380,7 @@ pub fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<Outli
         };
         out.push(OutlineEntry {
             title: text_of(entry, b"Title").unwrap_or_default(),
-            page: entry.get(b"Dest").ok().and_then(|value| destination_page(doc, value)).unwrap_or(0),
+            page: entry.get(b"Dest").ok().and_then(|value| links::destination_page(doc, value)).unwrap_or(0),
             depth,
         });
         node = match entry.get(b"Next") {
@@ -398,7 +400,11 @@ pub fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<Outli
                 };
                 out.push(OutlineEntry {
                     title: text_of(child_entry, b"Title").unwrap_or_default(),
-                    page: child_entry.get(b"Dest").ok().and_then(|value| destination_page(doc, value)).unwrap_or(0),
+                    page: child_entry
+                        .get(b"Dest")
+                        .ok()
+                        .and_then(|value| links::destination_page(doc, value))
+                        .unwrap_or(0),
                     depth: child_depth,
                 });
                 child = match child_entry.get(b"Next") {
@@ -410,26 +416,6 @@ pub fn read_outline(doc: &Document, catalog: &Dictionary) -> PdfResult<Vec<Outli
         }
     }
     Ok(out)
-}
-
-fn destination_page(doc: &Document, value: &Object) -> Option<u32> {
-    let array = match value {
-        Object::Array(items) => items.clone(),
-        Object::Dictionary(entry) => match entry.get(b"D").ok() {
-            Some(Object::Array(items)) => items.clone(),
-            _ => return None,
-        },
-        _ => return None,
-    };
-    // ISO 32000-1 destinations put the page reference first (`[page /XYZ ...]`);
-    // some producers keep a leading `null`, so a second lookup covers them.
-    let page_id = [0usize, 1].into_iter().find_map(|index| array.get(index)?.as_reference().ok())?;
-    for (number, candidate) in doc.get_pages() {
-        if candidate == page_id {
-            return Some(number);
-        }
-    }
-    None
 }
 
 /// Rewrites the document outline (bookmarks) as an incremental update.
@@ -889,6 +875,7 @@ pub fn evaluate_findings(inspection: &mut DocumentInspection) {
             &format!("{annotations} non-link annotation(s). Link text should say where it leads."),
         );
     }
+    findings.extend(links::findings(&inspection.path));
     findings.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.code.cmp(&b.code)));
     let blocking = findings.iter().any(|finding| finding.severity == Severity::Error);
     inspection.accessibility_conformance = if blocking { "fails".into() } else { "pdf/ua".into() };
