@@ -376,3 +376,17 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: `release-guard` 7.30.0 (7030000) OK; `claims:check` **429 iddia / 599 işaret**, 99 döngü
   bölümü (bir iddiaya `(no test: …)` gerekçesi eklendi — kapı yakaladı).
 - **Sıradaki**: PR → CI → merge → tag `v7.30.0` → Release + Android → 20 asset doğrulaması.
+
+## PR 17: izin bayrakları probu (Opus `89eb7e02`) — GERÇEK HATA — 2026-11-09 12:20 UTC
+- Prob `crates/pdfcore/tests/permissions_probe.rs`: `/P` değerini **ham baytlardan** okuyup sabit ISO
+  tamsayılarıyla karşılaştırıyor (yazıcı ile okuyucu aynı hatayı paylaşmasın diye).
+- **Doğru çıkanlar**: hepsi açık → `-4`, hepsi kapalı → `-3392`, tek tek kapalı → `-20` (kopyalama),
+  `-2056` (yazdırma), `-1036` (düzenleme), `-292` (yorum; bit 9 form doldurma da bu bayrağa bağlı —
+  seçeneklerde ayrı bayrak yok, ürün kararı olarak belgelendi).
+- **BULUNAN GERÇEK HATA (`#[ignore = "BUG: …"]`)**: `owner_password == user_password` olduğunda
+  `protect_pdf` kısıtları yazıyor ama **açan kişi owner parolasını da doğrular** (ISO 32000-1 Algoritma 2.A),
+  yani "kopyalanamaz" belge kopyalanabilir kalıyor. **UI bunu varsayılan yapıyor**:
+  `Security.tsx:76` → `ownerPassword: ownerPassword || userPassword`.
+- **Sıradaki dilim (v7.30.1 adayı)**: `protect_pdf` kısıt istendiğinde owner boş/eşitse ya reddetsin ya da
+  rastgele owner üretsin; UI'da owner alanı boş bırakılabilsin + i18n mesajı; sürüm notunda "daha önce
+  korunmuş belgeler kendiliğinden düzelmez, yeniden korunmalı" uyarısı.
