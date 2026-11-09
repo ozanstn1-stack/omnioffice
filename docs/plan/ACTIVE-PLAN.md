@@ -293,3 +293,10 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **Kapı dersi**: yeni test dosyası `git add` edilmeden `check-format.mjs rust --all-changed` "değişen
   dosya yok" diyor → **önce `cargo fmt -p pdfcore`, sonra `git add`, sonra format kapısı**.
 - **Sıradaki**: PR aç → CI → merge. Sonra E grubu (numaralandırma/bozuk girdi) veya N-up/inspect dilimi.
+
+## PR 13: evidence sıra/numaralandırma probu (Opus `7767eb27`, E grubu) — 2026-11-08 23:55 UTC
+- `crates/pdfcore/tests/evidence_order_probe.rs` **4 vaka, hepsi yeşil** (kusur yok → sürüm yok).
+- Elle hesaplanan beklentiler **birebir tuttu**: 1 kapak + 1 dizin (15 satır) + 5 kanıt sayfası = **7**;
+  A→`3..5`, B→`6..7`. Girdi sırası ters verilince sıra korunuyor (B→`3..4`, A→`5..7`). İç içe sayfa
+  ağacında nesne numarası değil **ağaç sırası** okunuyor (7.7.3.2). 0 baytlık kanıt `Err`.
+- **Sıradaki**: PR aç (00:45'ten önce), CI'yı sessiz saat sonrası (04:00 UTC) kontrol et ve merge et.
