@@ -67,8 +67,11 @@ fn permission_bits(path: &std::path::Path) -> i64 {
     let object =
         bytes.windows(needle.len()).position(|window| window == needle.as_bytes()).expect("the encryption object");
     let window = String::from_utf8_lossy(&bytes[object..bytes.len().min(object + 4096)]).into_owned();
-    let at = window.find("/P").expect("the dictionary carries /P");
-    window[at + 2..]
+    // `/Perms` also starts with `/P`, and on some platforms its binary payload
+    // begins with a digit, so the search asks for the key itself: `/P` followed by
+    // a space and then the number.
+    let at = window.find("/P ").expect("the dictionary carries /P");
+    window[at + 3..]
         .split(|c: char| !(c.is_ascii_digit() || c == '-'))
         .find(|part| !part.is_empty())
         .expect("a number after /P")
