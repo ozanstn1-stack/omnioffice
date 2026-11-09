@@ -335,3 +335,8 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   döndürülüp probun kırmızıya döndüğü gösterilecek (dönmezse prob zayıftır).
 - Kapsam: **V2–V5** (kaynak kaydı) + **V6** (sızan CTM) — V1 (ExtGState) elendi: kodda sabit
   ExtGState/XObject adı yok, hepsi nesne kimliğinden türetiliyor (`GS{id}`, `WM{id}`, `AN{id}`).
+- **Prob gücü kontrolü**: `register_page_font` geçici olarak sabit `/OmniTr`'ye döndürüldü → 3 vaka hâlâ
+  yeşil kaldı (**prob zayıftı**), bu yüzden gerçek senaryo eklendi: *bu uygulamanın damgaladığı dosyaya
+  tekrar damga* → sabit adla kırmızı, düzeltmeyle yeşil. Opus'un şartı böylece sağlandı.
+- Sonuç: **4 vaka yeşil, yeni kusur yok** → sürüm yok (font çakışması v7.29.1'de düzeltilmişti; bu prob
+  onu ve komşularını kilitliyor).
