@@ -26,9 +26,9 @@ describe("protectionProblem", () => {
   });
 
   it("refuses an owner password that matches the user password", () => {
-    expect(
-      protectionProblem(choice({ allowPrinting: false, ownerPassword: "same", userPassword: "same" })),
-    ).toBe("security.ownerMustDiffer");
+    expect(protectionProblem(choice({ allowPrinting: false, ownerPassword: "same", userPassword: "same" }))).toBe(
+      "security.ownerMustDiffer",
+    );
   });
 
   it("accepts a separate owner password with restrictions", () => {

@@ -19,12 +19,7 @@ export interface ProtectionChoice {
 
 /** `null` when the request can bind, otherwise the message key to show. */
 export function protectionProblem(choice: ProtectionChoice): string | null {
-  const restricted = !(
-    choice.allowPrinting &&
-    choice.allowCopying &&
-    choice.allowEditing &&
-    choice.allowCommenting
-  );
+  const restricted = !(choice.allowPrinting && choice.allowCopying && choice.allowEditing && choice.allowCommenting);
   if (!restricted) return null;
   if (!choice.ownerPassword) return "security.ownerRequiredForRestrictions";
   if (choice.ownerPassword === choice.userPassword) return "security.ownerMustDiffer";
