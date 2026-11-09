@@ -315,3 +315,14 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   `textfont.rs` 87 → 136 (taban altı, izlenmiyor).
 - Kapılar: lib **344**, evidence probları 4+4+4+8, clippy temiz, `docs:stats` güncel, `files` OK.
 - **Sürüm gerekli**: kullanıcıya dönük düzeltme → **v7.29.1** (sıradaki pencerede 10:00 UTC sonrası).
+
+## #694 birleşti (`5d47f53`) · v7.29.1 sürüm PR'ı — 2026-11-09 10:10 UTC
+- **#694** squash merge: ikinci damga ilkinin fontunu koruyor (`register_page_font`).
+- **v7.29.1**: sürüm 7.29.1, **versionCode 7029001** (formül: major×1e6 + minor×1e3 + patch —
+  7029100 yanlıştı, `release-guard` yakaladı), CHANGELOG `[7.29.1]` + `[Unreleased]` korunuyor,
+  README (sürüm, "What's new (6.2 to 7.29.1)", indirme bağlantıları), RELEASE_READINESS başlığı +
+  `(this cycle, 7.29.1)` bölümü, fastlane 7029001 (en-US üretildi, tr-TR elle), `cargo update --offline`,
+  `files:update`, `docs:stats`.
+- Kapılar: `release-guard` 7.29.1 (7029001) OK; `claims:check` **426 iddia / 597 işaret**, 98 döngü
+  bölümü; `fastlane-changelogs --check` OK; `files` OK (363 dosya).
+- **Sıradaki**: PR → CI → squash merge → tag `v7.29.1` → Release + Android → **20 asset** doğrulaması.

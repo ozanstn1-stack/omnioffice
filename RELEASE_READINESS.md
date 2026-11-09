@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.29.0
+# Release Readiness — OmniOffice 7.29.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Kendi font adını koruyan belgeler
+## Implemented (this cycle, 7.29.1) - Kendi font adını koruyan belgeler
 
 - **A second stamp no longer draws the first one in the wrong font:** a stamp,
   page number or bundle label registers its font as `/OmniTr` on the page. A page
