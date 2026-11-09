@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.30.3] - 2026-11-09
+
+### Fixed
+
+- **A deleted page could still be reached through an action:** an annotation, a field
+  or the catalog can hang additional actions on events (`/AA`, ISO 32000-1 12.6.3) and
+  an action can carry a chain of steps (`/Next`, 12.6.2). A step that jumped to the
+  deleted page was left in place, which kept the page object - and its content - in the
+  file. The step is removed now, and only it: an action whose own destination is gone
+  goes with it, and the rest of the chain stays.
+- **An outline item no longer names a structure element of the deleted page:** its `/SE`
+  (12.3.3) is cleared while its destination stays.
+- **Page labels follow the pages that are left:** `/PageLabels` indexes positions
+  (12.4.2), so deleting a page shifted every label after it - a document numbered
+  i, ii, 1, 2, 3 read i, ii, 1, 2 afterwards. Each range now starts at the first page
+  that survived it and its `/St` moves by what was removed before it.
+
+  Files produced before this version keep the old content behind the action chain;
+  delete the page again to get a file that no longer carries it.
+
+
 ## [7.30.2] - 2026-11-09
 
 ### Fixed

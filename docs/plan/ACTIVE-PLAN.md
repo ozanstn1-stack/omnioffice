@@ -500,3 +500,13 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: lib testleri yeşil (ortam kaynaklı 3-4 kırmızı değişmedi), clippy temiz, `files` OK
   (yeni dosyalar ratchet'e eklendi), `claims` 441/612, `docs:stats` güncel.
 - **Sürüm**: **v7.30.3** (yama; `/AA` ve `/Next` gizlilik yolu).
+
+## #705 birleşti (`373d426`) · v7.30.3 sürüm PR'ı — 2026-11-09 19:55 UTC
+- **#705**: `/AA` eylemleri, `/Next` zincirleri, outline `/SE` ve `/PageLabels` planla birlikte
+  temizleniyor; prob 5/5, mutasyon kontrolü 4/5 kırmızı.
+- **v7.30.3**: sürüm 7.30.3, **versionCode 7030003**, CHANGELOG (gizlilik notu + "eski dosyalar
+  kendiliğinden düzelmez"), README, RELEASE_READINESS `(this cycle, 7.30.3)`, fastlane 7030003
+  (en-US üretildi, tr-TR elle), `cargo update --offline`, `files:update`, `docs:stats`.
+- Kapılar: `release-guard` 7.30.3 (7030003) OK; `claims:check` **446 iddia / 617 işaret**, 103 döngü
+  bölümü; fastlane + files + docs:stats OK.
+- **Sıradaki**: PR → CI → merge → tag `v7.30.3` → Release + Android → 20 asset doğrulaması.
