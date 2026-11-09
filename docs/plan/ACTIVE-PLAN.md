@@ -525,3 +525,14 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: lib testleri yeşil (ortam kaynaklı 3 kırmızı değişmedi), forms_test 14/14, clippy temiz,
   `files` OK, `claims` 446/617, `docs:stats` güncel.
 - **Sürüm**: **v7.30.4** (yama).
+
+## #708 birleşti (`9871a3e`) · v7.30.4 sürüm PR'ı — 2026-11-09 22:45 UTC
+- **#708**: bilinmeyen buton durumu artık `InvalidInput`; prob 4 vaka (3'ü zaten doğruydu).
+  Bindings kırmızısı: doc comment değişikliği `specta.ts`'e yansıdı, üretilen iki satır elle uygulandı
+  (`8a234c1`).
+- **v7.30.4**: sürüm 7.30.4, **versionCode 7030004**, CHANGELOG, README, RELEASE_READINESS
+  `(this cycle, 7.30.4)`, fastlane 7030004 (en-US + tr-TR), `cargo update --offline`, `files:update`,
+  `docs:stats`.
+- Kapılar: `release-guard` 7.30.4 (7030004) OK; `claims:check` **450 iddia / 620 işaret**; fastlane OK.
+- **Sıradaki**: PR → CI → merge → tag → Release + Android → 20 asset; sessiz saat 01:00'den önce
+  bitmezse yayın 04:00 sonrasına kalır.

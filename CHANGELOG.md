@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.30.4] - 2026-11-09
+
+### Fixed
+
+- **Filling a checkbox with a state the document does not declare is refused:** the fill
+  used to write the first declared state and continue, so the file ended up with a `/V`
+  that claimed one thing while `/AS` named a state with no appearance stream - a control
+  that renders blank, or shows a state the document does not hold (ISO 32000-1 12.5.5,
+  Table 168). The call now returns an error and writes nothing, for checkboxes and radio
+  groups alike.
+
+  The three behaviours that were already right are pinned by the same probe: the on state
+  the document declares goes to both `/V` and `/AS`, clearing writes `Off` on both, and a
+  document that spells its state `/Yes` keeps it.
+
+
 ## [7.30.3] - 2026-11-09
 
 ### Fixed

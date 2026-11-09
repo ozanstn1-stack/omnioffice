@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Buton durumu sessizce değiştirilmiyor
+## Implemented (this cycle, 7.30.4) - Buton durumu sessizce değiştirilmiyor
 
 - **An unknown checkbox or radio state is refused instead of quietly replaced:** the
   fill path used to write the first declared state (and warn), so asking for a state the
