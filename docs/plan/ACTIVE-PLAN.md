@@ -484,3 +484,19 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: `release-guard` 7.30.2 (7030002) OK; `claims:check` **441 iddia / 612 işaret**, 102 döngü
   bölümü; `fastlane --check` OK; `files` OK.
 - **Sıradaki**: PR → CI → merge → tag `v7.30.2` → Release + Android → 20 asset doğrulaması.
+
+## PR 21: eylem zincirleri + sayfa etiketleri (Opus `0625bf63`) — GERÇEK HATA — 2026-11-09 19:40 UTC
+- **Opus kararı `0625bf63`**: (b) daraltılmış — `/AA`, `/Next`, `/SE`, `/PageLabels`. Prob
+  `tests/probe_page_plan_residue.rs` 5 vaka; **düzeltme öncesi 5/5 kırmızıydı** (ikisi yalnız nesne
+  numarası yeniden atandığı için; probe'u gezinmeyle düzelttim).
+- **Gerçek kusurlar**: (1) korunan widget'ın `/AA` eylemi silinen sayfaya atlıyor ve **içeriği dosyada
+  tutuyor**, (2) `/Next` zinciri aynı şekilde, (3) outline `/SE` ölü yapı elemanını gösteriyor,
+  (4) `/PageLabels` indeksleri kayıyor (i, ii, 1, 2, 3 → i, 1, 2, 3 olması gerekirken i, ii, 1, 2).
+- **Düzeltme**: yeni `prune_actions.rs` (275) — eylem adım adım budanır (`/D` ölüyse adım gider,
+  `/Next` özyineli + döngü koruması, `/AA` olayları tek tek), `/SE` temizliği; yeni `page_labels.rs`
+  (105) — aralık başlangıçları hayatta kalan ilk sayfaya kayar, `/St` kaydırılır, ardışık eşit
+  aralıklar birleşir. OBJR vakası `prune_struct` tarafından zaten karşılanıyordu (prob artık sabitliyor).
+- **Mutasyon kontrolü**: çağrılar geri alınınca 5/5 kırmızı (biri hariç — OBJR), açıkken 5/5 yeşil.
+- Kapılar: lib testleri yeşil (ortam kaynaklı 3-4 kırmızı değişmedi), clippy temiz, `files` OK
+  (yeni dosyalar ratchet'e eklendi), `claims` 441/612, `docs:stats` güncel.
+- **Sürüm**: **v7.30.3** (yama; `/AA` ve `/Next` gizlilik yolu).

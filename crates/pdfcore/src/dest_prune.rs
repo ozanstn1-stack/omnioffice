@@ -59,12 +59,12 @@ fn destination_of(doc: &Document, dict: &Dictionary) -> Option<Object> {
     dict.get(b"Dest").ok().cloned()
 }
 
-fn targets_deleted(doc: &Document, dest: &Object, deleted: &HashSet<ObjectId>) -> bool {
+pub(crate) fn targets_deleted_page(doc: &Document, dest: &Object, deleted: &HashSet<ObjectId>) -> bool {
     // A name is resolved through the document's own tree first; the entry is a
     // `/Dest` in its own right (ISO 32000-1 12.3.2.3).
     if matches!(dest, Object::Name(_) | Object::String(_, _)) {
         if let Some(resolved) = name_destination(doc, dest) {
-            return targets_deleted(doc, &resolved, deleted);
+            return targets_deleted_page(doc, &resolved, deleted);
         }
     }
     // The page reference inside the destination, which is what is left once the
@@ -114,7 +114,7 @@ fn prune_links(doc: &mut Document, deleted: &HashSet<ObjectId>) -> u32 {
                 .and_then(|id| doc.get_dictionary(id).ok())
                 .filter(|annot| annot.get(b"Subtype").and_then(Object::as_name).unwrap_or(b"") == b"Link")
                 .and_then(|annot| destination_of(doc, annot))
-                .map(|dest| targets_deleted(doc, &dest, deleted))
+                .map(|dest| targets_deleted_page(doc, &dest, deleted))
                 .unwrap_or(false);
             if dead {
                 removed += 1;
@@ -157,7 +157,7 @@ fn prune_outline(doc: &mut Document, deleted: &HashSet<ObjectId>) -> u32 {
         let Ok(entry) = doc.get_dictionary(id) else { break };
         let next = entry.get(b"Next").ok().cloned();
         let entry = entry.clone();
-        let dead = destination_of(doc, &entry).map(|dest| targets_deleted(doc, &dest, deleted)).unwrap_or(false);
+        let dead = destination_of(doc, &entry).map(|dest| targets_deleted_page(doc, &dest, deleted)).unwrap_or(false);
         if dead {
             if let Ok(dict) = doc.get_object_mut(id).and_then(Object::as_dict_mut) {
                 dict.remove(b"Dest");
@@ -222,7 +222,7 @@ fn prune_name_node(
                 Object::Dictionary(entry) => entry.get(b"D").ok().cloned(),
                 other => Some(other.clone()),
             };
-            if target.map(|target| targets_deleted(doc, &target, deleted)).unwrap_or(false) {
+            if target.map(|target| targets_deleted_page(doc, &target, deleted)).unwrap_or(false) {
                 removed += 1;
                 changed = true;
             } else {
@@ -253,7 +253,7 @@ fn prune_open_action(doc: &mut Document, deleted: &HashSet<ObjectId>) -> bool {
         Object::Dictionary(dict) => dict.get(b"D").ok().cloned().unwrap_or_else(|| action.clone()),
         other => other.clone(),
     };
-    if !targets_deleted(doc, &dest, deleted) {
+    if !targets_deleted_page(doc, &dest, deleted) {
         return false;
     }
     if let Ok(dict) = doc.get_object_mut(root).and_then(Object::as_dict_mut) {
