@@ -340,3 +340,13 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   tekrar damga* → sabit adla kırmızı, düzeltmeyle yeşil. Opus'un şartı böylece sağlandı.
 - Sonuç: **4 vaka yeşil, yeni kusur yok** → sürüm yok (font çakışması v7.29.1'de düzeltilmişti; bu prob
   onu ve komşularını kilitliyor).
+
+## v7.29.1 etiketlendi · #696 birleşti (`6fbb7d0`) — 2026-11-09 11:00 UTC
+- **Tag gecikmesinin sebebi**: master Desktop `ceabb2a` koşusu `Desktop E2E (tauri-driver)` →
+  "Secret store (Xvfb)" adımında düştü (`ai-key-deepseek.bin does not hold the saved key` — anahtar
+  deposu flake'i). Auto-tag **doğru davrandı** (kırmızı CI'ya tag yok). `rerun-failed-jobs` → yeşil →
+  **v7.29.1 tag `ceabb2a`** → Release + Android koşuyor.
+- **#696** squash merge: sayfa kaynak sözlüğü probu (4 vaka). **Prob gücü kontrolü** dersi: ilk sürüm
+  sabit ada döndürülünce yeşil kalıyordu (zayıf prob) → gerçek senaryo eklendi (damgalanmış dosyaya
+  tekrar damga), sabit adla kırmızı / düzeltmeyle yeşil.
+- **Sıradaki**: v7.29.1 asset doğrulaması (20 asset); sonra Opus'a sor.
