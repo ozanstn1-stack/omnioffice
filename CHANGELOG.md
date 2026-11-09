@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.29.1] - 2026-11-09
+
+### Fixed
+
+- **A second stamp no longer draws the first one in the wrong font:** a stamp, a
+  page number or an evidence bundle label registers its font in the page as
+  `/OmniTr`. A page that already carried one - every file this app has stamped
+  before - had that resource overwritten, so the earlier text was drawn with the
+  new, much smaller subset: missing glyphs or a run of boxes, with nothing to warn
+  the user. Registration now takes the next free name (ISO 32000-1 7.8.3) and the
+  drawn text refers to the name it was given, so the earlier stamp keeps the font
+  it was written with. Exhibits in a bundle keep their own resources the same way,
+  including an inherited `/Font` and a content stream shared by two pages.
+
+
 ## [7.29.0] - 2026-11-08
 
 ### Fixed
