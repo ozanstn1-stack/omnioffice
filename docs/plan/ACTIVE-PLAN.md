@@ -412,3 +412,15 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **20 asset** (14 desktop + 6 Android), gövde 883 bayt == `changelog-section v7.30.0`, `latest.json`
   7.30.0, `.sig` 444 B, `SHA256SUMS` **8/8** (API `digest`), provenance → "every published asset is
   covered by 2 envelope(s)". Target temizlendi (16.1 GiB), disk %61.
+
+## #700 birleşti (`a9b61c6`) · v7.30.1 sürüm PR'ı — 2026-11-09 14:45 UTC
+- **#700**: kısıtlar artık bağlıyor — `protect_pdf` owner boş/eşitse ve bir izin kapalıysa reddediyor;
+  UI kontrolü `protection-guard.ts` (4 vitest); i18n tr+en. İlk CI'da iki kırmızı vardı, ikisi de
+  düzeltildi: (1) `tools-screens.test.tsx` **eski hatayı sabitliyordu**, (2) `docs:stats` bayat.
+- **v7.30.1**: sürüm 7.30.1, **versionCode 7030001**, CHANGELOG `[7.30.1]` (+ eski belgeler için uyarı),
+  README, RELEASE_READINESS `(this cycle, 7.30.1)`, fastlane 7030001 (en-US üretildi, tr-TR elle),
+  `cargo update --offline`, `files:update`, `docs:stats`.
+- Kapılar: `release-guard` 7.30.1 (7030001) OK; `claims:check` **432 iddia / 603 işaret**, 100 döngü
+  bölümü.
+- **İki kapı dersi** (plana): yeni test dosyası → `docs:stats` **dosyalar kesinleştikten sonra**;
+  yeni TS dosyası → `check-format.mjs frontend --base=origin/master` (`--all-changed` yenisini görmüyor).

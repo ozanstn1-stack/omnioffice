@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.30.1] - 2026-11-09
+
+### Fixed
+
+- **A permission restriction now actually binds:** a PDF reader verifies the owner
+  password before the user password, so an owner password that is empty or equal to
+  the user password makes whoever opens the file its owner as well - and every
+  permission the file declares becomes advisory. The security screen sent the user
+  password as the owner whenever that field was left blank, which is how a file is
+  normally protected, so "cannot be copied" was often not true. Protecting now
+  refuses that combination when at least one permission is denied, and the screen
+  says why instead of filling the field in.
+
+  **Documents protected before this version are not repaired by it:** protect them
+  again with a separate owner password, and remember that copies already handed out
+  keep the old, weaker setting.
+
+
 ## [7.30.0] - 2026-11-09
 
 ### Added
