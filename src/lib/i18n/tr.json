@@ -595,6 +595,8 @@
   "security.allowCommenting": "Yorum yapmaya izin ver",
   "security.run": "PDF'yi koru",
   "security.passwordMismatch": "Parolalar eşleşmiyor",
+  "security.ownerRequiredForRestrictions": "Kısıtlar için ayrı bir sahip parolası girin ya da tüm izinleri açın.",
+  "security.ownerMustDiffer": "Sahip parolası kullanıcı parolasından farklı olmalı.",
   "security.passwordRequired": "Bir parola girin",
   "security.note": "Parolalar hiçbir zaman saklanmaz veya günlüğe yazılmaz. Güvenle saklayın — kurtarılamazlar.",
   "security.unlockTitle": "PDF kilidini aç",

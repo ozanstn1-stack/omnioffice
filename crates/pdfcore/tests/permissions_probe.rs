@@ -126,15 +126,14 @@ fn a_protected_file_opens_with_the_empty_user_password() {
     );
 }
 
-/// Known defect, found by this probe and not fixed yet: see the plan entry.
-#[ignore = "BUG: an owner password equal to the user password leaves the restrictions unenforceable"]
 #[test]
 fn an_owner_password_that_matches_the_user_password_is_refused_when_restrictions_apply() {
     // If the opener is also the owner, every restriction the file declares is
-    // meaningless: a reader that verifies the owner password first grants full
-    // rights (ISO 32000-1 Algorithm 2.A).
+    // advisory, because a reader verifies the owner password first (ISO 32000-2,
+    // 7.6.4.3.2 / Algorithm 2.A). Refusing is the only honest answer.
     let source = source("shared-password");
     let path = std::env::temp_dir().join("omnioffice-permissions-shared-password.pdf");
+    let _ = std::fs::remove_file(&path);
     let shared = ProtectOptions {
         user_password: "same".into(),
         owner_password: "same".into(),
@@ -143,6 +142,23 @@ fn an_owner_password_that_matches_the_user_password_is_refused_when_restrictions
         allow_editing: false,
         allow_commenting: false,
     };
-    let result = protect_pdf(&source, &path, &shared, OverwritePolicy::Replace, None);
-    assert!(result.is_err(), "a file whose user and owner passwords match cannot enforce its restrictions");
+    let refused = protect_pdf(&source, &path, &shared, OverwritePolicy::Replace, None);
+    assert!(refused.is_err(), "a file whose user and owner passwords match cannot enforce its restrictions");
+    assert!(!path.exists(), "and nothing is written");
+
+    // An empty owner password is the same statement, so it is refused too.
+    let empty_owner = ProtectOptions { owner_password: String::new(), ..shared.clone() };
+    assert!(protect_pdf(&source, &path, &empty_owner, OverwritePolicy::Replace, None).is_err());
+
+    // With every permission granted there is nothing to enforce, so an owner that
+    // matches the user password is fine.
+    let open = ProtectOptions {
+        allow_printing: true,
+        allow_copying: true,
+        allow_editing: true,
+        allow_commenting: true,
+        ..shared
+    };
+    let written = protect_pdf(&source, &path, &open, OverwritePolicy::Replace, None).expect("all permissions granted");
+    assert!(written.exists());
 }

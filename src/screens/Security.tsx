@@ -8,6 +8,7 @@ import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { protectPdf, unlockPdf } from "../lib/api";
 import { useToasts } from "../lib/store";
+import { protectionProblem } from "./security/protection-guard";
 
 type Tab = "protect" | "unlock";
 
@@ -67,13 +68,25 @@ function Protect({ initialFiles, dragging }: { initialFiles?: string[]; dragging
       pushToast({ kind: "error", title: t("errors.title"), detail: t("security.passwordMismatch") });
       return;
     }
+    const problem = protectionProblem({
+      userPassword,
+      ownerPassword,
+      allowPrinting,
+      allowCopying,
+      allowEditing,
+      allowCommenting,
+    });
+    if (problem) {
+      pushToast({ kind: "error", title: t("errors.title"), detail: t(problem) });
+      return;
+    }
     void session.run(async (jobId, overwrite) => {
       const result = await protectPdf(
         session.primary?.path ?? "",
         session.outputSpec(overwrite),
         {
           userPassword,
-          ownerPassword: ownerPassword || userPassword,
+          ownerPassword,
           allowPrinting,
           allowCopying,
           allowEditing,

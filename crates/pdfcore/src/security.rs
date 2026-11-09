@@ -71,6 +71,17 @@ pub fn protect_pdf(
     if options.user_password.is_empty() && options.owner_password.is_empty() {
         return Err(PdfError::InvalidInput("a password is required".into()));
     }
+    // A reader checks the owner password first, so an owner that is empty or the
+    // same as the user password makes whoever opens the file its owner as well -
+    // and every restriction the file declares becomes advisory. Refusing is the
+    // only honest answer; allowing everything needs no owner at all.
+    let restricted =
+        !(options.allow_printing && options.allow_copying && options.allow_editing && options.allow_commenting);
+    if restricted && (options.owner_password.is_empty() || options.owner_password == options.user_password) {
+        return Err(PdfError::InvalidInput(
+            "restrictions need an owner password that differs from the user password".into(),
+        ));
+    }
     let mut doc = load_document(input, password)?;
     if doc.was_encrypted() {
         // The document still carries an encryption dictionary; decrypt first

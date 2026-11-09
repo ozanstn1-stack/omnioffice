@@ -361,7 +361,7 @@
     "src/screens/Redact.tsx": 586,
     "src/screens/scanner-corners.tsx": 233,
     "src/screens/Scanner.tsx": 298,
-    "src/screens/Security.tsx": 241,
+    "src/screens/Security.tsx": 254,
     "src/screens/Settings.tsx": 561,
     "src/screens/Split.tsx": 220,
     "src/screens/Sync.tsx": 994,
