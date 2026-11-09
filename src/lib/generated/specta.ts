@@ -2478,7 +2478,7 @@ export type FillReport_Deserialize = {
 	 *  push buttons, signatures, unsupported types).
 	 */
 	skipped?: string[],
-	/**  Values written with a caveat (over `/MaxLen`, unknown checkbox state). */
+	/**  Values written with a caveat (over `/MaxLen`, a value cut to fit). */
 	warnings?: string[],
 };
 
@@ -2490,7 +2490,7 @@ export type FillReport_Serialize = {
 	 *  push buttons, signatures, unsupported types).
 	 */
 	skipped: string[],
-	/**  Values written with a caveat (over `/MaxLen`, unknown checkbox state). */
+	/**  Values written with a caveat (over `/MaxLen`, a value cut to fit). */
 	warnings: string[],
 };
 

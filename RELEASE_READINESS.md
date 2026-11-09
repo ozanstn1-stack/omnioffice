@@ -65,6 +65,24 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Buton durumu sessizce değiştirilmiyor
+
+- **An unknown checkbox or radio state is refused instead of quietly replaced:** the
+  fill path used to write the first declared state (and warn), so asking for a state the
+  document does not declare produced a file whose `/V` claimed one thing while `/AS`
+  showed another - or a state with no appearance stream at all (ISO 32000-1 12.5.5,
+  Table 168). It now returns an error and writes nothing.
+  `test:crates/pdfcore/tests/button_state_probe.rs#an_unknown_state_is_refused_and_the_document_is_left_alone`
+- **The on state is the document's, not `/Yes`:** a checkbox whose appearance declares
+  `/Off` and `/Ja` is filled with `/Ja` for both `/V` and `/AS`, and the `/Yes` spelling
+  only appears when the document itself uses it.
+  `test:crates/pdfcore/tests/button_state_probe.rs#a_checkbox_takes_the_on_state_the_document_declares`
+- **Clearing writes `Off` on both keys:**
+  `test:crates/pdfcore/tests/button_state_probe.rs#clearing_a_checkbox_writes_off_on_both`
+- **Not covered yet:** a radio group's `/Opt` labels and per-child `/AS` are the next
+  slice; the probe stops at a single merged checkbox for now. (no test: out of scope for
+  this change and recorded in the plan.)
+
 ## Implemented (this cycle, 7.30.3) - Eylem zincirleri ve sayfa etiketleri planla birlikte gider
 
 - **An action chain no longer keeps the deleted page alive:** `/Next` (`ISO 32000-1
