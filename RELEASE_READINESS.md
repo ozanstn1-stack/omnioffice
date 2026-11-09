@@ -77,7 +77,7 @@ release-train schedule is decided.
 - **The screen says why instead of sending the user password twice:** the security
   screen no longer falls back to the user password for the owner field; it stops with
   a message that names both ways out.
-  `test:src/screens/security/protection-guard.test.ts#protectionProblem`
+  `test:src/screens/security/protection-guard.test.ts#refuses an owner password that matches the user password`
 - **The permission bits stay pinned:** `test:crates/pdfcore/tests/permissions_probe.rs#one_denied_permission_clears_exactly_its_bits`
   and `test:crates/pdfcore/tests/permissions_probe.rs#every_permission_denied_clears_all_eight_but_keeps_accessibility`
   compare `/P` with the integers ISO 32000-1 Table 22 produces.
