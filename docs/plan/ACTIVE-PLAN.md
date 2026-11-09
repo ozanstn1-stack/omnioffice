@@ -407,3 +407,8 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   `i18n-audit` yeni sabit metin yok, `contract.test.ts` 5/5, guard testi 4/4, `claims:check` 429/599.
 - **Sürüm**: **v7.30.1** — sürüm notunda "daha önce korunmuş belgeler kendiliğinden düzelmez, farklı
   owner parolasıyla yeniden korunmalı" uyarısı.
+
+## v7.30.0 DOĞRULANDI (20 asset) — 2026-11-09 13:10 UTC
+- **20 asset** (14 desktop + 6 Android), gövde 883 bayt == `changelog-section v7.30.0`, `latest.json`
+  7.30.0, `.sig` 444 B, `SHA256SUMS` **8/8** (API `digest`), provenance → "every published asset is
+  covered by 2 envelope(s)". Target temizlendi (16.1 GiB), disk %61.
