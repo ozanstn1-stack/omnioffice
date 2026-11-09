@@ -273,8 +273,10 @@ describe("PDF tool screens call their backend with the request envelope", () => 
       "protect_pdf",
     ).request;
     expect(request.userPassword).toBe("secret123");
-    // The owner password falls back to the user password.
-    expect(request.ownerPassword).toBe("secret123");
+    // The owner password is no longer filled in from the user password: a reader
+    // verifies the owner password first, so that fallback made every restriction
+    // the file declares advisory.
+    expect(request.ownerPassword).toBe("");
     expect(request.allowPrinting).toBe(true);
   });
 
