@@ -390,3 +390,20 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **Sıradaki dilim (v7.30.1 adayı)**: `protect_pdf` kısıt istendiğinde owner boş/eşitse ya reddetsin ya da
   rastgele owner üretsin; UI'da owner alanı boş bırakılabilsin + i18n mesajı; sürüm notunda "daha önce
   korunmuş belgeler kendiliğinden düzelmez, yeniden korunmalı" uyarısı.
+
+## PR 18: kısıtları bağlayan sahip parolası (Opus `9089f72c`) — GERÇEK HATA DÜZELTMESİ — 2026-11-09 13:10 UTC
+- **Opus kararı `9089f72c`**: seçenek 1 — en az bir izin kapalıyken owner boş veya user'a eşitse
+  `protect_pdf` **`InvalidInput` döndürür**; tüm izinler açıksa eşit parola kabul edilir (bağlanacak
+  bir kısıt yok). Gerekçe: reddetme hiçbir şey üretmez ve hemen düzeltilebilir; rastgele owner üretmek
+  kullanıcının kendi kısıtlarını kaldırmasını engellerdi.
+- **Backend**: `security.rs` (+11 satır, bütçe dışı dosya) — kısıt + (owner boş | owner == user) → hata.
+- **UI**: `Security.tsx` artık `ownerPassword || userPassword` göndermiyor; kontrol saf yardımcıya alındı
+  (`src/screens/security/protection-guard.ts`) ve **4 vitest** ile sınandı. `Security.tsx` 241 → **254**
+  (bütçe `--allow-raise` ile bir kez yükseltildi; gerekçe: sessiz güvenlik yanlış beyanını engelleyen
+  kontrol). i18n: `security.ownerRequiredForRestrictions`, `security.ownerMustDiffer` (tr+en).
+- Prob: `#[ignore]` kaldırıldı; vaka artık üç durumu sınıyor (eşit/boş + kısıt → `Err` ve dosya yok;
+  hepsi açık + eşit → `Ok`).
+- Kapılar: prob 5/5, lib testleri yeşil (ortam kaynaklı 4 kırmızı değişmedi), clippy temiz,
+  `i18n-audit` yeni sabit metin yok, `contract.test.ts` 5/5, guard testi 4/4, `claims:check` 429/599.
+- **Sürüm**: **v7.30.1** — sürüm notunda "daha önce korunmuş belgeler kendiliğinden düzelmez, farklı
+  owner parolasıyla yeniden korunmalı" uyarısı.

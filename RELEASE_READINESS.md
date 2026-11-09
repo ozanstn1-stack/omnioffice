@@ -65,6 +65,22 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Kısıtları gerçekten bağlayan sahip parolası
+
+- **A restriction is refused when it could not bind:** a reader verifies the owner
+  password first, so an owner password that is empty or equal to the user password
+  makes whoever opens the file its owner too, and every permission the file declares
+  becomes advisory. `protect_pdf` now refuses that combination when at least one
+  permission is denied, and accepts it when everything is allowed - there is nothing
+  to enforce then.
+  `test:crates/pdfcore/tests/permissions_probe.rs#an_owner_password_that_matches_the_user_password_is_refused_when_restrictions_apply`
+- **The screen says why instead of sending the user password twice:** the security
+  screen no longer falls back to the user password for the owner field; it stops with
+  a message that names both ways out.
+- **The permission bits stay pinned:** `test:crates/pdfcore/tests/permissions_probe.rs#one_denied_permission_clears_exactly_its_bits`
+  and `test:crates/pdfcore/tests/permissions_probe.rs#every_permission_denied_clears_all_eight_but_keeps_accessibility`
+  compare `/P` with the integers ISO 32000-1 Table 22 produces.
+
 ## Implemented (this cycle, 7.30.0) - Sağlık raporu bağlantıları ve belgenin kendi kısıtları
 
 - **A health report notices a link that points at a page the document no longer

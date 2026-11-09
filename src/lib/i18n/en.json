@@ -554,6 +554,8 @@
   "security.allowCommenting": "Allow commenting",
   "security.run": "Protect PDF",
   "security.passwordMismatch": "Passwords do not match",
+  "security.ownerRequiredForRestrictions": "Restrictions need a separate owner password, or allow every permission.",
+  "security.ownerMustDiffer": "The owner password must differ from the user password.",
   "security.passwordRequired": "Enter a password",
   "security.note": "Passwords are never stored or logged. Keep them safe — they cannot be recovered.",
   "security.unlockTitle": "Unlock PDF",
