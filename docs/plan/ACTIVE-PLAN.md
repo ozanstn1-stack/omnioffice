@@ -424,3 +424,13 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   bölümü.
 - **İki kapı dersi** (plana): yeni test dosyası → `docs:stats` **dosyalar kesinleştikten sonra**;
   yeni TS dosyası → `check-format.mjs frontend --base=origin/master` (`--all-changed` yenisini görmüyor).
+
+## #701 birleşti (`a9fc3c2`) — v7.30.1 tag bekleniyor — 2026-11-09 15:30 UTC
+- **#701** squash merge. CI'da tek kırmızı "Release claims"ti: `claims-audit --junit` işareti **JUnit
+  test-case adıyla** eşleştiriyor; `#protectionProblem` bir `describe` başlığıydı → gerçek `it` adına
+  çevrildi (`#refuses an owner password that matches the user password`).
+- **Kapı dersleri (bu oturum, üçü de plana yazıldı)**:
+  1. Yeni test dosyası → `docs:stats` **dosyalar kesinleştikten sonra**.
+  2. Yeni TS dosyası → `check-format.mjs frontend --base=origin/master` (`--all-changed` yenisini görmüyor).
+  3. TS iddia işareti **`it(...)` adı** olmalı, `describe` değil (`--junit` eşleşmesi).
+- **Sıradaki**: master Desktop → auto-tag `v7.30.1` → Release + Android → **20 asset** doğrulaması.
