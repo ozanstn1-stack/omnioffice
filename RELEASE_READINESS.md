@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Eylem zincirleri ve sayfa etiketleri planla birlikte gider
+## Implemented (this cycle, 7.30.3) - Eylem zincirleri ve sayfa etiketleri planla birlikte gider
 
 - **An action chain no longer keeps the deleted page alive:** `/Next` (`ISO 32000-1
   12.6.2`) and the additional-action dictionaries `/AA` (12.6.3) can carry a step that
