@@ -510,3 +510,18 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: `release-guard` 7.30.3 (7030003) OK; `claims:check` **446 iddia / 617 işaret**, 103 döngü
   bölümü; fastlane + files + docs:stats OK.
 - **Sıradaki**: PR → CI → merge → tag `v7.30.3` → Release + Android → 20 asset doğrulaması.
+
+## PR 22: buton durumu sessizce bozulmuyor (Opus `308f37ca`) — GERÇEK HATA — 2026-11-09 22:05 UTC
+- **Opus kararı `308f37ca`**: (a) form durumu. Prob `tests/button_state_probe.rs` 4 vaka;
+  **düzeltmeden önce 1 kırmızı**: belgenin bildirmediği bir durum adı istenince kod sessizce ilk
+  bildirilen duruma düşüp **uyarı** veriyordu → `/V` ile `/AS` çelişebiliyor ya da hiç görünümü
+  olmayan bir durum yazılıyordu (ISO 32000-1 12.5.5 Tablo 168).
+- **Düzeltme** `forms.rs`: onay kutusu ve radyo için bilinmeyen durum artık `InvalidInput` döndürüyor,
+  hiçbir şey yazılmıyor. `fill_checkbox`/`fill_radio` artık kullanılmayan `report` parametresini aldı →
+  satır bütçesi korundu (`forms.rs` 2752 → **2756**, +4; `--allow-raise` yerine küçültmeyle).
+- **Yeşil kalan üç vaka** (kayıtlı): bildirilen açık durumu (`/Ja`) hem `/V` hem `/AS`'ye yazma,
+  `Off`'a çekme, `/Yes` kullanan belgede `/Yes` — yani mevcut davranış zaten doğruydu.
+- **Kapsam dışı**: radyo `/Opt` etiketleri ve çocuk başına `/AS` — sonraki dilim.
+- Kapılar: lib testleri yeşil (ortam kaynaklı 3 kırmızı değişmedi), forms_test 14/14, clippy temiz,
+  `files` OK, `claims` 446/617, `docs:stats` güncel.
+- **Sürüm**: **v7.30.4** (yama).

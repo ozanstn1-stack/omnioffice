@@ -157,7 +157,7 @@ pub struct FillReport {
     /// Fields that were requested but deliberately not written (read-only,
     /// push buttons, signatures, unsupported types).
     pub skipped: Vec<String>,
-    /// Values written with a caveat (over `/MaxLen`, unknown checkbox state).
+    /// Values written with a caveat (over `/MaxLen`, a value cut to fit).
     pub warnings: Vec<String>,
 }
 
@@ -1190,9 +1190,9 @@ pub fn apply_field_values(doc: &mut Document, values: &[FieldValue]) -> PdfResul
                     continue;
                 }
                 if ff & FLAG_RADIO != 0 {
-                    fill_radio(doc, node, value, &widget_ids, &font, &mut report)?;
+                    fill_radio(doc, node, value, &widget_ids, &font)?;
                 } else {
-                    fill_checkbox(doc, node, value, &widget_ids, &font, &mut report)?;
+                    fill_checkbox(doc, node, value, &widget_ids, &font)?;
                 }
                 report.filled += 1;
             }
@@ -1261,7 +1261,6 @@ fn fill_checkbox(
     value: &FieldValue,
     widget_ids: &[ObjectId],
     font: &TextFont,
-    report: &mut FillReport,
 ) -> PdfResult<()> {
     let states = checkbox_states(doc, node);
     let raw = value.value.trim().to_string();
@@ -1273,8 +1272,12 @@ fn fill_checkbox(
     } else if states.iter().any(|state| state == &raw) {
         raw.clone()
     } else {
-        report.warnings.push(format!("{}: unknown checkbox state '{raw}', using the first declared state", value.name));
-        states.first().cloned().unwrap_or_else(|| "Yes".to_string())
+        // A state the document does not declare has no appearance to show (12.5.5).
+        return Err(PdfError::InvalidInput(format!(
+            "{}: '{raw}' is not one of the checkbox states ({})",
+            value.name,
+            states.join(", ")
+        )));
     };
     set_dict_entry(doc, node.id, b"V", Object::Name(chosen.as_bytes().to_vec()))?;
     for widget_id in widget_ids {
@@ -1289,29 +1292,30 @@ fn fill_radio(
     value: &FieldValue,
     widget_ids: &[ObjectId],
     font: &TextFont,
-    report: &mut FillReport,
 ) -> PdfResult<()> {
     // Collect per-widget states first: each widget owns one export value.
     let per_widget: Vec<Vec<String>> = node.widgets.iter().map(|(_, widget)| widget_on_states(doc, widget)).collect();
     let all_states: Vec<String> = per_widget.iter().flatten().cloned().collect();
     let raw = value.value.trim().to_string();
     let lower = raw.to_lowercase();
-    let chosen: Option<String> = if raw.is_empty()
-        || matches!(lower.as_str(), "off" | "false" | "0" | "no" | "unchecked")
-    {
-        None
-    } else if all_states.iter().any(|state| state == &raw) {
-        Some(raw.clone())
-    } else if all_states.is_empty() {
-        // The document declares no appearance states (some producers, and the
-        // built-in form creator, only ship a single stream). Writing the state
-        // the caller asked for is the only honest option; the regenerated
-        // appearance below gives that state a stream so the value is visible.
-        Some(raw.clone())
-    } else {
-        report.warnings.push(format!("{}: '{raw}' is not a declared radio state; leaving the group off", value.name));
-        None
-    };
+    let chosen: Option<String> =
+        if raw.is_empty() || matches!(lower.as_str(), "off" | "false" | "0" | "no" | "unchecked") {
+            None
+        } else if all_states.iter().any(|state| state == &raw) {
+            Some(raw.clone())
+        } else if all_states.is_empty() {
+            // The document declares no appearance states (some producers, and the
+            // built-in form creator, only ship a single stream). Writing the state
+            // the caller asked for is the only honest option; the regenerated
+            // appearance below gives that state a stream so the value is visible.
+            Some(raw.clone())
+        } else {
+            return Err(PdfError::InvalidInput(format!(
+                "{}: '{raw}' is not one of the radio states ({})",
+                value.name,
+                all_states.join(", ")
+            )));
+        };
     match &chosen {
         Some(state) => set_dict_entry(doc, node.id, b"V", Object::Name(state.as_bytes().to_vec()))?,
         None => set_dict_entry(doc, node.id, b"V", Object::Name(b"Off".to_vec()))?,
