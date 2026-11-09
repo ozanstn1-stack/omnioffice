@@ -13,7 +13,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-mod links;
+pub mod links;
 
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use serde::{Deserialize, Serialize};

@@ -424,3 +424,38 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   bölümü.
 - **İki kapı dersi** (plana): yeni test dosyası → `docs:stats` **dosyalar kesinleştikten sonra**;
   yeni TS dosyası → `check-format.mjs frontend --base=origin/master` (`--all-changed` yenisini görmüyor).
+
+## #701 birleşti (`a9fc3c2`) — v7.30.1 tag bekleniyor — 2026-11-09 15:30 UTC
+- **#701** squash merge. CI'da tek kırmızı "Release claims"ti: `claims-audit --junit` işareti **JUnit
+  test-case adıyla** eşleştiriyor; `#protectionProblem` bir `describe` başlığıydı → gerçek `it` adına
+  çevrildi (`#refuses an owner password that matches the user password`).
+- **Kapı dersleri (bu oturum, üçü de plana yazıldı)**:
+  1. Yeni test dosyası → `docs:stats` **dosyalar kesinleştikten sonra**.
+  2. Yeni TS dosyası → `check-format.mjs frontend --base=origin/master` (`--all-changed` yenisini görmüyor).
+  3. TS iddia işareti **`it(...)` adı** olmalı, `describe` değil (`--junit` eşleşmesi).
+- **Sıradaki**: master Desktop → auto-tag `v7.30.1` → Release + Android → **20 asset** doğrulaması.
+
+## v7.30.1 DOĞRULANDI (20 asset) — 2026-11-09 16:20 UTC
+- **20 asset** (14 desktop + 6 Android), gövde 854 bayt == `changelog-section v7.30.1`, `latest.json`
+  7.30.1, `.sig` 444 B, `SHA256SUMS` **8/8** (API `digest`), provenance → "every published asset is
+  covered by 2 envelope(s)". Disk %61.
+- **Kapanış**: bu oturumda 20 PR; son üç sürüm (7.29.0 → 7.30.1) ve iki gerçek hata (font çakışması,
+  bağlamayan izin kısıtı) kapandı.
+- **Sıradaki dilim**: Opus'a sorulacak — öneri: güvenlik hattı (`/Perms` şifreli özeti) veya organize
+  sonrası link/outline hedeflerinin yeniden eşlenmesi.
+
+## PR 19: silinen sayfaya giden başvurular temizlenir (Opus `a0a45dbd`) — GERÇEK HATA — 2026-11-09 16:55 UTC
+- **Opus kararı `a0a45dbd`**: (b) — sayfa silmede hedef temizliği. Ön koşul sağlandı:
+  `pdfcore::organize::delete_pages` VPS'te çalışıyor.
+- **Prob `tests/organize_dest_probe.rs` (5 vaka) düzeltmeden önce 5/5 kırmızıydı**: bir sayfa
+  silinince A) link hâlâ silinen sayfayı gösteriyordu, B) `/OpenAction` kalıyordu, C) outline girdisi
+  silinen sayfaya atlıyordu, D) isim ağacı girdisi ölü hedef taşıyordu, E) silinen sayfanın **içeriği
+  dosyada erişilebilir kalıyordu** (gizlilik).
+- **Düzeltme**: yeni `crates/pdfcore/src/dest_prune.rs` (`prune_references_to`) — link `/Annots`'tan
+  çıkarılır, outline girdisi başlığını koruyup hedefini kaybeder, `/OpenAction` ve ölü isim ağacı
+  girdileri silinir; isimler önce çözülür (12.3.2.3). `delete_pages` bunu ağaç yeniden kurulduktan
+  sonra çağırır. **Mutasyon kontrolü**: bağlantı geri alınınca 5/5 kırmızı, açıkken 5/5 yeşil.
+- Kapılar: lib testleri yeşil (ortam kaynaklı 4 kırmızı değişmedi), clippy temiz, `files` OK
+  (`dest_prune.rs` 338, test 316 — ratchet'e eklendi), `claims` 432/603, `docs:stats` güncel.
+- **Sürüm**: **v7.30.2** (yama; V5 gizlilik yönü nedeniyle sürüm notunda ayrıca vurgulanacak).
+- **Kapsam dışı**: `/StructTreeRoot`, `/AcroForm` widget'ları, `/Threads` — sonraki aday.

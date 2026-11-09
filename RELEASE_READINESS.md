@@ -65,6 +65,30 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Silinen sayfaya giden her başvuru temizlenir
+
+- **Deleting a page no longer leaves everything that pointed at it behind:** a link's
+  destination, an outline entry, the catalog's `/OpenAction` and the `/Names /Dests`
+  tree were left naming a page object that was no longer a page. A reader then offered
+  links that opened onto nothing, and the reference kept the page object alive - so the
+  content of a page the user deleted was still in the file. `delete_pages` now prunes
+  all four before it writes: links are removed from `/Annots`, an outline entry keeps
+  its title and loses its target, `/OpenAction` and the dead name-tree entries go.
+  `test:crates/pdfcore/tests/organize_dest_probe.rs#a_link_to_the_deleted_page_goes_and_a_link_to_a_kept_page_stays`
+- **The deleted page's content does not survive:**
+  `test:crates/pdfcore/tests/organize_dest_probe.rs#nothing_in_the_output_still_reaches_the_deleted_pages_content`
+  reads the reachable streams of the output and fails if the deleted page's mark is
+  still drawn, which is the privacy half of the bug.
+- **A named destination is resolved before it is judged:**
+  `test:crates/pdfcore/tests/organize_dest_probe.rs#a_named_destination_on_the_deleted_page_goes_and_the_other_one_stays`
+  covers the `/Names /Dests` tree, and
+  `test:crates/pdfcore/tests/organize_dest_probe.rs#an_outline_entry_on_the_deleted_page_keeps_its_title_but_loses_its_target`
+  the outline.
+- **Known limit:** `/StructTreeRoot`, `/AcroForm` widgets and `/Threads` are not
+  pruned; a document that reaches the deleted page through one of them can keep the
+  object alive even after this change. (no test: the paths are out of scope for this
+  slice and the probe covers the four that were reported.)
+
 ## Implemented (this cycle, 7.30.1) - Kısıtları gerçekten bağlayan sahip parolası
 
 - **A restriction is refused when it could not bind:** a reader verifies the owner
