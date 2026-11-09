@@ -434,3 +434,12 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   2. Yeni TS dosyası → `check-format.mjs frontend --base=origin/master` (`--all-changed` yenisini görmüyor).
   3. TS iddia işareti **`it(...)` adı** olmalı, `describe` değil (`--junit` eşleşmesi).
 - **Sıradaki**: master Desktop → auto-tag `v7.30.1` → Release + Android → **20 asset** doğrulaması.
+
+## v7.30.1 DOĞRULANDI (20 asset) — 2026-11-09 16:20 UTC
+- **20 asset** (14 desktop + 6 Android), gövde 854 bayt == `changelog-section v7.30.1`, `latest.json`
+  7.30.1, `.sig` 444 B, `SHA256SUMS` **8/8** (API `digest`), provenance → "every published asset is
+  covered by 2 envelope(s)". Disk %61.
+- **Kapanış**: bu oturumda 20 PR; son üç sürüm (7.29.0 → 7.30.1) ve iki gerçek hata (font çakışması,
+  bağlamayan izin kısıtı) kapandı.
+- **Sıradaki dilim**: Opus'a sorulacak — öneri: güvenlik hattı (`/Perms` şifreli özeti) veya organize
+  sonrası link/outline hedeflerinin yeniden eşlenmesi.
