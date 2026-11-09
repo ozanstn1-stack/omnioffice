@@ -33,7 +33,18 @@ pub fn apply_page_plan(
         }
     }
     materialize_all_pages(&mut doc)?;
+    let before: std::collections::HashSet<lopdf::ObjectId> = doc.get_pages().values().copied().collect();
     rebuild_page_tree(&mut doc, plan)?;
+    // Pages the plan dropped are gone from the tree, but everything that named them
+    // is not: links, outline entries, the catalog's `/OpenAction`, the name tree,
+    // structure elements, form fields and article threads. Each of those would keep
+    // the page object - and the content on it - alive in the written file.
+    let remaining: std::collections::HashSet<lopdf::ObjectId> = doc.get_pages().values().copied().collect();
+    let removed: std::collections::HashSet<lopdf::ObjectId> = before.difference(&remaining).copied().collect();
+    crate::dest_prune::prune_references_to(&mut doc, &removed);
+    crate::prune_struct::prune_structure(&mut doc, &removed);
+    crate::prune_forms_threads::prune_forms(&mut doc, &removed);
+    crate::prune_forms_threads::prune_threads(&mut doc, &removed);
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
     Ok(final_path)
@@ -58,7 +69,7 @@ pub fn delete_pages(
     policy: OverwritePolicy,
     password: Option<&str>,
 ) -> PdfResult<PathBuf> {
-    let mut doc = load_document(input, password)?;
+    let doc = load_document(input, password)?;
     let total = doc.get_pages().len() as u32;
     if total == 0 {
         return Err(PdfError::InvalidPdf("document has no pages".into()));
@@ -71,16 +82,9 @@ pub fn delete_pages(
         .filter(|p| !delete.contains(p))
         .map(|p| PagePlanItem { source_page: p, ..Default::default() })
         .collect();
-    materialize_all_pages(&mut doc)?;
-    // The pages that are about to leave the tree, so everything that points at
-    // them can be cleaned up instead of dangling.
-    let removed: std::collections::HashSet<lopdf::ObjectId> =
-        delete.iter().filter_map(|page| doc.get_pages().get(page).copied()).collect();
-    rebuild_page_tree(&mut doc, &plan)?;
-    crate::dest_prune::prune_references_to(&mut doc, &removed);
-    let final_path = resolve_output_path(output, policy)?;
-    save_document(&mut doc, &final_path, true)?;
-    Ok(final_path)
+    // The plan is the deletion, and `apply_page_plan` cleans up everything that
+    // pointed at the pages it leaves out.
+    apply_page_plan(input, &plan, output, policy, password)
 }
 
 pub fn rotate_pages(

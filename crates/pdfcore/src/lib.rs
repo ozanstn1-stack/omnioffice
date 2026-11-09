@@ -75,6 +75,8 @@ pub mod pdf2doc;
 pub mod pdfa;
 pub mod progress;
 pub mod provenance;
+pub mod prune_forms_threads;
+pub mod prune_struct;
 pub mod rebuild;
 pub mod redact;
 pub mod render;

@@ -459,3 +459,17 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   (`dest_prune.rs` 338, test 316 — ratchet'e eklendi), `claims` 432/603, `docs:stats` güncel.
 - **Sürüm**: **v7.30.2** (yama; V5 gizlilik yönü nedeniyle sürüm notunda ayrıca vurgulanacak).
 - **Kapsam dışı**: `/StructTreeRoot`, `/AcroForm` widget'ları, `/Threads` — sonraki aday.
+
+## PR 20: yapı ağacı, form ve thread temizliği (Opus `9eec3e2b`) — GERÇEK HATA — 2026-11-09 17:20 UTC
+- **Opus kararı `9eec3e2b`**: #702'nin kapsam dışı bıraktığı üç başvuru türü. Prob
+  `crates/pdfcore/tests/organize_pageref_probe.rs` **5 vaka**: yapı ağacı, form alanı, makale ipliği,
+  yeniden sıralama (kontrol), çıkarma.
+- **Düzeltme öncesi 4/5 kırmızı** (kontrol vakası yeşildi): silinen sayfanın içeriği `/StructTreeRoot`
+  ve `/AcroForm /V` üzerinden **dosyada kalıyordu**; thread boncukları ölü sayfayı gösteriyordu;
+  `extract_pages` kalan belgede ölü link bırakıyordu.
+- **Düzeltme**: yeni `prune_struct.rs` (165) ve `prune_forms_threads.rs` (194); temizlik
+  `apply_page_plan`'a taşındı → **silme, çıkarma ve plan** hepsi kapsanıyor. `delete_pages` artık
+  plana delege ediyor. **Mutasyon kontrolü**: çağrılar geri alınınca 5/5 kırmızı, açıkken 5/5 yeşil.
+- Kapılar: lib testleri yeşil (ortam kaynaklı 4 kırmızı değişmedi), clippy temiz, `files` OK,
+  `claims` 432/603, `docs:stats` güncel.
+- **Sürüm**: **v7.30.2** — #702 ile aynı yamaya katılıyor (henüz yayımlanmadı).
