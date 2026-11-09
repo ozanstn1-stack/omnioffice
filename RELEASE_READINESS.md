@@ -65,6 +65,28 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Eylem zincirleri ve sayfa etiketleri planla birlikte gider
+
+- **An action chain no longer keeps the deleted page alive:** `/Next` (`ISO 32000-1
+  12.6.2`) and the additional-action dictionaries `/AA` (12.6.3) can carry a step that
+  jumps to a page the plan dropped; only that step is removed now, and an action whose
+  own destination is gone goes with it.
+  `test:crates/pdfcore/tests/probe_page_plan_residue.rs#a_next_chain_drops_only_the_dead_step`
+- **An additional action on a kept widget loses just the dead page:**
+  `test:crates/pdfcore/tests/probe_page_plan_residue.rs#an_additional_action_on_a_kept_widget_loses_the_dead_page`
+  keeps the field value and the control itself.
+- **An outline item keeps its destination and loses a dead structure reference:** an
+  `/SE` that names a structure element of the deleted page is cleared (12.3.3), while
+  `/Dest` stays.
+  `test:crates/pdfcore/tests/probe_page_plan_residue.rs#an_outline_item_keeps_its_destination_and_loses_a_dead_structure_reference`
+- **Page labels follow the pages that are left:** `/PageLabels` indexes positions
+  (12.4.2), so removing a page moved every label after it; the ranges are rebuilt with
+  the start of each one moved to the first surviving page and `/St` offset by what was
+  removed before it.
+  `test:crates/pdfcore/tests/probe_page_plan_residue.rs#page_labels_still_name_the_pages_they_belong_to`
+- **The OBJR case was already handled** by the structure pruner; the case now pins it.
+  `test:crates/pdfcore/tests/probe_page_plan_residue.rs#an_object_reference_to_a_deleted_page_annotation_leaves_the_structure`
+
 ## Implemented (this cycle, 7.30.2) - Yapı ağacı, form alanları ve makale iplikleri de temizlenir
 
 - **A deleted page no longer survives through the structure tree:** tagged documents

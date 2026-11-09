@@ -45,6 +45,10 @@ pub fn apply_page_plan(
     crate::prune_struct::prune_structure(&mut doc, &removed);
     crate::prune_forms_threads::prune_forms(&mut doc, &removed);
     crate::prune_forms_threads::prune_threads(&mut doc, &removed);
+    // Actions can carry a chain of steps, and `/PageLabels` counts positions: both
+    // still describe the document the plan started from.
+    crate::prune_actions::prune_actions(&mut doc, &removed);
+    crate::page_labels::remap_page_labels(&mut doc, plan);
     let final_path = resolve_output_path(output, policy)?;
     save_document(&mut doc, &final_path, true)?;
     Ok(final_path)
