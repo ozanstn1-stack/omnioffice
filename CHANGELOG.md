@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.32.1] - 2026-11-10
+
+### Changed
+
+- **Documents, Spreadsheets and Presentations open with Home's recent-files table:** each
+  screen lists only its own kind, with the kind's colour, the tool and a relative time,
+  and offers a blank file, a template or Open. It used to be a plain list of names.
+- **Calm section labels:** the letter-spaced capitals left from the old look (Home's tool
+  groups, the Reader's side panel, Organize, Sync, tables, the command palette and the AI
+  dialogs) are sentence case now. CSS upper-casing also turned the Turkish "i" into "I"
+  outside a `lang="tr"` subtree; a test keeps them from coming back.
+- **New screenshots** of Home on Windows and of Home and the Tools hub on Android.
+
 ## [7.32.0] - 2026-11-10
 
 ### Added

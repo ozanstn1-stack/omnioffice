@@ -75,7 +75,7 @@ export function OptionCard({
     <div className={`card p-4 flex flex-col gap-3.5 ${className}`}>
       {title || action ? (
         <div className="flex items-center justify-between gap-2">
-          {title ? <h3 className="text-[13px] font-bold uppercase tracking-wider muted">{title}</h3> : null}
+          {title ? <h3 className="section-label">{title}</h3> : null}
           {action}
         </div>
       ) : null}

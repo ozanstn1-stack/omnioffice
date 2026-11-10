@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.32.0
+# Release Readiness — OmniOffice 7.32.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,6 +65,14 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (this cycle, 7.32.1) - Belge türü ekranları ve sakin başlıklar
+
+- **The office launchers list only their kind's recent files, without kind chips, and start
+  a blank one or open the template gallery:**
+  `test:src/screens/OfficeLauncher.test.tsx#lists only this kind's recent files, without kind chips, and starts a blank one`
+- **Section labels are sentence case; letter-spaced capitals cannot come back:**
+  `test:src/components/layout-css.test.tsx#labels sections in sentence case, not letter-spaced capitals (7.32.1)`
+
 ## Implemented (this cycle, 7.32.0) - Ana sayfa: son dosyalar ve Araçlar merkezi
 
 - **The Tools hub shows every enabled tool once and opens the one tapped; the scanner
@@ -87,7 +95,7 @@ release-train schedule is decided.
 - **The running background job shows on Home and opens Jobs:**
   `test:src/components/recent-table.test.tsx#shows the first running job with its progress and opens Jobs`
 
-## Implemented (7.31.0) - Yeni arayüz (Windows ve Android)
+## Implemented (this cycle, 7.31.0) - Yeni arayüz (Windows ve Android)
 
 - **The sidebar folds the routes into hubs, scan, images and OCR together:**
   `test:src/components/sidebar.test.tsx#folds the routes into a few hubs, with scan, images and OCR together`
@@ -106,7 +114,7 @@ release-train schedule is decided.
   `test:src/components/bottom-nav.test.tsx#offers Home, Office, Tools, Assistant and More within thumb reach`
   `test:src/components/bottom-nav.test.tsx#lights the assistant tab for the task packs and the library`
 
-## Implemented (7.30.5) - Radyo grubu yazdırılan adla da doldurulabiliyor
+## Implemented (this cycle, 7.30.5) - Radyo grubu yazdırılan adla da doldurulabiliyor
 
 - **A radio group filled by its printed name lands on the state behind it:** `/Opt`
   gives the options the names a form shows while the appearance states keep their own

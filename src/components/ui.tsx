@@ -68,7 +68,7 @@ export function Card({
 export function SectionTitle({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 mb-3">
-      <h3 className="text-[13px] font-bold uppercase tracking-wider muted">{children}</h3>
+      <h3 className="section-label">{children}</h3>
       {hint ? <span className="text-xs muted">{hint}</span> : null}
     </div>
   );

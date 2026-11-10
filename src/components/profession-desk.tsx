@@ -116,7 +116,7 @@ export function ProfessionDesk({
         <span style={{ color: "var(--accent)" }} aria-hidden>
           {PROFESSION_ICONS[profession]}
         </span>
-        <h2 id="desk-title" className="text-[13px] font-bold uppercase tracking-wider muted flex-1">
+        <h2 id="desk-title" className="section-label flex-1">
           {t(`desk.title.${profession}`)}
         </h2>
         <Button size="sm" variant="ghost" onClick={onChange}>

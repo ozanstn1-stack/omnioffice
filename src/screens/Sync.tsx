@@ -709,7 +709,7 @@ export function Sync() {
 
             <Card>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <h3 className="text-[13px] font-bold uppercase tracking-wider muted">{t("sync.remoteTitle")}</h3>
+                <h3 className="section-label">{t("sync.remoteTitle")}</h3>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -755,7 +755,7 @@ export function Sync() {
           <>
             <Card>
               <div className="flex items-center justify-between gap-2 mb-2">
-                <h3 className="text-[13px] font-bold uppercase tracking-wider muted">{t("sync.filesTitle")}</h3>
+                <h3 className="section-label">{t("sync.filesTitle")}</h3>
                 <div className="flex items-center gap-1">
                   <IconButton label={t("sync.addFile")} onClick={() => void addDocuments()}>
                     <Plus size={15} />
@@ -891,7 +891,7 @@ export function Sync() {
             </Card>
 
             <Card>
-              <h3 className="text-[13px] font-bold uppercase tracking-wider muted mb-2">{t("sync.resolveTitle")}</h3>
+              <h3 className="section-label mb-2">{t("sync.resolveTitle")}</h3>
               {!selected ||
               !rows[selected] ||
               rows[selected].kind !== "ready" ||
@@ -952,7 +952,7 @@ export function Sync() {
             </Card>
 
             <Card>
-              <h3 className="text-[13px] font-bold uppercase tracking-wider muted mb-2">{t("sync.downloadTitle")}</h3>
+              <h3 className="section-label mb-2">{t("sync.downloadTitle")}</h3>
               <p className="text-xs muted">{t("sync.downloadHint")}</p>
             </Card>
 

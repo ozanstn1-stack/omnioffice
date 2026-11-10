@@ -579,3 +579,11 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - **v7.32.0**: sürüm 7.32.0, **versionCode 7032000**, CHANGELOG, README, RELEASE_READINESS,
   fastlane 7032000 (en-US + tr-TR).
 - Sahibin kalıcı onayı ("hep onaylıyorum"): plan PR'ları CI yeşil + temizken squash ile birleşir.
+
+## v7.32.1 sürüm PR'ı — 1.3 başlatıcılar, sakin başlıklar, ekran görüntüleri — 2026-11-10
+- #714 birleşti (`923114e`, v7.32.0). 1.3: `OfficeLauncher` → `screens/OfficeLauncher.tsx`
+  (App.tsx 1095 → ~1009), `RecentTable`'a `filters` seçeneği; 15 büyük harfli başlık + 3 CSS
+  kuralı → `.section-label` / `.group-label`, ratchet testi `layout-css.test.tsx`'te.
+- Ekran görüntüleri: 01-home, 03-merge, 11-history yenilendi; 42/43 Android eklendi; 40/41
+  (mobil denetim kanıtı) ve 10-settings (sahte IPC'de çalışmıyor) değişmedi. README'ye galeri.
+- **v7.32.1**: versionCode 7032001, CHANGELOG, README, RELEASE_READINESS, fastlane 7032001.

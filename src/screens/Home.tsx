@@ -231,7 +231,7 @@ export function Home({
 
       <section>
         <div className="flex items-center gap-3 mb-3">
-          <h2 className="text-[13px] font-bold uppercase tracking-wider muted shrink-0">{t("home.quickActions")}</h2>
+          <h2 className="section-label shrink-0">{t("home.quickActions")}</h2>
           <div className="relative flex-1 max-w-md">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 muted pointer-events-none" />
             <input
@@ -258,7 +258,7 @@ export function Home({
           <div className="flex flex-col gap-5">
             {pinnedCards.length ? (
               <div>
-                <h3 className="text-[11px] font-bold uppercase tracking-wider muted mb-2">{t("home.pinned")}</h3>
+                <h3 className="group-label mb-2">{t("home.pinned")}</h3>
                 <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
                   {pinnedCards.map((card) => (
                     <ToolCard
@@ -282,7 +282,7 @@ export function Home({
             ) : null}
             {(catalogueCollapsed ? [] : grouped).map((group) => (
               <div key={group.key}>
-                <h3 className="text-[11px] font-bold uppercase tracking-wider muted mb-2">{t(group.labelKey)}</h3>
+                <h3 className="group-label mb-2">{t(group.labelKey)}</h3>
                 <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
                   {group.items.map((card) => (
                     <ToolCard

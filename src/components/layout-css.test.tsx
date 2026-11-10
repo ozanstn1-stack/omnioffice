@@ -40,6 +40,20 @@ describe("layout classes the screens rely on", () => {
     expect(rule(".empty-state")).toContain("align-items: center");
   });
 
+  it("labels sections in sentence case, not letter-spaced capitals (7.32.1)", () => {
+    // CSS upper-casing turned Turkish "i" into "I" outside a lang="tr" subtree
+    // and read as the old look; screens use .section-label / .group-label.
+    const offenders = sourceFiles(src).filter((file) =>
+      /uppercase tracking-wider|uppercase font-bold/.test(readFileSync(file, "utf8")),
+    );
+    expect(offenders.map((file) => path.relative(src, file))).toEqual([]);
+    for (const selector of [".table th", ".palette-section", ".ai-dlg-label", ".nav-group-label"]) {
+      expect(rule(selector)).not.toContain("text-transform");
+    }
+    expect(rule(".section-label")).toContain("font-weight: 600");
+    expect(rule(".group-label")).toContain("color: var(--muted)");
+  });
+
   it("keeps the drawer clear of the system navigation bar", () => {
     expect(rule(".drawer")).toContain("padding-bottom: env(safe-area-inset-bottom)");
   });
