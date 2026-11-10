@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.30.0
+# Release Readiness — OmniOffice 7.30.5
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,7 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Radyo grubu yazdırılan adla da doldurulabiliyor
+## Implemented (this cycle, 7.30.5) - Radyo grubu yazdırılan adla da doldurulabiliyor
 
 - **A radio group filled by its printed name lands on the state behind it:** `/Opt`
   gives the options the names a form shows while the appearance states keep their own
@@ -222,7 +222,7 @@ release-train schedule is decided.
   and compressed content still decodes to the exhibit's own text,
   `test:crates/pdfcore/tests/evidence_content_probe.rs#a_compressed_exhibit_keeps_its_text`.
 
-## Implemented (unreleased) - Filigran, damga ve kanıt etiketi görünen kutuda
+## Implemented (this cycle, 7.29.0) - Filigran, damga ve kanıt etiketi görünen kutuda
 
 - **A watermark sits on the region the viewer shows:** the artwork was placed from
   the media box alone, so a page whose box starts away from `(0, 0)` moved the
