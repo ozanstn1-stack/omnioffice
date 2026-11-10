@@ -65,6 +65,17 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Ana sayfa: son dosyalar tablosu
+
+- **Recent files are filtered by kind and open from the whole row:**
+  `test:src/components/recent-table.test.tsx#filters by kind and opens or shares the chosen row`
+- **An empty kind and an empty list say so:**
+  `test:src/components/recent-table.test.tsx#says when a kind has no recent files and when there are none at all`
+- **Rows are dated relative to now, in the interface language:**
+  `test:src/components/recent-table.test.tsx#dates rows relative to now in the interface language`
+- **The running background job shows on Home and opens Jobs:**
+  `test:src/components/recent-table.test.tsx#shows the first running job with its progress and opens Jobs`
+
 ## Implemented (this cycle, 7.31.0) - Yeni arayüz (Windows ve Android)
 
 - **The sidebar folds the routes into hubs, scan, images and OCR together:**

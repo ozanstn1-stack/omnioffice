@@ -416,8 +416,8 @@ describe("History, Home and Settings act on the local stores", () => {
     expect(screen.queryByRole("button", { name: /^Merge/ })).toBeNull();
 
     await user.clear(screen.getByLabelText("Search tools"));
-    const openButtons = await screen.findAllByRole("button", { name: "Open" });
-    await user.click(openButtons[0]);
+    // The whole row opens the file (7.32 recent table).
+    await user.click(await screen.findByRole("button", { name: /report\.pdf/ }));
     expect(onFileList).toHaveBeenCalledWith(["C:/docs/report.pdf"]);
     expect(onNavigate).toHaveBeenCalledWith("reader");
   });
@@ -427,8 +427,7 @@ describe("History, Home and Settings act on the local stores", () => {
     const onNavigate = vi.fn();
     render(<Home onNavigate={onNavigate} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
     expect(await screen.findByText("budget.xlsx")).toBeInTheDocument();
-    const openButtons = await screen.findAllByRole("button", { name: "Open" });
-    await user.click(openButtons[2]);
+    await user.click(screen.getByRole("button", { name: /budget\.xlsx/ }));
     expect(onNavigate).toHaveBeenCalledWith("office");
     await waitFor(() => expect(requestOf("office_open_document")).toEqual({ path: "C:/docs/budget.xlsx" }));
     await waitFor(() =>

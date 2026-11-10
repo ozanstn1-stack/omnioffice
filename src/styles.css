@@ -859,6 +859,151 @@ body {
   }
 }
 
+.doc-tile-pdf {
+  background: color-mix(in srgb, var(--doc-pdf) 13%, transparent);
+  color: var(--doc-pdf);
+}
+
+/* Home: recent files beside a compact drop zone (components/recent-table.tsx) */
+.home-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .home-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Narrow: recent files first, the (tap-to-pick) drop zone after them. */
+}
+.home-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.jobs-glance {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.jobs-glance-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.jobs-glance .progress-track,
+.jobs-glance .progress-fill {
+  display: block;
+}
+.recent-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.recent-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.recent-filters .chip {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.recent-filters .chip[aria-pressed="true"] {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--surface);
+  font-weight: 600;
+}
+.recent-rows {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.recent-row-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 4px;
+  border-radius: 8px;
+}
+.recent-row-item + .recent-row-item {
+  border-top: 1px solid var(--border);
+}
+.recent-row-item:hover {
+  background: var(--surface-2);
+}
+.recent-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) minmax(0, 140px) 96px;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.recent-ext {
+  width: 36px;
+  height: 36px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.recent-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recent-tool,
+.recent-when {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 640px) {
+  .recent-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .recent-filters .chip {
+    flex-shrink: 0;
+  }
+  .recent-open {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
+  .recent-tool {
+    display: none;
+  }
+}
+
 /* Desktop: the screen sits on a raised panel beside the sidebar. */
 .app-main {
   margin: 8px 8px 8px 0;
