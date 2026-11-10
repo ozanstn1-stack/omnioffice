@@ -143,18 +143,14 @@ import { measureBlocks } from "./writer/measure";
 import { paginate, pageOfBlock, type BlockMetrics, type Fragment, type PageLayout } from "./writer/pagination";
 import { ImageOptions, WatermarkLayer, WatermarkOptions } from "./writer/objects";
 import { WriterRuler } from "./writer/WriterRuler";
-import { BlockView, CommentReplyInput, PageFragmentView, StaticBlocks } from "./writer/views";
+import { FindReplaceDialog } from "./writer/panels/FindReplaceDialog";
+import { CommentsPane } from "./writer/panels/CommentsPane";
+import { ReviewPane } from "./writer/panels/ReviewPane";
+import { SpellPane } from "./writer/panels/SpellPane";
+import { RegulationPane } from "./writer/panels/RegulationPane";
+import { BlockView, PageFragmentView, StaticBlocks } from "./writer/views";
 import type { StructureAction } from "./writer/views";
-import {
-  LayoutList,
-  ListTree,
-  ListOrdered as TocIcon,
-  RefreshCw,
-  FileDiff,
-  Scale,
-  CheckCircle2,
-  AlertTriangle,
-} from "lucide-react";
+import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw, FileDiff, Scale } from "lucide-react";
 import { openDocument } from "../lib/office-api";
 import { diffDocuments } from "./writer/compare";
 import { checkDocumentSpelling, replaceMisspelledWord, type WordSpellError } from "./writer/spell";
@@ -2637,66 +2633,24 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       </div>
 
       {findOpen ? (
-        <Dialog title={t("writer.findReplace")} onClose={closeFind}>
-          <div className="stack">
-            <label className="field">
-              <span>{t("writer.findWhat")}</span>
-              <input
-                value={findText}
-                onChange={(event) => setFindText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  findStep(!event.shiftKey);
-                }}
-                aria-invalid={search?.ok === false}
-                // eslint-disable-next-line jsx-a11y/no-autofocus -- opening Find must put the caret in the search field
-                autoFocus
-              />
-            </label>
-            {search && !search.ok ? (
-              <p className="find-error" role="alert">
-                {t("writer.findInvalidRegex")}: {search.error}
-              </p>
-            ) : (
-              <p className="find-count muted" role="status">
-                {findStatus}
-              </p>
-            )}
-            <label className="field">
-              <span>{t("writer.replaceWith")}</span>
-              <input value={replaceText} onChange={(event) => setReplaceText(event.target.value)} />
-            </label>
-            <div className="row">
-              <label className="check">
-                <input type="checkbox" checked={matchCase} onChange={(event) => setMatchCase(event.target.checked)} />{" "}
-                {t("writer.matchCase")}
-              </label>
-              <label className="check">
-                <input type="checkbox" checked={wholeWord} onChange={(event) => setWholeWord(event.target.checked)} />{" "}
-                {t("writer.wholeWord")}
-              </label>
-              <label className="check">
-                <input type="checkbox" checked={useRegex} onChange={(event) => setUseRegex(event.target.checked)} />{" "}
-                {t("writer.regex")}
-              </label>
-            </div>
-            <div className="row">
-              <button type="button" className="btn btn-soft" onClick={() => findStep(true)} disabled={!search?.ok}>
-                {t("writer.findNext")}
-              </button>
-              <button type="button" className="btn btn-soft" onClick={() => findStep(false)} disabled={!search?.ok}>
-                {t("writer.findPrevious")}
-              </button>
-              <button type="button" className="btn btn-soft" onClick={replaceCurrent} disabled={!search?.ok}>
-                {t("writer.replace")}
-              </button>
-              <button type="button" className="btn btn-primary" onClick={replaceAll} disabled={!search?.ok}>
-                {t("writer.replaceAll")}
-              </button>
-            </div>
-          </div>
-        </Dialog>
+        <FindReplaceDialog
+          findText={findText}
+          replaceText={replaceText}
+          matchCase={matchCase}
+          wholeWord={wholeWord}
+          useRegex={useRegex}
+          onFindText={setFindText}
+          onReplaceText={setReplaceText}
+          onMatchCase={setMatchCase}
+          onWholeWord={setWholeWord}
+          onUseRegex={setUseRegex}
+          search={search}
+          status={findStatus}
+          onStep={findStep}
+          onReplace={replaceCurrent}
+          onReplaceAll={replaceAll}
+          onClose={closeFind}
+        />
       ) : null}
 
       {aiJob ? (
@@ -2751,325 +2705,48 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       ) : null}
 
       {commentsOpen ? (
-        <div className="comments-sidebar">
-          <div className="comments-head">
-            <strong>{t("writer.comments")}</strong>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setCommentsOpen(false)}
-              aria-label={t("common.close")}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          {document.comments.length === 0 ? <p className="muted">{t("writer.noComments")}</p> : null}
-          {document.comments.map((comment) => (
-            <div key={comment.id} className={`comment-card${comment.resolved ? " is-resolved" : ""}`}>
-              <div className="row">
-                <strong>{comment.author}</strong>
-                <span className="spacer" />
-                <button
-                  type="button"
-                  className="icon-btn"
-                  title={t("writer.resolveComment")}
-                  onClick={() =>
-                    update((doc) => ({
-                      ...doc,
-                      comments: doc.comments.map((entry) =>
-                        entry.id === comment.id ? { ...entry, resolved: !entry.resolved } : entry,
-                      ),
-                    }))
-                  }
-                >
-                  ✓
-                </button>
-                <button
-                  type="button"
-                  className="icon-btn"
-                  title={t("common.delete")}
-                  onClick={() =>
-                    update((doc) => ({
-                      ...doc,
-                      comments: doc.comments.filter((entry) => entry.id !== comment.id),
-                      blocks: doc.blocks.map((block) =>
-                        block.type === "paragraph"
-                          ? {
-                              ...block,
-                              runs: block.runs.map((run) =>
-                                run.comment === comment.id ? { ...run, comment: null } : run,
-                              ),
-                            }
-                          : block,
-                      ),
-                    }))
-                  }
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-              <p>{comment.text}</p>
-              {(comment.replies ?? []).map((reply, replyIndex) => (
-                <p key={replyIndex} className="comment-reply muted">
-                  <strong>{reply.author}:</strong> {reply.text}
-                </p>
-              ))}
-              <CommentReplyInput
-                placeholder={t("writer.reply")}
-                onSubmit={(text) =>
-                  update((doc) => ({
-                    ...doc,
-                    comments: doc.comments.map((entry) =>
-                      entry.id === comment.id
-                        ? {
-                            ...entry,
-                            replies: [
-                              ...(entry.replies ?? []),
-                              { author: revisionAuthorName, text, created: new Date().toISOString() },
-                            ],
-                          }
-                        : entry,
-                    ),
-                  }))
-                }
-              />
-            </div>
-          ))}
-        </div>
+        <CommentsPane
+          document={document}
+          author={revisionAuthorName}
+          update={update}
+          onClose={() => setCommentsOpen(false)}
+        />
       ) : null}
 
       {reviewOpen ? (
-        <div className="comments-sidebar writer-review-pane">
-          <div className="comments-head">
-            <strong>{t("writer.reviewPane")}</strong>
-            <span className="spacer" />
-            <span className="muted">{revisionList(document).length}</span>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setReviewOpen(false)}
-              aria-label={t("common.close")}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          {revisionList(document).length === 0 ? <p className="muted">{t("writer.noRevisions")}</p> : null}
-          {revisionList(document).map((revision) => (
-            <div
-              key={revision.id}
-              className={`comment-card${activeRevision === revision.id ? " is-active" : ""}`}
-              role="button"
-              tabIndex={0}
-              aria-pressed={activeRevision === revision.id}
-              onClick={() => setActiveRevision(revision.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setActiveRevision(revision.id);
-                }
-              }}
-            >
-              <div className="row">
-                <strong>{t(`writer.revision_${revision.kind}`)}</strong>
-                <span className="spacer" />
-                <span className="muted">{revision.author}</span>
-              </div>
-              <p
-                className={
-                  revision.kind === "delete"
-                    ? "writer-rev-delete"
-                    : revision.kind === "insert"
-                      ? "writer-rev-insert"
-                      : ""
-                }
-              >
-                {revision.text || "…"}
-              </p>
-              <div className="row">
-                <button
-                  type="button"
-                  className="btn btn-soft"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    update((doc) => acceptRevision(doc, revision.id));
-                    setActiveRevision(null);
-                    setLayoutVersion((version) => version + 1);
-                  }}
-                >
-                  {t("writer.accept")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-soft"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    update((doc) => rejectRevision(doc, revision.id));
-                    setActiveRevision(null);
-                    setLayoutVersion((version) => version + 1);
-                  }}
-                >
-                  {t("writer.reject")}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <ReviewPane
+          revisions={revisionList(document)}
+          active={activeRevision}
+          onSelect={setActiveRevision}
+          onResolve={(id, accept) => {
+            update((doc) => (accept ? acceptRevision : rejectRevision)(doc, id));
+            setActiveRevision(null);
+            setLayoutVersion((version) => version + 1);
+          }}
+          onClose={() => setReviewOpen(false)}
+        />
       ) : null}
 
       {spellOpen ? (
-        <div className="comments-sidebar writer-review-pane">
-          <div className="comments-head">
-            <strong>{t("writer.spellCheck")}</strong>
-            <span className="spacer" />
-            <span className="muted">{spellErrors.length}</span>
-            <button type="button" className="icon-btn" onClick={() => void runSpellCheck()} title={t("writer.recheck")}>
-              <RefreshCw size={14} />
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setSpellOpen(false)}
-              aria-label={t("common.close")}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          {spellLoading ? (
-            <p className="muted">{t("common.processing")}</p>
-          ) : spellErrors.length === 0 ? (
-            <p className="muted row" style={{ gap: 6, alignItems: "center" }}>
-              <CheckCircle2 size={14} /> {t("writer.noSpellErrors")}
-            </p>
-          ) : (
-            spellErrors.map((err, idx) => (
-              <div
-                key={`${err.blockIndex}-${err.start}-${idx}`}
-                className="comment-card"
-                onClick={() => jumpToBlock(err.blockIndex)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    jumpToBlock(err.blockIndex);
-                  }
-                }}
-              >
-                <div className="row">
-                  <strong style={{ color: "var(--danger, #dc2626)" }}>{err.word}</strong>
-                  <span className="spacer" />
-                  <span className="muted">§{err.blockIndex + 1}</span>
-                </div>
-                {err.suggestions.length > 0 ? (
-                  <div className="row" style={{ flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                    {err.suggestions.map((sug) => (
-                      <button
-                        key={sug}
-                        type="button"
-                        className="btn btn-soft"
-                        style={{ padding: "2px 8px", fontSize: 12 }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          applySpellSuggestion(err, sug);
-                        }}
-                      >
-                        {sug}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="muted" style={{ fontSize: 12 }}>
-                    {t("writer.noSuggestions")}
-                  </p>
-                )}
-              </div>
-            ))
-          )}
-        </div>
+        <SpellPane
+          errors={spellErrors}
+          loading={spellLoading}
+          onRecheck={() => void runSpellCheck()}
+          onJump={jumpToBlock}
+          onApply={applySpellSuggestion}
+          onClose={() => setSpellOpen(false)}
+        />
       ) : null}
 
       {regulationOpen ? (
-        <div className="comments-sidebar writer-review-pane">
-          <div className="comments-head">
-            <strong>{t("writer.officialLetterCheck")}</strong>
-            <span className="spacer" />
-            <span className="muted">{regulationViolations.length}</span>
-            <button type="button" className="icon-btn" onClick={runRegulationCheck} title={t("writer.recheck")}>
-              <RefreshCw size={14} />
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setRegulationOpen(false)}
-              aria-label={t("common.close")}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          {regulationViolations.some((v) => v.canAutoFix) ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ width: "100%", marginBottom: 8 }}
-              onClick={applyAllRegulationFixes}
-            >
-              {t("writer.fixAllRegulation")}
-            </button>
-          ) : null}
-          {regulationViolations.length === 0 ? (
-            <p className="muted row" style={{ gap: 6, alignItems: "center" }}>
-              <CheckCircle2 size={14} /> {t("writer.regulationCompliant")}
-            </p>
-          ) : (
-            regulationViolations.map((v) => (
-              <div
-                key={v.id}
-                className="comment-card"
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  if (v.blockIndex !== undefined) jumpToBlock(v.blockIndex);
-                }}
-                onKeyDown={(e) => {
-                  if ((e.key === "Enter" || e.key === " ") && v.blockIndex !== undefined) {
-                    e.preventDefault();
-                    jumpToBlock(v.blockIndex);
-                  }
-                }}
-              >
-                <div className="row" style={{ gap: 6, alignItems: "center" }}>
-                  <AlertTriangle size={14} />
-                  <strong>{v.ruleTitle}</strong>
-                  <span className="spacer" />
-                  <span className="muted" style={{ fontSize: 11 }}>
-                    {v.regulationArticle}
-                  </span>
-                </div>
-                <p style={{ fontSize: 12, marginTop: 4 }}>{v.message}</p>
-                {v.manualInstructions ? (
-                  <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-                    {v.manualInstructions}
-                  </p>
-                ) : null}
-                {v.canAutoFix ? (
-                  <div className="row" style={{ marginTop: 6 }}>
-                    <button
-                      type="button"
-                      className="btn btn-soft"
-                      style={{ padding: "2px 8px", fontSize: 12 }}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        applyRegulationFix(v.id);
-                      }}
-                    >
-                      {t("writer.autoFix")}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
+        <RegulationPane
+          violations={regulationViolations}
+          onRecheck={runRegulationCheck}
+          onJump={jumpToBlock}
+          onFix={applyRegulationFix}
+          onFixAll={applyAllRegulationFixes}
+          onClose={() => setRegulationOpen(false)}
+        />
       ) : null}
 
       {fieldOpen ? (
