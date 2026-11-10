@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.30.5
+# Release Readiness — OmniOffice 7.31.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,26 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (this cycle, 7.30.5) - Radyo grubu yazdırılan adla da doldurulabiliyor
+## Implemented (this cycle, 7.31.0) - Yeni arayüz (Windows ve Android)
+
+- **The sidebar folds the routes into hubs, scan, images and OCR together:**
+  `test:src/components/sidebar.test.tsx#folds the routes into a few hubs, with scan, images and OCR together`
+- **The hub of the current screen is open and closed entries stay findable:** closed hubs
+  hide their items instead of removing them, so shortcuts and the e2e flows still reach them.
+  `test:src/components/sidebar.test.tsx#opens the hub of the current screen and keeps closed items findable`
+- **The compact sidebar keeps one flat icon column:**
+  `test:src/components/sidebar.test.tsx#shows one flat icon column when compact`
+- **New creates a blank file from the sidebar:**
+  `test:src/components/sidebar.test.tsx#creates a blank spreadsheet from the New menu`
+- **Home creates a blank document in one click:**
+  `test:src/components/sidebar.test.tsx#opens a blank document in one click and the gallery for a template`
+- **Home greets by the hour, in the interface language:**
+  `test:src/components/sidebar.test.tsx#greets by the hour and dates in the interface language`
+- **The phone tab bar offers the assistant:**
+  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Scan, Assistant and More within thumb reach`
+  `test:src/components/bottom-nav.test.tsx#lights the assistant tab for the task packs and the library`
+
+## Implemented (7.30.5) - Radyo grubu yazdırılan adla da doldurulabiliyor
 
 - **A radio group filled by its printed name lands on the state behind it:** `/Opt`
   gives the options the names a form shows while the appearance states keep their own
@@ -2409,7 +2428,7 @@ screen lock was not touched.
 
 - **Phone bottom bar** with the current section marked and hidden while the
   keyboard is open (C11, #341).
-  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Read, Scan and More within thumb reach`
+  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Scan, Assistant and More within thumb reach`
   `test:src/components/bottom-nav.test.tsx#marks the tab a screen belongs to as the current page`
   `test:src/components/bottom-nav.test.tsx#steps aside while the on-screen keyboard is up`
 - **Touch targets and no zoom on focus** (#341).

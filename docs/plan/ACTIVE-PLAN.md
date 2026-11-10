@@ -560,3 +560,12 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: `release-guard` 7.30.5 (7030005) OK; `claims:check` **456 iddia / 627 işaret**; fastlane OK.
 - **Sıradaki**: PR → CI. **Sessiz saat 06:00–10:00 UTC**: 05:50'den sonra push/merge yok; PR CI'da
   kalacak, 10:00'daki hatırlatmayla merge → tag → Release + Android → 20 asset.
+
+## v7.31.0 sürüm PR'ı — yeni arayüz (Windows + Android) — 2026-11-10
+- **Tasarım**: Claude Design tuvalinde onaylanan arayüz uygulandı: yeni renk/yüzey belirteçleri
+  (tek çivit vurgu, gradyan yok, belge türü renkleri), kenar çubuğu açılır-kapanır merkezlere
+  bölündü (`components/sidebar.tsx`), Yeni menüsü + arama + sabitlenenler, ana sayfada selamlama ve
+  Oluştur satırı (`components/create-row.tsx`), telefon alt çubuğu Ana sayfa/Ofis/Tara/Asistan/Diğer.
+- `App.tsx` kenar çubuğunu bileşene taşıyarak küçüldü (1155 → ~1090); `Home.tsx` 607 → 600.
+- **v7.31.0**: sürüm 7.31.0, **versionCode 7031000**, CHANGELOG, README, RELEASE_READINESS, fastlane
+  7031000 (en-US + tr-TR).

@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.31.0] - 2026-11-10
+
+### Changed
+
+- **A new interface for Windows and Android:** a calmer look built on one design
+  language for both platforms - a grey ground, a single indigo accent instead of
+  gradient washes, 12 px corners, softer shadows and fixed colours per document kind
+  (documents blue, spreadsheets green, presentations orange). On the desktop the screen
+  sits on a raised panel beside the sidebar.
+- **The sidebar is grouped into hubs:** the ~55 flat entries now live under Documents
+  & forms, Productivity, Scan & convert, PDF tools, Security, AI and System, which open
+  and close. The hub that holds the current screen is always open, and closed entries
+  stay reachable by keyboard shortcuts and the command palette. The sidebar also gains a
+  **New** button (blank document, spreadsheet, presentation or a template), a search
+  field (Ctrl+Shift+F) and your pinned tools; the phone drawer shares the same hubs.
+- **Home starts with a greeting and a Create row:** one click opens a blank document,
+  spreadsheet or presentation, or the template gallery - it used to take Office and the
+  tab bar's small icons.
+- **Phone tab bar:** Home, Office, Scan, **Assistant** and More, with a Material-style
+  pill on the active tab. The reader opens from a file and stays in the drawer.
+
 ## [7.30.5] - 2026-11-10
 
 ### Fixed

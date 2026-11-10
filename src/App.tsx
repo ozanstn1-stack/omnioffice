@@ -62,7 +62,7 @@ import { devLaunchContext } from "./lib/api";
 import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
 import { flagEnabled } from "./lib/flags";
 import { useFocusScrollIntoView, useKeyboardInset, useNarrowLayout } from "./lib/viewport";
-import { enabledRoutes, navSections, routeEnabled } from "./lib/routes";
+import { enabledRoutes, routeEnabled, routeFor } from "./lib/routes";
 import type { TaskPackId } from "./lib/ai-task-packs";
 // Route-level code splitting: every screen is loaded when it is first opened,
 // so the startup bundle only carries the shell, the navigation and the shared
@@ -77,6 +77,11 @@ const Merge = React.lazy(() => import("./screens/Merge").then((module) => ({ def
 const Organize = React.lazy(() => import("./screens/Organize").then((module) => ({ default: module.Organize })));
 const Split = React.lazy(() => import("./screens/Split").then((module) => ({ default: module.Split })));
 // Phones only; until it loads an empty bar of the same height holds its place.
+// The sidebar and the drawer are their own chunk (7.31) so the entry stays in budget.
+const DesktopSidebar = React.lazy(() =>
+  import("./components/sidebar").then((module) => ({ default: module.DesktopSidebar })),
+);
+const DrawerNav = React.lazy(() => import("./components/sidebar").then((module) => ({ default: module.DrawerNav })));
 const BottomNav = React.lazy(() => import("./components/bottom-nav").then((module) => ({ default: module.BottomNav })));
 const PresendDialog = React.lazy(() =>
   import("./components/presend-dialog").then((module) => ({ default: module.PresendDialog })),
@@ -832,56 +837,18 @@ export default function App() {
     settings: <SettingsIcon size={16} />,
   };
 
-  // Sidebar entries come from the same manifest, grouped by section.
-  const navGroups = navSections().map((section) => ({
-    label: section.labelKey ? t(section.labelKey) : undefined,
-    items: section.routes.map((item) => ({
-      id: item.id,
-      label: t(item.labelKey),
-      icon: NAV_ICONS[item.id],
-    })),
-  }));
-
   // Flag-gated routes are closed, not just hidden: a deep link to a disabled
   // route renders Home instead of the unfinished screen.
   const effectiveScreen = routeEnabled(screen) ? screen : "home";
 
   const isDark = settings.theme === "dark" || (settings.theme === "system" && appliedDark);
 
-  const renderNav = (showLabels: boolean) => (
-    <>
-      {navGroups.map((group, index) => (
-        <div key={index}>
-          {group.label && showLabels ? <p className="nav-group-label">{group.label}</p> : null}
-          {group.items.map((item) => {
-            const active =
-              screen === item.id ||
-              (item.id === "pdfToImages" && screen === "pdfToImages") ||
-              (item.id === "imagesToPdf" && screen === "imagesToPdf");
-            return (
-              <button
-                key={item.id}
-                className="nav-item"
-                data-active={active}
-                aria-current={active ? "page" : undefined}
-                onClick={() => {
-                  navigate(item.id);
-                  setNavOpen(false);
-                }}
-                title={showLabels ? undefined : item.label}
-              >
-                <span className="shrink-0">{item.icon}</span>
-                {showLabels ? <span className="truncate">{item.label}</span> : null}
-              </button>
-            );
-          })}
-        </div>
-      ))}
-    </>
-  );
+  const pickNav = (id: ScreenId) => {
+    navigate(id);
+    setNavOpen(false);
+  };
 
-  const activeLabel =
-    navGroups.flatMap((group) => group.items).find((item) => item.id === screen)?.label ?? t("app.name");
+  const activeLabel = routeEnabled(screen) ? t(routeFor(screen).labelKey) : t("app.name");
 
   // Phones (and narrow desktop windows): drawer navigation with a top bar.
   if (compactNav) {
@@ -891,7 +858,7 @@ export default function App() {
           <IconButton label={t("app.name")} onClick={() => setNavOpen(true)} aria-expanded={navOpen}>
             <Menu size={18} />
           </IconButton>
-          <p className="font-semibold text-[14px] truncate flex-1">{activeLabel}</p>
+          <p className="font-bold text-[17px] truncate flex-1">{activeLabel}</p>
           <IconButton label={t("settings.theme")} onClick={() => void update({ theme: isDark ? "light" : "dark" })}>
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </IconButton>
@@ -913,7 +880,9 @@ export default function App() {
                   <p className="text-[11px] muted truncate">v{packageJson.version} · local</p>
                 </div>
               </div>
-              <nav className="flex-1 overflow-y-auto px-2 pb-4">{renderNav(true)}</nav>
+              <React.Suspense fallback={<div className="flex-1" />}>
+                <DrawerNav icons={NAV_ICONS} screen={screen} onPick={pickNav} />
+              </React.Suspense>
               <div className="px-3 py-3 border-t" style={{ borderColor: "var(--border)" }}>
                 <Badge tone="ok">
                   <Lock size={10} /> {t("nav.privacy")}
@@ -968,56 +937,23 @@ export default function App() {
 
   return (
     <div className="flex h-full" style={{ background: "var(--bg)" }}>
-      {/* Sidebar */}
-      <aside
-        className="sidebar flex flex-col shrink-0 border-r"
-        style={{
-          width: sidebarCompact ? 64 : 232,
-          borderColor: "var(--border)",
-          transition: "width 0.15s ease",
-        }}
-      >
-        <div className="flex items-center gap-2.5 px-3.5 py-4">
-          <BrandMark size={36} className="shrink-0" />
-          {!sidebarCompact ? (
-            <div className="min-w-0">
-              <p className="font-bold text-[13.5px] leading-tight truncate">{t("app.name")}</p>
-              <p className="text-[11px] muted truncate">v{packageJson.version} · local</p>
-            </div>
-          ) : null}
-        </div>
-
-        <nav className="flex-1 overflow-y-auto px-2 pb-3">{renderNav(!sidebarCompact)}</nav>
-
-        <div className="px-3 py-3 border-t flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
-          {!sidebarCompact ? (
-            <Badge tone="ok">
-              <Lock size={10} /> {t("nav.privacy")}
-            </Badge>
-          ) : null}
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              className="icon-btn"
-              title={t("nav.jobs")}
-              onClick={() => setScreen("jobs")}
-              style={{ position: "relative" }}
-            >
-              <ListChecks size={15} />
-              {backgroundJobs > 0 ? <span className="jobs-dot">{backgroundJobs}</span> : null}
-            </button>
-            <IconButton label={t("settings.theme")} onClick={() => void update({ theme: isDark ? "light" : "dark" })}>
-              {isDark ? <Sun size={15} /> : <Moon size={15} />}
-            </IconButton>
-            <IconButton label={t("nav.sidebar")} onClick={() => setSidebarCompact((previous) => !previous)}>
-              <Layers size={15} />
-            </IconButton>
-          </div>
-        </div>
-      </aside>
+      <React.Suspense fallback={<aside className="sidebar shrink-0" style={{ width: sidebarCompact ? 68 : 252 }} />}>
+        <DesktopSidebar
+          icons={NAV_ICONS}
+          screen={screen}
+          compact={sidebarCompact}
+          version={packageJson.version}
+          backgroundJobs={backgroundJobs}
+          isDark={isDark}
+          onNavigate={pickNav}
+          onSearch={() => setSearchOpen(true)}
+          onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}
+          onToggleCompact={() => setSidebarCompact((previous) => !previous)}
+        />
+      </React.Suspense>
 
       {/* Main area */}
-      <main className="flex-1 min-w-0 h-full relative">
+      <main className="app-main flex-1 min-w-0 relative">
         {dragging ? (
           <div
             className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"

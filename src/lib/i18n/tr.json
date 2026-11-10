@@ -3259,5 +3259,22 @@
   "impress.emptyImage": "Görsel eklemek için çift tıklayın",
   "settings.autosaveSecondsShort": "{seconds} sn",
   "settings.autosaveMinutes": "{minutes} dk",
-  "studio.fieldYesOff": "Evet / Kapalı"
+  "studio.fieldYesOff": "Evet / Kapalı",
+  "nav.new": "Yeni oluştur",
+  "nav.search": "Ara…",
+  "nav.scanConvert": "Tara ve dönüştür",
+  "nav.system": "Sistem",
+  "nav.collapse": "Daralt",
+  "nav.expand": "Genişlet",
+  "nav.assistant": "Asistan",
+  "home.newDocument": "Boş belge",
+  "home.newSpreadsheet": "Boş tablo",
+  "home.newPresentation": "Boş sunu",
+  "home.fromTemplate": "Şablondan",
+  "home.templateHint": "Dilekçe, fatura, rapor…",
+  "home.greetMorning": "Günaydın",
+  "home.greetDay": "İyi günler",
+  "home.greetEvening": "İyi akşamlar",
+  "home.create": "Oluştur",
+  "nav.officeHub": "Belgeler ve formlar"
 }

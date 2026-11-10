@@ -1,0 +1,1 @@
+7.31.0: Yeni arayüz. Telefon ve masaüstü için tek, daha sakin bir tasarım: tek çivit vurgu rengi, her belge türü için sabit renk ve yumuşak yüzeyler. Ana sayfa bir selamlama ve Oluştur satırıyla açılıyor; boş belge, tablo veya sunu tek dokunuş uzağınızda. Alt çubuk artık Ana sayfa, Ofis, Tara, Asistan ve Diğer; çekmece tüm araçları açılıp kapanan birkaç bölümde topluyor.
