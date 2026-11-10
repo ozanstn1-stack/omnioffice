@@ -49,7 +49,6 @@ import {
   Undo2,
   MessageSquare,
   Columns2,
-  Trash2,
   Wand2,
   X,
 } from "lucide-react";
@@ -73,7 +72,6 @@ import {
   type TocEntry,
 } from "../lib/office-types";
 import {
-  defaultPageSetup,
   defaultParaProps,
   defaultSectionProps,
   documentSections,
@@ -148,6 +146,8 @@ import { CommentsPane } from "./writer/panels/CommentsPane";
 import { ReviewPane } from "./writer/panels/ReviewPane";
 import { SpellPane } from "./writer/panels/SpellPane";
 import { RegulationPane } from "./writer/panels/RegulationPane";
+import { CrossReferenceDialog } from "./writer/panels/CrossReferenceDialog";
+import { SectionsDialog, sizeDimensions } from "./writer/panels/SectionsDialog";
 import { BlockView, PageFragmentView, StaticBlocks } from "./writer/views";
 import type { StructureAction } from "./writer/views";
 import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw, FileDiff, Scale } from "lucide-react";
@@ -2750,128 +2750,27 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       ) : null}
 
       {fieldOpen ? (
-        <Dialog title={t("writer.crossReference")} onClose={() => setFieldOpen(false)}>
-          <div className="stack">
-            <label className="field">
-              <span>{t("writer.fieldKind")}</span>
-              <select value={fieldKind} onChange={(event) => setFieldKind(event.target.value as FieldRef["kind"])}>
-                <option value="ref">{t("writer.fieldRef")}</option>
-                <option value="refPage">{t("writer.fieldRefPage")}</option>
-                <option value="bookmark">{t("writer.fieldBookmark")}</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>{t("writer.bookmarkTarget")}</span>
-              <select value={fieldTarget} onChange={(event) => setFieldTarget(event.target.value)}>
-                <option value="">—</option>
-                {(document.bookmarks ?? []).map((bookmark) => (
-                  <option key={bookmark.id} value={bookmark.name}>
-                    {bookmark.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="row">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  if (!fieldTarget) return;
-                  insertField(fieldKind, fieldTarget);
-                  setFieldOpen(false);
-                }}
-              >
-                {t("writer.insertField")}
-              </button>
-              <input
-                placeholder={t("writer.bookmarkName")}
-                value={bookmarkName}
-                onChange={(event) => setBookmarkName(event.target.value)}
-              />
-              <button type="button" className="btn btn-soft" onClick={addBookmark}>
-                {t("writer.addBookmark")}
-              </button>
-            </div>
-            <p className="muted">{t("writer.bookmarkHint")}</p>
-          </div>
-        </Dialog>
+        <CrossReferenceDialog
+          kind={fieldKind}
+          onKind={setFieldKind}
+          target={fieldTarget}
+          onTarget={setFieldTarget}
+          bookmarks={document.bookmarks ?? []}
+          bookmarkName={bookmarkName}
+          onBookmarkName={setBookmarkName}
+          onInsert={insertField}
+          onAddBookmark={addBookmark}
+          onClose={() => setFieldOpen(false)}
+        />
       ) : null}
 
       {sectionsOpen ? (
-        <Dialog title={t("writer.sections")} onClose={() => setSectionsOpen(false)}>
-          <div className="stack">
-            {sections.map((section, sectionIndex) => (
-              <div key={sectionIndex} className="section-card">
-                <div className="row">
-                  <strong>
-                    {t("writer.section")} {sectionIndex + 1}
-                  </strong>
-                  <span className="spacer" />
-                  {sectionIndex > 0 ? (
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      title={t("common.delete")}
-                      onClick={() => removeSectionBreak(sectionIndex)}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  ) : null}
-                </div>
-                <div className="row">
-                  <select
-                    value={section.page.size}
-                    onChange={(event) =>
-                      updateSection(sectionIndex, {
-                        page: {
-                          ...section.page,
-                          ...sizeDimensions(event.target.value, section.page.orientation),
-                          size: event.target.value,
-                        },
-                      })
-                    }
-                  >
-                    {["a4", "a5", "letter", "legal", "a3"].map((size) => (
-                      <option key={size} value={size}>
-                        {size.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={section.page.orientation}
-                    onChange={(event) => {
-                      const landscape = event.target.value === "landscape";
-                      const currently = section.page.widthPt > section.page.heightPt;
-                      const page = { ...section.page, orientation: event.target.value };
-                      if (landscape !== currently) {
-                        const width = page.widthPt;
-                        page.widthPt = page.heightPt;
-                        page.heightPt = width;
-                      }
-                      updateSection(sectionIndex, { page });
-                    }}
-                  >
-                    <option value="portrait">{t("writer.portrait")}</option>
-                    <option value="landscape">{t("writer.landscape")}</option>
-                  </select>
-                  <select
-                    value={section.start}
-                    onChange={(event) =>
-                      sectionIndex === sections.length - 1
-                        ? undefined
-                        : updateSection(sectionIndex, { start: event.target.value })
-                    }
-                  >
-                    <option value="newPage">{t("writer.startNewPage")}</option>
-                    <option value="continuous">{t("writer.startContinuous")}</option>
-                    <option value="oddPage">{t("writer.startOdd")}</option>
-                    <option value="evenPage">{t("writer.startEven")}</option>
-                  </select>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Dialog>
+        <SectionsDialog
+          sections={sections}
+          onUpdate={updateSection}
+          onRemoveBreak={removeSectionBreak}
+          onClose={() => setSectionsOpen(false)}
+        />
       ) : null}
     </div>
   );
@@ -2915,11 +2814,6 @@ function mimeFromName(name: string): string {
     default:
       return "image/png";
   }
-}
-
-function sizeDimensions(size: string, orientation: string): { widthPt: number; heightPt: number } {
-  const setup = defaultPageSetup(size, orientation);
-  return { widthPt: setup.widthPt, heightPt: setup.heightPt };
 }
 
 export function blankWriterDocument(title: string): TextDocument {
