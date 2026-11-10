@@ -47,6 +47,9 @@ export interface NavHub {
   items: NavEntry[];
 }
 
+/** Key caps, not words: the same in every language. */
+const SEARCH_SHORTCUT = "Ctrl ⇧ F";
+
 /** Sections that have no hub of their own join the hub named here. */
 const HUB_OF: Partial<Record<NavSectionId, string>> = { images: "convert", ocr: "convert" };
 
@@ -326,7 +329,7 @@ export function DesktopSidebar({
           <button type="button" className="sidebar-search" onClick={onSearch}>
             <Search size={15} aria-hidden />
             <span className="flex-1 truncate text-left">{t("nav.search")}</span>
-            <kbd>Ctrl ⇧ F</kbd>
+            <kbd>{SEARCH_SHORTCUT}</kbd>
           </button>
         </div>
       ) : (

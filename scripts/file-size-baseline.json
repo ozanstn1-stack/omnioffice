@@ -253,7 +253,7 @@
     "src/components/files.tsx": 722,
     "src/components/pages.tsx": 462,
     "src/components/person-cards-dialog.tsx": 298,
-    "src/components/sidebar.tsx": 380,
+    "src/components/sidebar.tsx": 383,
     "src/components/ui.tsx": 540,
     "src/lib/ai-task-packs-catalog.ts": 358,
     "src/lib/api.ts": 932,
