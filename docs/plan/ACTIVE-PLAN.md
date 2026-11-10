@@ -604,3 +604,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   Calc formül ipucu (beyaz/açık zemin). Hepsi düzeltildi.
 - Vurgu rengi: `lib/accent.ts` + `components/accent-picker.tsx`, `paintTheme` kökte `data-accent`.
 - E2E `home.mjs`: kenar çubuğu merkezi açılır, Araçlar ekranı ≥40 kutucuk.
+
+## Aşama 3.1 — ekran kaydı (sürümsüz PR) — 2026-11-10
+- #722 birleşti (`f396568`, v7.33.1). `App.tsx` 1009 → 789: tembel ekranlar `screens/registry.tsx`
+  (`import * as Screens`), `NAV_ICONS` modül sabiti `lib/nav-icons.tsx` (her çizimde yeniden
+  kurulmuyor), telefon/masaüstü dallarında tekrar eden katmanlar `components/global-overlays.tsx`.
+  Davranış değişmedi; giriş paketi 58.3 → 58.5 KB. v7.34.0 treni 3.2 (`useHistory`) ile kapanır.
