@@ -65,6 +65,18 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Düzenleyici kabuğu (masaüstü)
+
+- **The active ribbon tab is underlined in the accent on a light tool row:**
+  `test:src/office/editor-shell-css.test.ts#marks the active ribbon tab with the accent underline, not a raised tab`
+- **A pressed tool uses the accent's ink, never white on the tint:**
+  `test:src/office/editor-shell-css.test.ts#paints a pressed tool in the accent's ink, never white on the light tint`
+- **Sheet tabs, selected headers, chips, the recovery banner, template icons and Writer
+  footnote markers are readable:**
+  `test:src/office/editor-shell-css.test.ts#never paints the white --accent-text on a light tint or the white page`
+- **Every theme has an accent ink:**
+  `test:src/office/editor-shell-css.test.ts#gives every theme an accent ink`
+
 ## Implemented (this cycle, 7.32.1) - Belge türü ekranları ve sakin başlıklar
 
 - **The office launchers list only their kind's recent files, without kind chips, and start

@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Editor shell in the new look (Writer, Calc, Impress):** the ribbon is one row of
+  tabs with an accent underline over a light tool row, pressed tools are tonal, tool
+  buttons are 32 px, and the status bar and Writer's outline pane follow the same
+  surfaces.
+
+### Fixed
+
+- **Pressed and selected items were white on a light tint in the light theme:** a pressed
+  ribbon toggle (bold, lists, views), Calc's active sheet tab and selected row/column
+  headers, active chips, the recovery banner and template icons used the white
+  `--accent-text`. They now use the accent's ink. Writer's footnote markers were white on
+  the white page and could not be seen; they use the accent colour. The paper and midnight
+  themes get their own ink colour.
+
 ## [7.32.1] - 2026-11-10
 
 ### Changed
