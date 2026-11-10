@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.32.1
+# Release Readiness — OmniOffice 7.33.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,23 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.33.0) - Düzenleyici kabuğu (masaüstü ve Android)
+
+- **A phone ribbon floats just above the on-screen keyboard while it is up:**
+  `test:src/office/editor-shell-css.test.ts#floats a phone ribbon just above the keyboard while it is up`
+- **The root says whether the keyboard is up:**
+  `test:src/lib/viewport.test.ts#marks the root while the keyboard is up, for the floating phone ribbon (7.33)`
+
+- **The active ribbon tab is underlined in the accent on a light tool row:**
+  `test:src/office/editor-shell-css.test.ts#marks the active ribbon tab with the accent underline, not a raised tab`
+- **A pressed tool uses the accent's ink, never white on the tint:**
+  `test:src/office/editor-shell-css.test.ts#paints a pressed tool in the accent's ink, never white on the light tint`
+- **Sheet tabs, selected headers, chips, the recovery banner, template icons and Writer
+  footnote markers are readable:**
+  `test:src/office/editor-shell-css.test.ts#never paints the white --accent-text on a light tint or the white page`
+- **Every theme has an accent ink:**
+  `test:src/office/editor-shell-css.test.ts#gives every theme an accent ink`
 
 ## Implemented (this cycle, 7.32.1) - Belge türü ekranları ve sakin başlıklar
 
