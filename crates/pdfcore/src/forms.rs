@@ -1296,7 +1296,14 @@ fn fill_radio(
     // Collect per-widget states first: each widget owns one export value.
     let per_widget: Vec<Vec<String>> = node.widgets.iter().map(|(_, widget)| widget_on_states(doc, widget)).collect();
     let all_states: Vec<String> = per_widget.iter().flatten().cloned().collect();
-    let raw = value.value.trim().to_string();
+    // Filled by its printed name, the group lands on the state behind it: `/Opt` gives
+    // the labels, the states keep their own names (12.7.4.2.4, 227).
+    let named = value.value.trim().to_string();
+    let raw = radio_options(doc, node)
+        .into_iter()
+        .find(|option| option.label == named)
+        .map(|option| option.value)
+        .unwrap_or(named);
     let lower = raw.to_lowercase();
     let chosen: Option<String> =
         if raw.is_empty() || matches!(lower.as_str(), "off" | "false" | "0" | "no" | "unchecked") {
@@ -1304,10 +1311,8 @@ fn fill_radio(
         } else if all_states.iter().any(|state| state == &raw) {
             Some(raw.clone())
         } else if all_states.is_empty() {
-            // The document declares no appearance states (some producers, and the
-            // built-in form creator, only ship a single stream). Writing the state
-            // the caller asked for is the only honest option; the regenerated
-            // appearance below gives that state a stream so the value is visible.
+            // No declared states (some producers ship one stream): write what was
+            // asked for and give it an appearance below.
             Some(raw.clone())
         } else {
             return Err(PdfError::InvalidInput(format!(

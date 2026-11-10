@@ -65,6 +65,20 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
+## Implemented (unreleased) - Radyo grubu yazdırılan adla da doldurulabiliyor
+
+- **A radio group filled by its printed name lands on the state behind it:** `/Opt`
+  gives the options the names a form shows while the appearance states keep their own
+  names (ISO 32000-1 12.7.4.2.4, Table 227), so asking for the printed name used to be
+  refused as "not a declared state". The name is now resolved through the group's own
+  options before the state is written.
+  `test:crates/pdfcore/tests/radio_opt_probe.rs#a_radio_group_can_be_filled_by_the_printed_name`
+- **The value goes on the field and the state on each child:** filling a three-way group
+  writes `/V` once and `/AS` per widget, so only the chosen child shows on.
+  `test:crates/pdfcore/tests/radio_opt_probe.rs#a_radio_group_writes_the_value_once_and_the_state_on_each_child`
+- **Clearing turns every child off:**
+  `test:crates/pdfcore/tests/radio_opt_probe.rs#clearing_a_radio_group_turns_every_child_off`
+
 ## Implemented (this cycle, 7.30.4) - Buton durumu sessizce değiştirilmiyor
 
 - **An unknown checkbox or radio state is refused instead of quietly replaced:** the
