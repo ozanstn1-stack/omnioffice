@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.33.0
+# Release Readiness — OmniOffice 7.33.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,18 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.33.1) - Vurgu rengi ve tema kontrastı
+
+- **Text colours read at 4.5:1 in every theme:**
+  `test:src/lib/theme-contrast.test.ts#reads body, secondary, accent and document-kind text at 4.5:1 in every theme and accent`
+- **Every accent has a light and a dark variant:**
+  `test:src/lib/theme-contrast.test.ts#defines all three non-default accents for both themes`
+- **The root carries the accent, except where a theme has its own palette:**
+  `test:src/components/accent-picker.test.tsx#marks the root with a non-default accent, except in the themes with their own palette`
+- **Settings offers the accents as a radio group:**
+  `test:src/components/accent-picker.test.tsx#offers four swatches as a radio group and applies the chosen one`
+  `test:src/components/accent-picker.test.tsx#is disabled, with a note, in the midnight and paper themes`
 
 ## Implemented (this cycle, 7.33.0) - Düzenleyici kabuğu (masaüstü ve Android)
 

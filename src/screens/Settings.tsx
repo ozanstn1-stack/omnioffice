@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AccentPicker } from "../components/accent-picker";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -225,6 +226,7 @@ export function Settings() {
               ))}
             </div>
           </div>
+          <AccentPicker />
           <div>
             <label className="label">{t("settings.language")}</label>
             <div className="seg">

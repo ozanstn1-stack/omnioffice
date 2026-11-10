@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.33.1] - 2026-11-10
+
+### Added
+
+- **Accent colour:** Settings > Appearance offers indigo, blue, teal and pink, each with a
+  light and a dark variant. The midnight and paper themes keep their own colours.
+
+### Fixed
+
+- **Text on filled accent buttons was hard to read in three themes:** the dark theme put
+  white on its light purple (3.2:1), midnight put light blue on light blue (2.1:1) and
+  paper put dark brown on brown (2.1:1). Each now has a text colour that reads at 4.5:1 or
+  better. Paper's secondary text was 4.2:1 on its ground and is darker now. Calc's
+  formula hints marked the active argument and suggestion in white on a pale tint.
+- A test now checks body, secondary, accent and document-kind colours in every theme and
+  accent against WCAG AA (4.5:1), and the desktop smoke run opens a sidebar hub and the
+  Tools hub.
+
 ## [7.33.0] - 2026-11-10
 
 ### Changed

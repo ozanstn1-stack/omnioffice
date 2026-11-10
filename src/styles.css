@@ -52,7 +52,9 @@
   --accent-hover: #9597f7;
   --accent-weak: #25244a;
   --accent-ink: #c4c5fb;
-  --accent-text: #ffffff;
+  /* Text on the filled accent: dark, as white on the light dark-theme accent
+     read at 3.2:1 (WCAG asks 4.5:1). */
+  --accent-text: #0e1015;
   --accent-grad: linear-gradient(#6366f1, #6366f1);
   --accent-grad-soft: linear-gradient(var(--accent-weak), var(--accent-weak));
   --ring: color-mix(in srgb, var(--accent) 32%, transparent);
@@ -807,6 +809,73 @@ body {
   color: var(--muted);
 }
 
+/* 7.33.1 accent colours (lib/accent.ts sets data-accent on the root; indigo is
+   the default palette above, midnight and paper keep their own). The dark
+   variants are lighter accents with dark text on them; theme-contrast.test.ts
+   checks every pair at 4.5:1. */
+:root[data-accent="blue"] {
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-weak: #e8effd;
+  --accent-ink: #1e40af;
+}
+:root[data-accent="teal"] {
+  --accent: #0f766e;
+  --accent-hover: #115e59;
+  --accent-weak: #e2f3f0;
+  --accent-ink: #115e59;
+}
+:root[data-accent="pink"] {
+  --accent: #be185d;
+  --accent-hover: #9d174d;
+  --accent-weak: #fbe9f1;
+  --accent-ink: #9d174d;
+}
+:root.dark[data-accent="blue"] {
+  --accent: #7aa7ff;
+  --accent-hover: #93b8ff;
+  --accent-weak: #1c2a48;
+  --accent-ink: #c7dbff;
+  --accent-grad: linear-gradient(var(--accent), var(--accent));
+}
+:root.dark[data-accent="teal"] {
+  --accent: #4fd1c5;
+  --accent-hover: #6ee0d6;
+  --accent-weak: #133430;
+  --accent-ink: #b2f0e8;
+  --accent-grad: linear-gradient(var(--accent), var(--accent));
+}
+:root.dark[data-accent="pink"] {
+  --accent: #f472b6;
+  --accent-hover: #f78fc6;
+  --accent-weak: #3a1a2b;
+  --accent-ink: #fbcfe8;
+  --accent-grad: linear-gradient(var(--accent), var(--accent));
+}
+.accent-swatches {
+  display: flex;
+  gap: 10px;
+}
+.accent-swatch {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08);
+}
+.accent-swatch[aria-checked="true"] {
+  border-color: var(--surface);
+  outline: 2px solid var(--text);
+}
+.accent-swatch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Home: create row (components/create-row.tsx) */
 .section-title {
   margin: 0 0 10px;
@@ -1357,7 +1426,7 @@ body {
   --accent: #60a5fa;
   --accent-hover: #93c5fd;
   --accent-weak: rgba(96, 165, 250, 0.16);
-  --accent-text: #dbeafe;
+  --accent-text: #0b1120;
   --accent-ink: #bfdbfe;
 }
 
@@ -1370,11 +1439,11 @@ body {
   --border: #ded3c0;
   --border-strong: #c9bda6;
   --text: #3b3529;
-  --muted: #7c7161;
+  --muted: #6b6152;
   --accent: #a1561f;
   --accent-hover: #8a4818;
   --accent-weak: rgba(161, 86, 31, 0.12);
-  --accent-text: #5c2f0c;
+  --accent-text: #ffffff;
   --accent-ink: #6b3510;
 }
 

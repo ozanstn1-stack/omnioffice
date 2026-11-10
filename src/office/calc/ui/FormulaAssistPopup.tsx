@@ -60,7 +60,7 @@ export function FormulaAssistPopup({
                   index === hint.active
                     ? {
                         background: "var(--accent-weak)",
-                        color: "var(--accent-text)",
+                        color: "var(--accent-ink)",
                         borderRadius: 3,
                         padding: "0 3px",
                         fontWeight: 600,
@@ -110,7 +110,7 @@ export function FormulaAssistPopup({
                 minHeight: android ? 40 : undefined,
                 cursor: "pointer",
                 background: index === selectedIndex ? "var(--accent-weak)" : undefined,
-                color: index === selectedIndex ? "var(--accent-text)" : undefined,
+                color: index === selectedIndex ? "var(--accent-ink)" : undefined,
                 fontSize: 12,
               }}
             >
