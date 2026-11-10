@@ -6,8 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.32.0] - 2026-11-10
+
+### Added
+
+- **Tools hub:** every tool as a tile, grouped (Office, PDF & documents, Productivity,
+  AI), with a search field and one chip per group. It is the phone's **Tools** tab (which
+  lights up on every tool screen) and a sidebar entry on the desktop. The scanner leads
+  the PDF group. Fourteen screens that had no card on Home - the scanner, the petition
+  and official letter wizards, the deadline calculator, the evidence folder, invoices,
+  e-mail files, mail merge, recipes, unlocking, document info and the AI task packs among
+  them - now have one, and a test keeps every screen carded.
+
 ### Changed
 
+- **Phone tab bar:** Home, Office, **Tools**, Assistant and More; Scan is the first tile
+  of the Tools hub and stays in the drawer.
 - **Recent files on Home are a table you can filter:** each row shows the document kind's
   colour, the tool the file was last used with and how long ago ("12 min ago",
   "yesterday"); chips narrow it to documents, spreadsheets, presentations or PDFs, and the

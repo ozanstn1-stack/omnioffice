@@ -3283,5 +3283,8 @@
   "recent.filterSheets": "Spreadsheets",
   "recent.filterSlides": "Presentations",
   "recent.filterPdf": "PDF",
-  "recent.noneOfKind": "No recent files of this kind"
+  "recent.noneOfKind": "No recent files of this kind",
+  "nav.tools": "Tools",
+  "tools.subtitle": "All {count} tools in one place.",
+  "tools.groupLabel": "Tool group"
 }

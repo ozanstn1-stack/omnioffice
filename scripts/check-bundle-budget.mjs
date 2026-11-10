@@ -89,7 +89,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 524 in 7.31 (new interface): the hub sidebar, the New menu and
 // the Home create row add about 3 KB gzip; the sidebar is its own lazy chunk,
 // so the entry chunk stays inside its budget.
-const TOTAL_BUDGET_KB = 524;
+// Raised to 526 in 7.32 (Tools hub): the shared tool catalogue chunk
+// (lib/tool-cards.tsx, ~2.3 KB gzip) gives fourteen more screens a card and
+// the hub its tiles; the entry chunk is unchanged.
+const TOTAL_BUDGET_KB = 526;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

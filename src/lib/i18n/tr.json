@@ -3283,5 +3283,8 @@
   "recent.filterSheets": "Tablolar",
   "recent.filterSlides": "Sunular",
   "recent.filterPdf": "PDF",
-  "recent.noneOfKind": "Bu türde son dosya yok"
+  "recent.noneOfKind": "Bu türde son dosya yok",
+  "nav.tools": "Araçlar",
+  "tools.subtitle": "{count} aracın hepsi tek yerde.",
+  "tools.groupLabel": "Araç grubu"
 }
