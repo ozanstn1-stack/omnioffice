@@ -1,0 +1,1 @@
+7.35.0: Writer ve Impress düzenleyicilerindeki paneller, iletişim kutuları ve sunum gösterisi denetimleri ayrı, test edilen bileşenlere taşındı. Kullanıcının gördüğü davranış değişmedi; bu, sonraki özellikler için kodu sadeleştiren bir iç düzenlemedir.

@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.35.0] - 2026-11-10
+
+### Changed
+
+- **Writer and Impress editors split into components (internal):** Writer's Find & replace
+  dialog, its comments, review, spelling and official-letter panes, and its cross-reference
+  and sections dialogs; Impress's presenter panel and slideshow bar, its Transitions,
+  Animations and View ribbon tabs, the slide settings, notes and animation list, and the
+  selected object's geometry and text tools now live in their own files with their own
+  tests. `WriterEditor.tsx` went from 3252 to 2823 lines and `ImpressEditor.tsx` from 2777
+  to 2422; no behaviour change.
+
 ## [7.34.0] - 2026-11-10
 
 ### Fixed

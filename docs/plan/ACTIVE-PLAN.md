@@ -616,3 +616,10 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   `useCalcUndoRedo` sarmalayıcı oldu (güncelleyici içinde `apply` + iç içe `setRedoStack` →
   StrictMode'da 2 uygulama; sonda yazılan prob testiyle doğrulandı), Impress kancaya geçti.
   Writer'ın işlem tabanlı geçmişine dokunulmadı. v7.34.0 = 3.1 + 3.2.
+
+## v7.35.0 sürüm PR'ı — 3.3a–3.3e düzenleyici bölme — 2026-11-10
+- #725–#729 birleşti: Writer bul/değiştir + dört yan panel + çapraz başvuru/bölümler
+  (`office/writer/panels/`), Impress gösteri kabuğu, üç şerit sekmesi, slayt ayarları,
+  notlar/animasyonlar, nesne konum/boyut ve metin araçları (`office/impress/`).
+  WriterEditor 3252 → 2823, ImpressEditor 2777 → 2422; davranış değişmedi. Sıradaki: 3.3f
+  Calc formül çubuğu, sonra ızgara.
