@@ -96,7 +96,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // now a lazy screen, so useOfficeSession, save-destination, share and the
 // recent table left the entry chunk (61.7 -> 58.1 KB) for small shared
 // chunks; their per-chunk gzip overhead adds ~3.9 KB to the total.
-const TOTAL_BUDGET_KB = 530;
+// Raised to 532 in the 7.35 editor split (3.3a): Writer's Find & replace and
+// four side panes moved into office/writer/panels; the props they now take
+// keep their names under minification (~0.6 KB gzip in the Writer chunk).
+const TOTAL_BUDGET_KB = 532;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
