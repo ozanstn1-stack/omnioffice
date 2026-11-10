@@ -4038,6 +4038,45 @@ body {
   }
 }
 /* end C11 touch targets */
+
+/* 7.33 Android editor shell: with the keyboard up, a phone ribbon leaves the
+   top of the screen and floats just above the keyboard as one scrolling row
+   of tools, in thumb reach (lib/viewport.ts sets data-keyboard). The Ribbon
+   folds its body with an inline max-height, hence the !important. */
+:root[data-keyboard="open"] .ribbon.is-narrow {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: calc(var(--keyboard-inset, 0px) + 8px);
+  z-index: 45;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+:root[data-keyboard="open"] .ribbon.is-narrow .ribbon-tabs,
+:root[data-keyboard="open"] .ribbon.is-narrow .ribbon-group-label {
+  display: none;
+}
+:root[data-keyboard="open"] .ribbon.is-narrow .ribbon-body {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-height: none !important;
+  min-height: 0;
+  padding: 4px 6px;
+  border-top: 0;
+}
+:root[data-keyboard="open"] .editor-scroll {
+  padding-bottom: 96px;
+}
+@media (pointer: coarse) {
+  .tool-btn {
+    min-height: 44px;
+  }
+  .tool-btn.is-icon-only {
+    min-width: 44px;
+  }
+}
 /* ------------------------------------------------- mobile ergonomics (D8) */
 
 /* The focused field is kept clear of the on-screen keyboard (lib/viewport.ts):

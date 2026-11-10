@@ -6,8 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.33.0] - 2026-11-10
+
 ### Changed
 
+- **Phone editors keep their tools in thumb reach:** while the on-screen keyboard is up,
+  the ribbon of Writer, Calc and Impress leaves the top of the screen and floats just
+  above the keyboard as one scrolling row of tools; the page scrolls clear of it. Tool
+  buttons are 44 px on a touch screen.
 - **Editor shell in the new look (Writer, Calc, Impress):** the ribbon is one row of
   tabs with an accent underline over a light tool row, pressed tools are tonal, tool
   buttons are 32 px, and the status bar and Writer's outline pane follow the same

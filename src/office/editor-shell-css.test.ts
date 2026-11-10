@@ -60,4 +60,15 @@ describe("editor shell styles (7.33)", () => {
     expect(rule(".writer-nav-item")).toContain("min-height: 30px");
     expect(rule(".editor-status")).toContain("font-variant-numeric: tabular-nums");
   });
+
+  it("floats a phone ribbon just above the keyboard while it is up", () => {
+    const floating = rule(':root[data-keyboard="open"] .ribbon.is-narrow');
+    expect(floating).toContain("position: fixed");
+    expect(floating).toContain("bottom: calc(var(--keyboard-inset, 0px) + 8px)");
+    const body = rule(':root[data-keyboard="open"] .ribbon.is-narrow .ribbon-body');
+    expect(body).toContain("flex-wrap: nowrap");
+    expect(body).toContain("max-height: none !important");
+    expect(rule(':root[data-keyboard="open"] .editor-scroll')).toContain("padding-bottom:");
+    expect(css).toMatch(/@media \(pointer: coarse\) \{\n  \.tool-btn \{\n    min-height: 44px;/);
+  });
 });

@@ -56,13 +56,19 @@ export function keyboardInset(): number {
 /**
  * Publishes the keyboard height as the `--keyboard-inset` CSS variable, so the
  * bottom action bar can lift itself above the keyboard instead of hiding a
- * Save button behind it. Resets to 0 px when the keyboard closes.
+ * Save button behind it. Resets to 0 px when the keyboard closes. Since 7.33
+ * it also sets `data-keyboard="open|closed"` on the root, which floats a
+ * phone editor's ribbon just above the keyboard (styles.css).
  */
 export function useKeyboardInset(): void {
   useEffect(() => {
     const viewport = typeof window !== "undefined" ? window.visualViewport : null;
     if (!viewport) return;
-    const update = () => document.documentElement.style.setProperty("--keyboard-inset", `${keyboardInset()}px`);
+    const update = () => {
+      const root = document.documentElement;
+      root.style.setProperty("--keyboard-inset", `${keyboardInset()}px`);
+      root.dataset.keyboard = keyboardLikelyOpen(viewport.height, window.innerHeight) ? "open" : "closed";
+    };
     update();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
@@ -70,6 +76,7 @@ export function useKeyboardInset(): void {
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
       document.documentElement.style.removeProperty("--keyboard-inset");
+      delete document.documentElement.dataset.keyboard;
     };
   }, []);
 }

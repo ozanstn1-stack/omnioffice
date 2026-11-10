@@ -587,3 +587,12 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Ekran görüntüleri: 01-home, 03-merge, 11-history yenilendi; 42/43 Android eklendi; 40/41
   (mobil denetim kanıtı) ve 10-settings (sahte IPC'de çalışmıyor) değişmedi. README'ye galeri.
 - **v7.32.1**: versionCode 7032001, CHANGELOG, README, RELEASE_READINESS, fastlane 7032001.
+
+## v7.33.0 sürüm PR'ı (#721) — 1.4 + 1.5 düzenleyici kabuğu — 2026-11-10
+- #720 birleşti (`cba99d8`, v7.32.1). 1.4: şerit / durum çubuğu / ana hat paneli yalnız CSS ile;
+  `--accent-text`'in açık zeminde beyaz yazı olarak kullanıldığı 8 kural düzeltildi (Writer dipnot
+  işaretleri görünmüyordu). 1.5: `useKeyboardInset` kökte `data-keyboard` yazar, klavye açıkken dar
+  şerit klavyenin üstünde yüzer; dokunmatikte `.tool-btn` 44 px.
+- Sapma: "Yazmama yardım et" sağ uç yuvası ve Android Oku/Düzenle geçişi düzenleyici dosyalarına satır
+  ekletirdi → Aşama 3 (düzenleyici bölme) sonrasına.
+- **v7.33.0**: versionCode 7033000, CHANGELOG, README, RELEASE_READINESS, fastlane 7033000.
