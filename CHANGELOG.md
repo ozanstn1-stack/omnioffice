@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Recent files on Home are a table you can filter:** each row shows the document kind's
+  colour, the tool the file was last used with and how long ago ("12 min ago",
+  "yesterday"); chips narrow it to documents, spreadsheets, presentations or PDFs, and the
+  whole row opens the file. The drop zone moves to a compact column beside it, with a card
+  for the job running in the background.
+
 ## [7.31.0] - 2026-11-10
 
 ### Changed

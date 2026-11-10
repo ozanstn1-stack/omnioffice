@@ -14,7 +14,6 @@ import {
   FileSpreadsheet,
   FileText,
   FolderClock,
-  FolderOpen,
   Images,
   KeyRound,
   Pin,
@@ -33,17 +32,18 @@ import {
   Repeat,
   Scissors,
   Search,
-  Share2,
   ShieldCheck,
   Sparkles,
   Stamp,
   Type,
   Wand2,
 } from "lucide-react";
-import { Button, Card, EmptyState, IconButton } from "../components/ui";
+import { Button, Card, EmptyState } from "../components/ui";
 import { DropZone } from "../components/files";
 import { Screen } from "../components/layout";
 import { CreateRow, greetingKey, todayLabel } from "../components/create-row";
+import { RecentTable } from "../components/recent-table";
+import { JobsGlance } from "../components/jobs-glance";
 import { UpdateBanner } from "../components/update-banner";
 import { WelcomeCard } from "../components/welcome-card";
 import { ProfessionDesk, ProfessionPicker } from "../components/profession-desk";
@@ -51,7 +51,7 @@ import { deskTasks, isProfession, type ProfessionChoice } from "../lib/desks";
 import { useT } from "../lib/i18n";
 import { useRecent, useSettings, useToasts } from "../lib/store";
 import { isOfficePath, openOfficePath } from "../lib/office-store";
-import { fileBaseName, formatDate, isPdf, isPresentationPath, isSpreadsheetPath } from "../lib/format";
+import { fileBaseName, isPdf } from "../lib/format";
 import { foldSearch } from "../lib/search-fold";
 import { recommendTools } from "../lib/recommend";
 import { isAndroid, openAnyFile } from "../lib/mobile";
@@ -363,15 +363,39 @@ export function Home({
         />
       ) : null}
       <CreateRow onNavigate={onNavigate} />
-      <DropZone
-        onPaths={(paths) => {
-          onDropFiles(paths);
-          if (paths.length > 0) setSuggestion(paths);
-        }}
-        title={isAndroid() ? t("common.selectFiles") : t("home.dropTitle")}
-        hint={isAndroid() ? t("common.tapHint") : t("home.dropHint")}
-        dragging={dragging}
-      />
+      <div className={settings.showRecentFiles ? "home-split" : undefined}>
+        {settings.showRecentFiles ? (
+          <section aria-labelledby="home-recent" className="min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="home-recent" className="section-title">
+                {t("home.recent")}
+              </h2>
+              <Button size="sm" variant="ghost" onClick={() => onNavigate("history")}>
+                {t("home.viewAll")}
+              </Button>
+            </div>
+            <RecentTable
+              entries={recent}
+              language={settings.language}
+              onOpen={(entry) => void openRecent(entry)}
+              onShare={(entry) => void shareRecent(entry.token, entry.fileName).catch(() => undefined)}
+            />
+          </section>
+        ) : null}
+        <div className="home-side">
+          <DropZone
+            compact
+            onPaths={(paths) => {
+              onDropFiles(paths);
+              if (paths.length > 0) setSuggestion(paths);
+            }}
+            title={isAndroid() ? t("common.selectFiles") : t("home.dropTitle")}
+            hint={isAndroid() ? t("common.tapHint") : t("home.dropHint")}
+            dragging={dragging}
+          />
+          <JobsGlance onNavigate={onNavigate} />
+        </div>
+      </div>
 
       {suggestion && suggestion.length > 0 ? (
         <Card className="p-4 fade-in">
@@ -480,59 +504,6 @@ export function Home({
         )}
       </section>
 
-      {settings.showRecentFiles ? (
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[13px] font-bold uppercase tracking-wider muted">{t("home.recent")}</h2>
-            <Button size="sm" variant="ghost" onClick={() => onNavigate("history")}>
-              {t("home.viewAll")}
-            </Button>
-          </div>
-          {recent.length === 0 ? (
-            <Card>
-              <EmptyState
-                icon={<FileImage size={22} />}
-                title={t("home.recentEmpty")}
-                hint={t("home.recentEmptyHint")}
-              />
-            </Card>
-          ) : (
-            <Card className="p-2">
-              <div className="flex flex-col">
-                {recent.slice(0, 6).map((entry) => (
-                  <div
-                    key={entry.token}
-                    className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-[var(--surface-2)]"
-                  >
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                      style={{ background: "var(--accent-weak)", color: "var(--accent)" }}
-                    >
-                      <RecentIcon name={entry.fileName} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13.5px] font-medium">{entry.fileName}</p>
-                    </div>
-                    <span className="text-xs muted shrink-0">{formatDate(entry.timestamp)}</span>
-                    <div className="flex gap-1 shrink-0">
-                      <Button size="sm" variant="ghost" onClick={() => void openRecent(entry)}>
-                        {t("common.open")}
-                      </Button>
-                      <IconButton
-                        label={isAndroid() ? t("common.share") : t("common.openFolder")}
-                        onClick={() => void shareRecent(entry.token, entry.fileName).catch(() => undefined)}
-                      >
-                        {isAndroid() ? <Share2 size={14} /> : <FolderOpen size={14} />}
-                      </IconButton>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-        </section>
-      ) : null}
-
       <Card soft className="p-4 flex items-start gap-3">
         <Lock size={16} style={{ color: "var(--ok)", marginTop: 2 }} />
         <div>
@@ -544,13 +515,6 @@ export function Home({
       </Card>
     </Screen>
   );
-}
-
-function RecentIcon({ name }: { name: string }) {
-  if (isSpreadsheetPath(name)) return <FileSpreadsheet size={15} />;
-  if (isPresentationPath(name)) return <Presentation size={15} />;
-  if (isOfficePath(name) || isPdf(name)) return <FileText size={15} />;
-  return <FileImage size={15} />;
 }
 
 function ToolCard({

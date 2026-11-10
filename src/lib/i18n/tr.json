@@ -3276,5 +3276,12 @@
   "home.greetDay": "İyi günler",
   "home.greetEvening": "İyi akşamlar",
   "home.create": "Oluştur",
-  "nav.officeHub": "Belgeler ve formlar"
+  "nav.officeHub": "Belgeler ve formlar",
+  "recent.filterLabel": "Türe göre süz",
+  "recent.filterAll": "Tümü",
+  "recent.filterDocs": "Belgeler",
+  "recent.filterSheets": "Tablolar",
+  "recent.filterSlides": "Sunular",
+  "recent.filterPdf": "PDF",
+  "recent.noneOfKind": "Bu türde son dosya yok"
 }

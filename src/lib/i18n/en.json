@@ -3276,5 +3276,12 @@
   "home.greetDay": "Good afternoon",
   "home.greetEvening": "Good evening",
   "home.create": "Create",
-  "nav.officeHub": "Documents & forms"
+  "nav.officeHub": "Documents & forms",
+  "recent.filterLabel": "Filter by kind",
+  "recent.filterAll": "All",
+  "recent.filterDocs": "Documents",
+  "recent.filterSheets": "Spreadsheets",
+  "recent.filterSlides": "Presentations",
+  "recent.filterPdf": "PDF",
+  "recent.noneOfKind": "No recent files of this kind"
 }
