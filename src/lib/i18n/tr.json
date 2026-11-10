@@ -3286,5 +3286,11 @@
   "recent.noneOfKind": "Bu türde son dosya yok",
   "nav.tools": "Araçlar",
   "tools.subtitle": "{count} aracın hepsi tek yerde.",
-  "tools.groupLabel": "Araç grubu"
+  "tools.groupLabel": "Araç grubu",
+  "settings.accent": "Vurgu rengi",
+  "settings.accent.indigo": "Çivit",
+  "settings.accent.blue": "Mavi",
+  "settings.accent.teal": "Camgöbeği",
+  "settings.accent.pink": "Pembe",
+  "settings.accentOwnPalette": "Gece ve kâğıt temaları kendi renklerini kullanır."
 }

@@ -20,6 +20,7 @@ import {
   type RecentEntry,
   type Settings,
 } from "./types";
+import { paintAccent } from "./accent";
 
 interface SettingsState {
   settings: Settings;
@@ -63,7 +64,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
   update: async (patch) => {
     const next = { ...get().settings, ...patch };
     set({ settings: next });
-    if (patch.theme) applyTheme(next.theme);
+    if (patch.theme || patch.accent) applyTheme(next.theme);
     await saveSettings(next).catch(() => undefined);
   },
 }));
@@ -86,6 +87,7 @@ function paintTheme(theme: Settings["theme"]) {
   useAppliedDark.setState({ dark: prefersDark });
   root.classList.toggle("dark", prefersDark);
   root.dataset.theme = theme === "system" ? (prefersDark ? "dark" : "light") : theme;
+  paintAccent(root, useSettings.getState().settings.accent, theme);
 }
 
 /**

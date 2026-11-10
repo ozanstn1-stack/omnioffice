@@ -3286,5 +3286,11 @@
   "recent.noneOfKind": "No recent files of this kind",
   "nav.tools": "Tools",
   "tools.subtitle": "All {count} tools in one place.",
-  "tools.groupLabel": "Tool group"
+  "tools.groupLabel": "Tool group",
+  "settings.accent": "Accent colour",
+  "settings.accent.indigo": "Indigo",
+  "settings.accent.blue": "Blue",
+  "settings.accent.teal": "Teal",
+  "settings.accent.pink": "Pink",
+  "settings.accentOwnPalette": "The midnight and paper themes use their own colours."
 }

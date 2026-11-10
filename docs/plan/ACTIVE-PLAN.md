@@ -596,3 +596,11 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Sapma: "Yazmama yardım et" sağ uç yuvası ve Android Oku/Düzenle geçişi düzenleyici dosyalarına satır
   ekletirdi → Aşama 3 (düzenleyici bölme) sonrasına.
 - **v7.33.0**: versionCode 7033000, CHANGELOG, README, RELEASE_READINESS, fastlane 7033000.
+
+## v7.33.1 sürüm PR'ı — Aşama 2: kontrast, vurgu rengi, E2E — 2026-11-10
+- #721 birleşti (`a2cd8a1`); v7.32.0, v7.32.1, v7.33.0 yayında. **Aşama 1 bitti.**
+- `theme-contrast.test.ts`: 4 tema + 6 vurgu varyantında metin/ikincil/vurgu/belge renkleri ≥4.5:1.
+  Bulunan: koyu (3.24), gece (2.08) ve kâğıt (2.07) dolgulu vurgu yazısı, kâğıt `--muted` (4.18),
+  Calc formül ipucu (beyaz/açık zemin). Hepsi düzeltildi.
+- Vurgu rengi: `lib/accent.ts` + `components/accent-picker.tsx`, `paintTheme` kökte `data-accent`.
+- E2E `home.mjs`: kenar çubuğu merkezi açılır, Araçlar ekranı ≥40 kutucuk.
