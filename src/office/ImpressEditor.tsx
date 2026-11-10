@@ -16,7 +16,6 @@ import {
   AlignStartHorizontal,
   AlignStartVertical,
   ArrowRight,
-  Bold,
   Braces,
   Circle,
   Copy,
@@ -26,13 +25,9 @@ import {
   Grid2X2,
   Group,
   Image as ImageIcon,
-  IndentDecrease,
-  IndentIncrease,
-  Italic,
   LayoutTemplate,
   LineChart,
   Link2,
-  List,
   Minus,
   Move,
   Plus,
@@ -45,7 +40,6 @@ import {
   Table as TableIcon,
   Trash2,
   Type,
-  Underline,
   Undo2,
   Ungroup,
 } from "lucide-react";
@@ -119,6 +113,7 @@ import { INHERITED_KEYS, type Theme } from "./impress/shared";
 import { PresenterPanel, SlideshowNav } from "./impress/SlideshowChrome";
 import { AnimationsTab, TransitionsTab, ViewTab } from "./impress/ImpressRibbonTabs";
 import { SlideNotesAndAnimations, SlideSettings } from "./impress/SlideProperties";
+import { ObjectGeometry, TextFormatTools } from "./impress/ObjectProperties";
 import { simplifyStroke, strokeHit, strokePath, type StrokePoint } from "./impress/show-drawing";
 import {
   CropHandles,
@@ -130,7 +125,7 @@ import {
 } from "./impress/slide-view";
 import { withFrameAlign, withFrameSize } from "./impress/textFrame";
 import type { TextEditHandle, TextSelectionInfo } from "./impress/TextFrameEditor";
-import { Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
+import { Ribbon, RibbonGroup, ToolButton, ToolColor, ToolSelect } from "./office-ui";
 import { useSnapshotHistory } from "./useSnapshotHistory";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 import { documentLocationLabel } from "./location-label";
@@ -2136,52 +2131,12 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               />
               {primary && primaryPath ? (
                 <div className="stack">
-                  <div className="row">
-                    <ToolNumber
-                      value={Math.round(primary.x)}
-                      onChange={(x) => setPrimaryPosition("x", x)}
-                      title="X"
-                      width={64}
-                    />
-                    <ToolNumber
-                      value={Math.round(primary.y)}
-                      onChange={(y) => setPrimaryPosition("y", y)}
-                      title="Y"
-                      width={64}
-                    />
-                  </div>
-                  <div className="row">
-                    <ToolNumber
-                      value={Math.round(primary.w)}
-                      onChange={(w) => setPrimarySize("w", w)}
-                      title="W"
-                      width={64}
-                    />
-                    <ToolNumber
-                      value={Math.round(primary.h)}
-                      onChange={(h) => setPrimarySize("h", h)}
-                      title="H"
-                      width={64}
-                    />
-                  </div>
-                  <div className="row">
-                    <ToolNumber
-                      value={Math.round(primary.rotation)}
-                      onChange={(rotation) => updatePath(primaryPath, { rotation })}
-                      min={-180}
-                      max={180}
-                      title={t("impress.rotation")}
-                      width={64}
-                    />
-                    <ToolNumber
-                      value={primary.z}
-                      onChange={(z) => updatePath(primaryPath, { z })}
-                      min={1}
-                      max={99}
-                      title="Z"
-                      width={64}
-                    />
-                  </div>
+                  <ObjectGeometry
+                    object={primary}
+                    onPosition={setPrimaryPosition}
+                    onSize={setPrimarySize}
+                    onPatch={(patch) => updatePath(primaryPath, patch)}
+                  />
                   {primary.kind === "rect" || primary.kind === "ellipse" || primary.kind === "roundRect" ? (
                     <>
                       <label className="field">
@@ -2250,83 +2205,12 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
                     </div>
                   ) : null}
                   {editingText ? (
-                    <div className="slide-text-tools" data-keep-text-edit>
-                      <div className="row">
-                        <ToolButton
-                          keepFocus
-                          icon={<Bold size={14} />}
-                          title={t("impress.bold")}
-                          active={Boolean(textSelection?.bold)}
-                          onClick={() => textHandleRef.current?.applyFormat({ bold: !textSelection?.bold })}
-                        />
-                        <ToolButton
-                          keepFocus
-                          icon={<Italic size={14} />}
-                          title={t("impress.italic")}
-                          active={Boolean(textSelection?.italic)}
-                          onClick={() => textHandleRef.current?.applyFormat({ italic: !textSelection?.italic })}
-                        />
-                        <ToolButton
-                          keepFocus
-                          icon={<Underline size={14} />}
-                          title={t("impress.underline")}
-                          active={Boolean(textSelection?.underline)}
-                          onClick={() => textHandleRef.current?.applyFormat({ underline: !textSelection?.underline })}
-                        />
-                        <ToolButton
-                          keepFocus
-                          icon={<List size={14} />}
-                          title={t("impress.bullets")}
-                          active={Boolean(textSelection?.bullet)}
-                          onClick={() => textHandleRef.current?.toggleBullet()}
-                        />
-                      </div>
-                      <div className="row">
-                        <ToolButton
-                          keepFocus
-                          icon={<IndentDecrease size={14} />}
-                          title={t("impress.decreaseLevel")}
-                          onClick={() => textHandleRef.current?.changeLevel(-1)}
-                        />
-                        <ToolButton
-                          keepFocus
-                          icon={<IndentIncrease size={14} />}
-                          title={t("impress.increaseLevel")}
-                          onClick={() => textHandleRef.current?.changeLevel(1)}
-                        />
-                        <ToolNumber
-                          value={
-                            textSelection?.sizePt ?? primary.text!.paragraphs[0]?.sizePt ?? primary.text!.sizePt ?? 18
-                          }
-                          onChange={(sizePt) => textHandleRef.current?.applyFormat({ sizePt })}
-                          min={4}
-                          max={400}
-                          title={t("impress.fontSize")}
-                          width={64}
-                        />
-                      </div>
-                      <div className="row slide-text-colors">
-                        {TEXT_COLORS.map((color) => (
-                          <button
-                            key={color}
-                            type="button"
-                            className="color-swatch"
-                            style={{ background: color }}
-                            title={color}
-                            aria-label={color}
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => textHandleRef.current?.applyFormat({ color })}
-                          />
-                        ))}
-                        <input
-                          type="color"
-                          className="tool-color"
-                          title={t("impress.textColor")}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onChange={(event) => textHandleRef.current?.applyFormat({ color: event.target.value })}
-                        />
-                      </div>
-                    </div>
+                    <TextFormatTools
+                      selection={textSelection}
+                      fallbackSizePt={primary.text?.paragraphs[0]?.sizePt ?? primary.text?.sizePt ?? 18}
+                      handle={() => textHandleRef.current}
+                      colors={TEXT_COLORS}
+                    />
                   ) : null}
                   <label className="field">
                     <span>{t("writer.paragraph")}</span>
