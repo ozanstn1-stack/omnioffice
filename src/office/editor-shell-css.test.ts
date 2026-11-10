@@ -69,6 +69,6 @@ describe("editor shell styles (7.33)", () => {
     expect(body).toContain("flex-wrap: nowrap");
     expect(body).toContain("max-height: none !important");
     expect(rule(':root[data-keyboard="open"] .editor-scroll')).toContain("padding-bottom:");
-    expect(css).toMatch(/@media \(pointer: coarse\) \{\n  \.tool-btn \{\n    min-height: 44px;/);
+    expect(css).toMatch(/@media \(pointer: coarse\) \{\n {2}\.tool-btn \{\n {4}min-height: 44px;/);
   });
 });
