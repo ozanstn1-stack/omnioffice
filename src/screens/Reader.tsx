@@ -1335,7 +1335,7 @@ export function Reader({
         className="w-[300px] shrink-0 border-l overflow-y-auto hidden xl:flex flex-col gap-3 p-3"
         style={{ borderColor: "var(--border)", background: "var(--bg-soft)" }}
       >
-        <p className="text-[12px] font-bold uppercase tracking-wider muted">{t("reader.jumpTo")}</p>
+        <p className="group-label">{t("reader.jumpTo")}</p>
         <div className="flex items-center gap-2">
           <input
             className="input input-sm"
@@ -1351,7 +1351,7 @@ export function Reader({
           <span className="text-xs muted shrink-0">/ {pageCount}</span>
         </div>
 
-        <p className="text-[12px] font-bold uppercase tracking-wider muted mt-2">{t("reader.bookmarks")}</p>
+        <p className="group-label mt-2">{t("reader.bookmarks")}</p>
         {session.info?.outline?.length ? (
           <div className="flex flex-col gap-0.5 max-h-[260px] overflow-y-auto">
             {session.info.outline.map((entry, index) => (
@@ -1375,7 +1375,7 @@ export function Reader({
           <p className="text-xs muted">{t("reader.noBookmarks")}</p>
         )}
 
-        <p className="text-[12px] font-bold uppercase tracking-wider muted mt-2">{t("reader.search")}</p>
+        <p className="group-label mt-2">{t("reader.search")}</p>
         {searchResult ? (
           searchResult.matches.length ? (
             <div className="flex flex-col gap-1.5">

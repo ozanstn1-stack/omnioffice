@@ -68,12 +68,15 @@ export function RecentTable({
   entries,
   language,
   limit = 7,
+  filters = true,
   onOpen,
   onShare,
 }: {
   entries: RecentEntry[];
   language: string;
   limit?: number;
+  /** Kind chips; off where the caller already shows one kind. */
+  filters?: boolean;
   onOpen: (entry: RecentEntry) => void;
   onShare: (entry: RecentEntry) => void;
 }) {
@@ -83,19 +86,21 @@ export function RecentTable({
 
   return (
     <div className="recent-table">
-      <div className="recent-filters" role="group" aria-label={t("recent.filterLabel")}>
-        {FILTERS.map((item) => (
-          <button
-            key={item.kind}
-            type="button"
-            className="chip"
-            aria-pressed={filter === item.kind}
-            onClick={() => setFilter(item.kind)}
-          >
-            {t(item.labelKey)}
-          </button>
-        ))}
-      </div>
+      {filters ? (
+        <div className="recent-filters" role="group" aria-label={t("recent.filterLabel")}>
+          {FILTERS.map((item) => (
+            <button
+              key={item.kind}
+              type="button"
+              className="chip"
+              aria-pressed={filter === item.kind}
+              onClick={() => setFilter(item.kind)}
+            >
+              {t(item.labelKey)}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {shown.length === 0 ? (
         <EmptyState
           icon={<FileImage size={22} />}

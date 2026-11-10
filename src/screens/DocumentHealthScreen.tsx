@@ -256,7 +256,7 @@ export function DocumentHealthScreen({
 
               <div className="flex items-center gap-3">
                 <div className="text-right">
-                  <div className="text-xs muted uppercase font-bold tracking-wider">{t("health.findings")}</div>
+                  <div className="group-label">{t("health.findings")}</div>
                   <div className="text-sm font-semibold">
                     <span className="text-red-500">{t("health.criticalCount", { count: report.criticalCount })}</span> ·{" "}
                     <span className="text-amber-500">{t("health.warningCount", { count: report.warningCount })}</span>

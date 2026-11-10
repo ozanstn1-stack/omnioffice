@@ -609,7 +609,7 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
               <Card className="p-4 flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-[13px] font-bold uppercase tracking-wider muted">{t("organize.outline")}</h3>
+                    <h3 className="section-label">{t("organize.outline")}</h3>
                     <p className="text-xs muted mt-1">{t("organize.outlineHint")}</p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -632,7 +632,7 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
                   <p className="text-xs muted">{t("organize.outlineNone")}</p>
                 ) : (
                   <div className="flex flex-col gap-1.5">
-                    <div className="organize-outline-row text-[11px] uppercase tracking-wider muted">
+                    <div className="organize-outline-row group-label">
                       <span>{t("organize.outlineTitle")}</span>
                       <span>{t("organize.outlinePage")}</span>
                       <span>{t("organize.outlineDepth")}</span>

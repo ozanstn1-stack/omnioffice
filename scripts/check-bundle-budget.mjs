@@ -92,7 +92,11 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 526 in 7.32 (Tools hub): the shared tool catalogue chunk
 // (lib/tool-cards.tsx, ~2.3 KB gzip) gives fourteen more screens a card and
 // the hub its tiles; the entry chunk is unchanged.
-const TOTAL_BUDGET_KB = 526;
+// Raised to 530 in 7.32.1 (office launchers out of App.tsx): the launcher is
+// now a lazy screen, so useOfficeSession, save-destination, share and the
+// recent table left the entry chunk (61.7 -> 58.1 KB) for small shared
+// chunks; their per-chunk gzip overhead adds ~3.9 KB to the total.
+const TOTAL_BUDGET_KB = 530;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

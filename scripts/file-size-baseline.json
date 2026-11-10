@@ -246,7 +246,7 @@
     "src-tauri/src/wire_contract.rs": 285,
     "src-tauri/src/worker.rs": 288,
     "src-tauri/src/worker/containment.rs": 222,
-    "src/App.tsx": 1095,
+    "src/App.tsx": 1009,
     "src/components/ai-settings.tsx": 578,
     "src/components/command-palette.tsx": 308,
     "src/components/compatibility.tsx": 347,

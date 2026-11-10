@@ -17,7 +17,6 @@ import {
   Landmark,
   CalendarClock,
   FolderCheck,
-  FolderOpen,
   FileSpreadsheet,
   FileText,
   Presentation,
@@ -83,6 +82,9 @@ const DesktopSidebar = React.lazy(() =>
   import("./components/sidebar").then((module) => ({ default: module.DesktopSidebar })),
 );
 const DrawerNav = React.lazy(() => import("./components/sidebar").then((module) => ({ default: module.DrawerNav })));
+const OfficeLauncher = React.lazy(() =>
+  import("./screens/OfficeLauncher").then((module) => ({ default: module.OfficeLauncher })),
+);
 const BottomNav = React.lazy(() => import("./components/bottom-nav").then((module) => ({ default: module.BottomNav })));
 const PresendDialog = React.lazy(() =>
   import("./components/presend-dialog").then((module) => ({ default: module.PresendDialog })),
@@ -170,7 +172,6 @@ import { usePresend } from "./lib/presend-gate";
 import { DataLossDialogHost } from "./components/data-loss-dialog";
 import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
-import { Screen } from "./components/layout";
 import { BrandMark } from "./components/brand";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
@@ -181,7 +182,6 @@ import {
   recordScreenVisit,
   type NavigationSnapshot,
 } from "./lib/nav-history";
-import { openIntoWorkspace } from "./office/useOfficeSession";
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
 import { routeForPath } from "./lib/open-route";
 import { useAndroidPendingOpen } from "./lib/android-open-with";
@@ -747,9 +747,15 @@ export default function App() {
       settings: <Settings />,
       info: <InfoScreen initialFiles={files} />,
       office: <OfficeWorkspace />,
-      documents: <OfficeLauncher kind="writer" onOpen={() => navigate("office")} />,
-      spreadsheets: <OfficeLauncher kind="calc" onOpen={() => navigate("office")} />,
-      presentations: <OfficeLauncher kind="impress" onOpen={() => navigate("office")} />,
+      documents: (
+        <OfficeLauncher kind="writer" onOpen={() => navigate("office")} onTemplates={() => navigate("templates")} />
+      ),
+      spreadsheets: (
+        <OfficeLauncher kind="calc" onOpen={() => navigate("office")} onTemplates={() => navigate("templates")} />
+      ),
+      presentations: (
+        <OfficeLauncher kind="impress" onOpen={() => navigate("office")} onTemplates={() => navigate("templates")} />
+      ),
       notes: <NotesScreen />,
       templates: <TemplatesScreen onOpen={() => navigate("office")} />,
       converter: <ConverterScreen />,
@@ -999,97 +1005,5 @@ export default function App() {
         onNavigate={(next) => setScreen(next as ScreenId)}
       />
     </div>
-  );
-}
-
-interface OfficeLauncherProps {
-  kind: "writer" | "calc" | "impress";
-  onOpen: () => void;
-}
-
-const OFFICE_EXTENSIONS: Record<OfficeLauncherProps["kind"], string[]> = {
-  // UYAP `.udf` is experimental and only listed with the flag on.
-  writer: ["docx", "odt", "rtf", "txt", "md", ...(flagEnabled("experimentalUdf") ? ["udf"] : [])],
-  calc: ["xlsx", "xls", "ods", "csv", "tsv"],
-  impress: ["pptx", "odp"],
-};
-
-function OfficeLauncher({ kind, onOpen }: OfficeLauncherProps) {
-  const t = useT();
-  const recent = useRecent((state) => state.entries);
-  const refreshRecent = useRecent((state) => state.refresh);
-
-  useEffect(() => {
-    void refreshRecent();
-  }, [refreshRecent]);
-
-  const openPath = async (path: string) => {
-    // The shared opener also handles legacy imports, the conflict fingerprint
-    // and the recent list, which a direct openDocument call skipped.
-    const result = await openOfficePath(path);
-    if (result.ok) {
-      onOpen();
-    } else {
-      useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: result.error });
-    }
-  };
-
-  const related = recent.filter((entry) =>
-    OFFICE_EXTENSIONS[kind].includes((entry.fileName.split(".").pop() ?? "").toLowerCase()),
-  );
-
-  return (
-    <Screen
-      title={t(kind === "writer" ? "nav.documents" : kind === "calc" ? "nav.spreadsheets" : "nav.presentations")}
-      subtitle={t("office.noTabsHint")}
-      actions={
-        <>
-          <button
-            type="button"
-            className="btn btn-soft"
-            onClick={async () => {
-              const opened = await openIntoWorkspace();
-              if (opened) onOpen();
-            }}
-          >
-            <FolderOpen size={16} /> {t("common.open")}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => {
-              useOfficeTabs.getState().create(kind);
-              onOpen();
-            }}
-          >
-            <FilePlus2 size={16} />{" "}
-            {t(
-              kind === "writer"
-                ? "office.newDocument"
-                : kind === "calc"
-                  ? "office.newSpreadsheet"
-                  : "office.newPresentation",
-            )}
-          </button>
-        </>
-      }
-    >
-      <div className="card p-4">
-        <h3>{t("home.recent")}</h3>
-        {related.length === 0 ? <p className="muted">{t("converter.noFiles")}</p> : null}
-        <div className="stack">
-          {related.map((entry) => (
-            <button
-              key={entry.token}
-              type="button"
-              className="row recent-row"
-              onClick={() => void openPath(entry.token)}
-            >
-              <span className="grow">{entry.fileName}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </Screen>
   );
 }
