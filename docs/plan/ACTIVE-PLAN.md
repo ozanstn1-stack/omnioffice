@@ -536,3 +536,15 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: `release-guard` 7.30.4 (7030004) OK; `claims:check` **450 iddia / 620 işaret**; fastlane OK.
 - **Sıradaki**: PR → CI → merge → tag → Release + Android → 20 asset; sessiz saat 01:00'den önce
   bitmezse yayın 04:00 sonrasına kalır.
+
+## PR 23: radyo grubu `/Opt` adıyla doldurulabiliyor (Opus `308f37ca` kalan vakalar) — 2026-11-10 04:20 UTC
+- Prob `crates/pdfcore/tests/radio_opt_probe.rs` 3 vaka; **1 kırmızı**: `/Opt [(Elma)(Armut)]`
+  varken "Armut" ile doldurmak `InvalidInput` veriyordu (durumlar `/0 /1`). Diğer ikisi (değer sahada,
+  `/AS` her çocukta; temizleme hepsini Off yapar) zaten doğruydu.
+- **Düzeltme** `forms.rs::fill_radio`: yazdırılan ad, grubun kendi `radio_options` listesinden duruma
+  çözülüyor (12.7.4.2.4, Tablo 227). `forms.rs` 2756 → **2761** (+5; bu dilimde tek bütçe artışı,
+  `--allow-raise` ile belgelendi — alternatifi tek bir arama için ikinci modül açmaktı).
+- Kapsam: radyo `/Opt` + çocuk `/AS`; Opus `308f37ca`'nın kalan iki vakası böylece kapandı.
+- Kapılar: prob 3/3, button_state 4/4, forms_test 14/14, lib testleri yeşil (ortam kaynaklı 3 kırmızı
+  değişmedi), clippy temiz, `files` OK, `claims` 450/620, `docs:stats` güncel.
+- **Sürüm**: **v7.30.5** (yama).
