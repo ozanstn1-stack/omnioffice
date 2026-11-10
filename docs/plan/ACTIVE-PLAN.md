@@ -548,3 +548,15 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - Kapılar: prob 3/3, button_state 4/4, forms_test 14/14, lib testleri yeşil (ortam kaynaklı 3 kırmızı
   değişmedi), clippy temiz, `files` OK, `claims` 450/620, `docs:stats` güncel.
 - **Sürüm**: **v7.30.5** (yama).
+
+## #710 birleşti (`7bd9d50`) · v7.30.5 sürüm PR'ı — 2026-11-10 04:45 UTC
+- **#710**: radyo grubu `/Opt` yazdırılan adıyla doldurulabiliyor; prob 3/3.
+- **v7.30.5**: sürüm 7.30.5, **versionCode 7030005**, CHANGELOG, README, RELEASE_READINESS, fastlane
+  7030005 (en-US + tr-TR), `cargo update --offline`, `files:update`, `docs:stats`.
+- **Belge kayması düzeltildi**: `RELEASE_READINESS.md` başlığı v7.30.1–7.30.4 trenlerinde
+  güncellenmemiş (7.30.0'da kalmış) ve bir "(unreleased)" bölümü v7.29.0'dan beri öyle duruyordu;
+  ikisi de bu PR'da düzeltildi. **Ders**: sürüm trenlerinde başlığı `assert` yerine `grep`+değiştir,
+  yoksa yarım kalan script onu sessizce atlar.
+- Kapılar: `release-guard` 7.30.5 (7030005) OK; `claims:check` **456 iddia / 627 işaret**; fastlane OK.
+- **Sıradaki**: PR → CI. **Sessiz saat 06:00–10:00 UTC**: 05:50'den sonra push/merge yok; PR CI'da
+  kalacak, 10:00'daki hatırlatmayla merge → tag → Release + Android → 20 asset.

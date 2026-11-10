@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.30.5] - 2026-11-10
+
+### Fixed
+
+- **A radio group can be filled by the name it shows:** `/Opt` gives a group the option
+  names a form displays while the appearance states keep their own names (ISO 32000-1
+  12.7.4.2.4, Table 227) - the states are `/0` and `/1`, the labels *Elma* and *Armut*.
+  Filling by the label was refused as an unknown state, so a form that reads correctly on
+  screen could not be filled by what it says. The label is resolved through the group's own
+  option list before the state is written.
+
+
 ## [7.30.4] - 2026-11-09
 
 ### Fixed
