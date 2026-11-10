@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.34.0] - 2026-11-10
+
+### Fixed
+
+- **Calc undo and redo ran inside a React state updater:** the hook applied the previous
+  workbook and pushed the redo entry from within `setUndoStack`'s updater, which React may
+  call twice (it always does under StrictMode, in development builds). One undo could then
+  be applied twice and leave two redo entries. Calc and Impress now share one snapshot
+  history whose updaters are pure; Writer keeps its own operation-based history.
+
+### Changed
+
+- **App shell split (internal):** the lazily loaded screens live in one registry, the
+  navigation icons are a module constant instead of an object rebuilt on every render,
+  and the overlays both shells repeated render from one host. `App.tsx` went from 1009
+  to 789 lines; no behaviour change.
+
 ## [7.33.1] - 2026-11-10
 
 ### Added

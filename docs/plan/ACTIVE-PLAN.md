@@ -610,3 +610,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   (`import * as Screens`), `NAV_ICONS` modül sabiti `lib/nav-icons.tsx` (her çizimde yeniden
   kurulmuyor), telefon/masaüstü dallarında tekrar eden katmanlar `components/global-overlays.tsx`.
   Davranış değişmedi; giriş paketi 58.3 → 58.5 KB. v7.34.0 treni 3.2 (`useHistory`) ile kapanır.
+
+## v7.34.0 sürüm PR'ı — 3.2 ortak anlık-görüntü geçmişi — 2026-11-10
+- #723 birleşti (`034d59c`, 3.1 ekran kaydı). 3.2: `office/useSnapshotHistory.ts`; Calc
+  `useCalcUndoRedo` sarmalayıcı oldu (güncelleyici içinde `apply` + iç içe `setRedoStack` →
+  StrictMode'da 2 uygulama; sonda yazılan prob testiyle doğrulandı), Impress kancaya geçti.
+  Writer'ın işlem tabanlı geçmişine dokunulmadı. v7.34.0 = 3.1 + 3.2.
