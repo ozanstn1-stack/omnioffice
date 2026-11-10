@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.33.1
+# Release Readiness — OmniOffice 7.34.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,15 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.34.0) - Ortak geri alma geçmişi ve uygulama kabuğu
+
+- **One undo or redo is applied exactly once, also under StrictMode:**
+  `test:src/office/useSnapshotHistory.test.tsx#applies one undo and one redo exactly once under StrictMode`
+- **The shared history walks back and forth and clears redo on a new edit:**
+  `test:src/office/useSnapshotHistory.test.tsx#walks back and forth and clears redo on a new edit`
+- **The history is bounded:**
+  `test:src/office/useSnapshotHistory.test.tsx#keeps at most the limit plus one snapshots and ignores an empty stack`
 
 ## Implemented (this cycle, 7.33.1) - Vurgu rengi ve tema kontrastı
 

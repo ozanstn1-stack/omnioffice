@@ -1,0 +1,1 @@
+7.34.0: Calc'ta geri al ve yinele, React'in durum güncelleyicisinin içinde çalışıyordu; React bu güncelleyiciyi iki kez çağırabildiği için tek bir geri alma iki kez uygulanabiliyor ve yineleme listesine iki kayıt düşebiliyordu. Calc ve Impress artık güvenli, ortak bir geri alma geçmişi kullanıyor. Ayrıca uygulama kabuğu sadeleştirildi (davranış değişmedi).

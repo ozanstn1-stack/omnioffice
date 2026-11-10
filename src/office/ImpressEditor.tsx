@@ -135,6 +135,7 @@ import {
 import { withFrameAlign, withFrameSize } from "./impress/textFrame";
 import type { TextEditHandle, TextSelectionInfo } from "./impress/TextFrameEditor";
 import { Ribbon, RibbonGroup, ToolButton, ToolColor, ToolNumber, ToolSelect } from "./office-ui";
+import { useSnapshotHistory } from "./useSnapshotHistory";
 import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 import { documentLocationLabel } from "./location-label";
 
@@ -427,8 +428,6 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
   const [connectorStart, setConnectorStart] = useState<string | null>(null);
   const [cropPath, setCropPath] = useState<SelectionPath | null>(null);
   const [cropDraft, setCropDraft] = useState<ImageCrop | null>(null);
-  const [undoStack, setUndoStack] = useState<Deck[]>([]);
-  const [redoStack, setRedoStack] = useState<Deck[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(0);
   const textHandleRef = useRef<TextEditHandle | null>(null);
@@ -501,15 +500,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     [canvasWidth, deck.size.widthPt],
   );
 
+  const history = useSnapshotHistory<Deck>(deck, (previous) => edit(tab.id, () => previous));
+  const { record: recordHistory } = history;
   const update = useCallback(
     (mutate: (deck: Deck) => Deck, recordUndo = true) => {
-      if (recordUndo) {
-        setUndoStack((stack) => [...stack.slice(-40), deck]);
-        setRedoStack([]);
-      }
+      if (recordUndo) recordHistory();
       edit(tab.id, (model) => mutate(model as Deck));
     },
-    [deck, edit, tab.id],
+    [recordHistory, edit, tab.id],
   );
 
   const updateSlide = useCallback(
@@ -1198,24 +1196,8 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
     window.addEventListener("pointercancel", onUp);
   };
 
-  // The updaters stay pure: the stack is read before the update and `edit` is
-  // a plain event-handler side effect, so StrictMode does not run the
-  // transition (and the deck edit) twice.
-  const undo = () => {
-    const previous = undoStack[undoStack.length - 1];
-    if (!previous) return;
-    setUndoStack((stack) => stack.slice(0, -1));
-    setRedoStack((redos) => [...redos, deck]);
-    edit(tab.id, () => previous);
-  };
-
-  const redo = () => {
-    const next = redoStack[redoStack.length - 1];
-    if (!next) return;
-    setRedoStack((stack) => stack.slice(0, -1));
-    setUndoStack((undos) => [...undos, deck]);
-    edit(tab.id, () => next);
-  };
+  // Pure updaters live in the shared hook (office/useSnapshotHistory.ts).
+  const { undo, redo } = history;
 
   // -------------------------------------------------------------------------
   // Animations + slideshow
@@ -1761,13 +1743,13 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               <ToolButton
                 icon={<Undo2 size={16} />}
                 onClick={undo}
-                disabled={undoStack.length === 0}
+                disabled={!history.canUndo}
                 title={t("common.undo")}
               />
               <ToolButton
                 icon={<Redo2 size={16} />}
                 onClick={redo}
-                disabled={redoStack.length === 0}
+                disabled={!history.canRedo}
                 title={t("common.redo")}
               />
               <ToolButton
