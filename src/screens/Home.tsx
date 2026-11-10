@@ -43,7 +43,7 @@ import {
 import { Button, Card, EmptyState, IconButton } from "../components/ui";
 import { DropZone } from "../components/files";
 import { Screen } from "../components/layout";
-import { BrandMark } from "../components/brand";
+import { CreateRow, greetingKey, todayLabel } from "../components/create-row";
 import { UpdateBanner } from "../components/update-banner";
 import { WelcomeCard } from "../components/welcome-card";
 import { ProfessionDesk, ProfessionPicker } from "../components/profession-desk";
@@ -350,15 +350,7 @@ export function Home({
     : "";
 
   return (
-    <Screen
-      title={
-        <span className="flex items-center gap-2.5">
-          <BrandMark size={30} className="shrink-0" />
-          <span className="brand-gradient">{t("app.name")}</span>
-        </span>
-      }
-      subtitle={t("app.tagline")}
-    >
+    <Screen title={t(greetingKey(new Date().getHours()))} subtitle={todayLabel(settings.language)}>
       <UpdateBanner />
       {asking ? <ProfessionPicker onChoose={chooseProfession} /> : null}
       {profession !== "" ? <WelcomeCard onNavigate={onNavigate} /> : null}
@@ -370,6 +362,7 @@ export function Home({
           onChange={() => setChoosing(true)}
         />
       ) : null}
+      <CreateRow onNavigate={onNavigate} />
       <DropZone
         onPaths={(paths) => {
           onDropFiles(paths);

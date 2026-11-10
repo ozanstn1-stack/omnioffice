@@ -3259,5 +3259,22 @@
   "impress.emptyImage": "Double-click to add an image",
   "settings.autosaveSecondsShort": "{seconds} s",
   "settings.autosaveMinutes": "{minutes} min",
-  "studio.fieldYesOff": "Yes / Off"
+  "studio.fieldYesOff": "Yes / Off",
+  "nav.new": "New",
+  "nav.search": "Search…",
+  "nav.scanConvert": "Scan & convert",
+  "nav.system": "System",
+  "nav.collapse": "Collapse",
+  "nav.expand": "Expand",
+  "nav.assistant": "Assistant",
+  "home.newDocument": "Blank document",
+  "home.newSpreadsheet": "Blank spreadsheet",
+  "home.newPresentation": "Blank presentation",
+  "home.fromTemplate": "From a template",
+  "home.templateHint": "Petition, invoice, report…",
+  "home.greetMorning": "Good morning",
+  "home.greetDay": "Good afternoon",
+  "home.greetEvening": "Good evening",
+  "home.create": "Create",
+  "nav.officeHub": "Documents & forms"
 }

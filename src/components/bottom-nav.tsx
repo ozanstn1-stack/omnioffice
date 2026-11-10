@@ -1,5 +1,5 @@
 import { useKeyboardOpen } from "../lib/viewport";
-import { BookOpen, Home, LayoutGrid, Menu, ScanLine } from "lucide-react";
+import { Home, LayoutGrid, Menu, ScanLine, Sparkles } from "lucide-react";
 import { useT } from "../lib/i18n";
 import type { Navigate, ScreenId } from "../lib/nav";
 
@@ -7,20 +7,21 @@ import type { Navigate, ScreenId } from "../lib/nav";
  * Phone navigation within thumb reach (C11): the four places people go most
  * and "More", which opens the full drawer. Each tab also lights up for the
  * screens that belong to it (Documents, Spreadsheets and Presentations are
- * Office).
+ * Office). Since 7.31 the fourth tab is the assistant; the reader opens from a
+ * file (Home, recents, "Open with") and stays one tap away in the drawer.
  */
 export const BOTTOM_TABS: readonly { id: ScreenId; labelKey: string; also: readonly ScreenId[] }[] = [
   { id: "home", labelKey: "nav.home", also: [] },
   { id: "office", labelKey: "nav.office", also: ["documents", "spreadsheets", "presentations", "templates"] },
-  { id: "reader", labelKey: "nav.reader", also: [] },
-  { id: "scanner", labelKey: "nav.scanner", also: ["imagesToPdf"] },
+  { id: "scanner", labelKey: "nav.scanner", also: ["imagesToPdf", "ocr"] },
+  { id: "ai", labelKey: "nav.assistant", also: ["aiPacks", "aiLibrary"] },
 ];
 
 const ICONS: Record<string, React.ReactNode> = {
   home: <Home size={20} />,
   office: <LayoutGrid size={20} />,
-  reader: <BookOpen size={20} />,
   scanner: <ScanLine size={20} />,
+  ai: <Sparkles size={20} />,
 };
 
 /**
@@ -56,13 +57,15 @@ export function BottomNav({
             aria-current={active ? "page" : undefined}
             onClick={() => onNavigate(tab.id)}
           >
-            <span aria-hidden>{ICONS[tab.id]}</span>
+            <span className="bottom-nav-icon" aria-hidden>
+              {ICONS[tab.id]}
+            </span>
             <span className="bottom-nav-label">{t(tab.labelKey)}</span>
           </button>
         );
       })}
       <button type="button" className="bottom-nav-item" onClick={onMore}>
-        <span aria-hidden>
+        <span className="bottom-nav-icon" aria-hidden>
           <Menu size={20} />
         </span>
         <span className="bottom-nav-label">{t("nav.more")}</span>

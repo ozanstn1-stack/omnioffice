@@ -86,7 +86,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // chunk is unchanged.
 // Raised to 520 in 6.11 (#341 C14): the LAN sync card and its plan list run
 // on the Sync screen; the crypto and transport live in Rust.
-const TOTAL_BUDGET_KB = 520;
+// Raised to 524 in 7.31 (new interface): the hub sidebar, the New menu and
+// the Home create row add about 3 KB gzip; the sidebar is its own lazy chunk,
+// so the entry chunk stays inside its budget.
+const TOTAL_BUDGET_KB = 524;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
