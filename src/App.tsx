@@ -50,6 +50,7 @@ import {
   Scissors,
   ShieldCheck,
   Settings as SettingsIcon,
+  Shapes,
   Stamp,
   Sun,
   Type,
@@ -157,6 +158,7 @@ const KvkkWizardScreen = React.lazy(() =>
 const DocumentHealthScreen = React.lazy(() =>
   import("./screens/DocumentHealthScreen").then((module) => ({ default: module.DocumentHealthScreen })),
 );
+const ToolsScreen = React.lazy(() => import("./screens/Tools").then((module) => ({ default: module.ToolsScreen })));
 const VerifyScreen = React.lazy(() => import("./screens/Verify").then((module) => ({ default: module.VerifyScreen })));
 import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
@@ -774,6 +776,7 @@ export default function App() {
       kvkk: <KvkkWizardScreen onNavigate={navigate} />,
       documentHealth: <DocumentHealthScreen onNavigate={navigate} />,
       verify: <VerifyScreen initialFiles={files} dragging={dragging} />,
+      tools: <ToolsScreen onNavigate={navigate} />,
     }),
     [aiPack, convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
@@ -783,6 +786,7 @@ export default function App() {
     home: <Home size={16} />,
     office: <LayoutGrid size={16} />,
     reader: <BookOpen size={16} />,
+    tools: <Shapes size={16} />,
     documents: <FileText size={16} />,
     spreadsheets: <FileSpreadsheet size={16} />,
     presentations: <Presentation size={16} />,

@@ -569,3 +569,13 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - `App.tsx` kenar çubuğunu bileşene taşıyarak küçüldü (1155 → ~1090); `Home.tsx` 607 → 600.
 - **v7.31.0**: sürüm 7.31.0, **versionCode 7031000**, CHANGELOG, README, RELEASE_READINESS, fastlane
   7031000 (en-US + tr-TR).
+
+## v7.32.0 sürüm PR'ı — son dosyalar tablosu + Araçlar merkezi — 2026-11-10
+- **1.1** (#713): ana sayfada süzülebilir son dosyalar tablosu (`components/recent-table.tsx`),
+  kompakt bırakma alanı, çalışan iş kartı (`components/jobs-glance.tsx`).
+- **1.2**: `tools` rotası ve `screens/Tools.tsx`; kart kataloğu `lib/tool-cards.tsx`'e taşındı
+  (Home.tsx 561 → 361), 14 eksik ekran karta kavuştu ve bir test her ekranın kartı olmasını
+  koruyor. Telefon alt çubuğu: Ana sayfa / Ofis / Araçlar / Asistan / Diğer.
+- **v7.32.0**: sürüm 7.32.0, **versionCode 7032000**, CHANGELOG, README, RELEASE_READINESS,
+  fastlane 7032000 (en-US + tr-TR).
+- Sahibin kalıcı onayı ("hep onaylıyorum"): plan PR'ları CI yeşil + temizken squash ile birleşir.

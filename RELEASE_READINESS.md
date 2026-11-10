@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.31.0
+# Release Readiness — OmniOffice 7.32.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -65,7 +65,18 @@ release-train schedule is decided.
   Android assets verified in the release checklist.
   (no test: decision record.)
 
-## Implemented (unreleased) - Ana sayfa: son dosyalar tablosu
+## Implemented (this cycle, 7.32.0) - Ana sayfa: son dosyalar ve Araçlar merkezi
+
+- **The Tools hub shows every enabled tool once and opens the one tapped; the scanner
+  leads the PDF group:**
+  `test:src/screens/Tools.test.tsx#shows every enabled tool once, grouped, and opens the one tapped`
+- **Every screen it promises has a tile:**
+  `test:src/screens/Tools.test.tsx#has a tile for every screen it promises`
+- **Group chips and search narrow the hub:**
+  `test:src/screens/Tools.test.tsx#narrows by group chip and by search, and says when nothing matches`
+- **The phone tab bar offers Tools, lit for every tool screen:**
+  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Tools, Assistant and More within thumb reach`
+  `test:src/components/bottom-nav.test.tsx#lights the tools tab for every tool screen, the scanner included`
 
 - **Recent files are filtered by kind and open from the whole row:**
   `test:src/components/recent-table.test.tsx#filters by kind and opens or shares the chosen row`
@@ -76,7 +87,7 @@ release-train schedule is decided.
 - **The running background job shows on Home and opens Jobs:**
   `test:src/components/recent-table.test.tsx#shows the first running job with its progress and opens Jobs`
 
-## Implemented (this cycle, 7.31.0) - Yeni arayüz (Windows ve Android)
+## Implemented (7.31.0) - Yeni arayüz (Windows ve Android)
 
 - **The sidebar folds the routes into hubs, scan, images and OCR together:**
   `test:src/components/sidebar.test.tsx#folds the routes into a few hubs, with scan, images and OCR together`
@@ -92,7 +103,7 @@ release-train schedule is decided.
 - **Home greets by the hour, in the interface language:**
   `test:src/components/sidebar.test.tsx#greets by the hour and dates in the interface language`
 - **The phone tab bar offers the assistant:**
-  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Scan, Assistant and More within thumb reach`
+  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Tools, Assistant and More within thumb reach`
   `test:src/components/bottom-nav.test.tsx#lights the assistant tab for the task packs and the library`
 
 ## Implemented (7.30.5) - Radyo grubu yazdırılan adla da doldurulabiliyor
@@ -2439,7 +2450,7 @@ screen lock was not touched.
 
 - **Phone bottom bar** with the current section marked and hidden while the
   keyboard is open (C11, #341).
-  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Scan, Assistant and More within thumb reach`
+  `test:src/components/bottom-nav.test.tsx#offers Home, Office, Tools, Assistant and More within thumb reach`
   `test:src/components/bottom-nav.test.tsx#marks the tab a screen belongs to as the current page`
   `test:src/components/bottom-nav.test.tsx#steps aside while the on-screen keyboard is up`
 - **Touch targets and no zoom on focus** (#341).

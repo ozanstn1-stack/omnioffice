@@ -70,6 +70,7 @@ export const SCREEN_IDS = [
   "documentHealth",
   "verify",
   "aiPacks",
+  "tools",
 ] as const;
 
 export type ScreenId = (typeof SCREEN_IDS)[number];
@@ -121,6 +122,7 @@ export const ROUTES: readonly RouteDef[] = [
   route("home", "top"),
   route("office", "top"),
   route("reader", "top"),
+  route("tools", "top"),
   route("documents", "office"),
   route("spreadsheets", "office"),
   route("presentations", "office"),
