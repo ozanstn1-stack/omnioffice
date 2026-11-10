@@ -1,7 +1,7 @@
 {
   "version": 5,
   "files": {
-    "App.tsx": 2,
+    "App.tsx": 1,
     "components/ai-settings.tsx": 1,
     "components/files.tsx": 1,
     "components/pages.tsx": 1,
@@ -33,7 +33,6 @@
   "attributes": {
     "components/ai-settings.tsx": 2,
     "office/calc/ui/CalcRibbon.tsx": 2,
-    "office/ImpressEditor.tsx": 1,
     "screens/Ai.tsx": 3,
     "screens/PageTools.tsx": 1,
     "screens/PdfStudio.tsx": 1,

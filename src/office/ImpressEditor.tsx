@@ -19,10 +19,8 @@ import {
   Bold,
   Braces,
   Circle,
-  CircleDot,
   Copy,
   Crop,
-  Eraser,
   FileDown,
   FolderOpen,
   Grid2X2,
@@ -36,12 +34,8 @@ import {
   Link2,
   List,
   Minus,
-  MonitorPlay,
   Move,
-  PenLine,
-  Play,
   Plus,
-  Pointer,
   Printer,
   Redo2,
   Rows3,
@@ -73,7 +67,6 @@ import {
   animationTimeline,
   cloneObject,
   cloneObjects,
-  formatClock,
   groupSelection,
   inheritedObjects,
   isInheritedId,
@@ -123,6 +116,8 @@ import { clampCrop, isFullCrop } from "./impress/crop-preview";
 import { AnimationDialog, ChartDialog, FooterDialog, MasterDialog } from "./impress/dialogs";
 import { ImpressAiDialog } from "./impress/ImpressAiDialog";
 import { INHERITED_KEYS, type Theme } from "./impress/shared";
+import { PresenterPanel, SlideshowNav } from "./impress/SlideshowChrome";
+import { AnimationsTab, TransitionsTab, ViewTab } from "./impress/ImpressRibbonTabs";
 import { simplifyStroke, strokeHit, strokePath, type StrokePoint } from "./impress/show-drawing";
 import {
   CropHandles,
@@ -1619,108 +1614,34 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
   const presenterPanel =
     presenterView && showSlide ? (
-      <aside
-        className="presenter-panel"
-        style={{
-          width: 320,
-          minWidth: 320,
-          maxHeight: "100%",
-          overflow: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-          padding: 12,
-          borderRadius: 10,
-          background: "rgba(15, 23, 42, 0.94)",
-          color: "#E2E8F0",
-        }}
-      >
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <strong>{t("impress.presenterView")}</strong>
-          <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatClock(elapsedMs)}</span>
-        </div>
-        <div>
-          <h4>{t("impress.currentSlide")}</h4>
-          <SlidePreview deck={deck} slide={showSlide} theme={theme} width={280} objectStyle={showObjectStyle} />
-        </div>
-        {nextSlide ? (
-          <div>
-            <h4>{t("impress.nextSlide")}</h4>
-            <SlidePreview deck={deck} slide={nextSlide} theme={theme} width={280} />
-          </div>
-        ) : null}
-        <div>
-          <h4>{t("impress.notes")}</h4>
-          <div style={{ whiteSpace: "pre-wrap", fontSize: 12, opacity: 0.9 }}>{showSlide.notes || "—"}</div>
-        </div>
-        <div className="row">
-          <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
-            ‹ {t("impress.previous")}
-          </button>
-          <button type="button" className="btn btn-soft" onClick={advanceShow}>
-            {t("impress.next")} ›
-          </button>
-        </div>
-      </aside>
+      <PresenterPanel
+        deck={deck}
+        slide={showSlide}
+        nextSlide={nextSlide}
+        theme={theme}
+        objectStyle={showObjectStyle}
+        elapsedMs={elapsedMs}
+        onPrevious={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}
+        onNext={advanceShow}
+      />
     ) : null;
 
   const slideshowNav = (
-    <div
-      className="slideshow-nav"
-      role="presentation"
-      onClick={(event) => event.stopPropagation()}
-      style={presenterView ? { position: "static" } : undefined}
-    >
-      <button type="button" className="btn btn-soft" onClick={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}>
-        ‹
-      </button>
-      <span>
-        {(slideshow ?? 0) + 1} / {deck.slides.length}
-      </span>
-      <button type="button" className="btn btn-soft" onClick={advanceShow}>
-        ›
-      </button>
-      <button type="button" className="btn btn-soft" onClick={() => setPresenterView((value) => !value)}>
-        {t("impress.presenterView")}
-      </button>
-      <div className="slideshow-tools" role="toolbar" aria-label={t("impress.showTools")}>
-        <ToolButton
-          icon={<Pointer size={14} />}
-          title={t("impress.pointer")}
-          active={showTool === "pointer"}
-          onClick={() => setShowTool("pointer")}
-        />
-        <ToolButton
-          icon={<CircleDot size={14} />}
-          title={t("impress.laserPointer")}
-          active={showTool === "laser"}
-          onClick={() => setShowTool("laser")}
-        />
-        <ToolButton
-          icon={<PenLine size={14} />}
-          title={t("impress.pen")}
-          active={showTool === "pen"}
-          onClick={() => setShowTool("pen")}
-        />
-        <ToolButton
-          icon={<Eraser size={14} />}
-          title={t("impress.eraser")}
-          active={showTool === "eraser"}
-          onClick={() => setShowTool("eraser")}
-        />
-        <ToolButton icon={<Trash2 size={14} />} title={t("impress.clearInk")} onClick={() => setStrokes([])} />
-      </div>
-      <button
-        type="button"
-        className="btn btn-soft"
-        onClick={() => {
-          setSlideshow(null);
-          setPresenterView(false);
-        }}
-      >
-        {t("common.close")}
-      </button>
-    </div>
+    <SlideshowNav
+      index={slideshow ?? 0}
+      count={deck.slides.length}
+      presenter={presenterView}
+      tool={showTool}
+      onTool={setShowTool}
+      onPrevious={() => goToSlide(Math.max(0, (slideshow ?? 0) - 1))}
+      onNext={advanceShow}
+      onTogglePresenter={() => setPresenterView((value) => !value)}
+      onClearInk={() => setStrokes([])}
+      onClose={() => {
+        setSlideshow(null);
+        setPresenterView(false);
+      }}
+    />
   );
 
   return (
@@ -1934,93 +1855,19 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
           </>
         ) : null}
 
-        {ribbon === "transitions" ? (
-          <RibbonGroup label={t("impress.transition")}>
-            <ToolSelect
-              value={slide.transition ?? "none"}
-              onChange={(transition) =>
-                updateSlide((current) => ({ ...current, transition: transition === "none" ? null : transition }))
-              }
-              options={[
-                { value: "none", label: t("impress.transitionNone") },
-                { value: "fade", label: t("impress.transitionFade") },
-                { value: "slide", label: t("impress.transitionSlide") },
-                { value: "push", label: t("impress.transitionPush") },
-                { value: "wipe", label: t("impress.transitionWipe") },
-              ]}
-              width={130}
-            />
-            <ToolNumber
-              value={slide.transitionMs}
-              onChange={(transitionMs) => updateSlide((current) => ({ ...current, transitionMs }))}
-              min={100}
-              max={3000}
-              step={100}
-              title="ms"
-              width={80}
-            />
-            <ToolButton
-              label={t("impress.applyToAll")}
-              onClick={() =>
-                update((current) => ({
-                  ...current,
-                  slides: current.slides.map((candidate) => ({
-                    ...candidate,
-                    transition: slide.transition,
-                    transitionMs: slide.transitionMs,
-                  })),
-                }))
-              }
-            />
-          </RibbonGroup>
-        ) : null}
+        {ribbon === "transitions" ? <TransitionsTab slide={slide} updateSlide={updateSlide} update={update} /> : null}
 
-        {ribbon === "animations" ? (
-          <RibbonGroup label={t("impress.animations")}>
-            <ToolButton
-              icon={<Sparkles size={16} />}
-              label={t("impress.addAnimation")}
-              onClick={addAnimation}
-              disabled={slide.objects.length === 0}
-            />
-          </RibbonGroup>
-        ) : null}
+        {ribbon === "animations" ? <AnimationsTab onAdd={addAnimation} disabled={slide.objects.length === 0} /> : null}
 
         {ribbon === "view" ? (
-          <>
-            <RibbonGroup label={t("impress.view")}>
-              <ToolButton
-                icon={<Rows3 size={16} />}
-                label={t("impress.viewNormal")}
-                onClick={() => setView("normal")}
-                active={view === "normal"}
-              />
-              <ToolButton
-                icon={<Grid2X2 size={16} />}
-                label={t("impress.slideSorter")}
-                onClick={() => setView("sorter")}
-                active={view === "sorter"}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("impress.present")}>
-              <ToolButton
-                icon={<Play size={16} />}
-                label={t("impress.startShow")}
-                onClick={() => {
-                  setPresenterView(false);
-                  goToSlide(slideIndex);
-                }}
-              />
-              <ToolButton
-                icon={<MonitorPlay size={16} />}
-                label={t("impress.presenter")}
-                onClick={() => {
-                  setPresenterView(true);
-                  goToSlide(slideIndex);
-                }}
-              />
-            </RibbonGroup>
-          </>
+          <ViewTab
+            view={view}
+            onView={setView}
+            onStart={(presenter) => {
+              setPresenterView(presenter);
+              goToSlide(slideIndex);
+            }}
+          />
         ) : null}
 
         <div className="ribbon-spacer" />
