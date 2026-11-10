@@ -316,7 +316,7 @@
     "src/office/impress/selection.ts": 331,
     "src/office/impress/slide-view.tsx": 817,
     "src/office/impress/TextFrameEditor.tsx": 364,
-    "src/office/ImpressEditor.tsx": 2624,
+    "src/office/ImpressEditor.tsx": 2538,
     "src/office/office-ui.tsx": 357,
     "src/office/OfficeWorkspace.tsx": 361,
     "src/office/templates.ts": 1446,

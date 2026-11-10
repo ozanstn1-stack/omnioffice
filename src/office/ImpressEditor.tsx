@@ -118,6 +118,7 @@ import { ImpressAiDialog } from "./impress/ImpressAiDialog";
 import { INHERITED_KEYS, type Theme } from "./impress/shared";
 import { PresenterPanel, SlideshowNav } from "./impress/SlideshowChrome";
 import { AnimationsTab, TransitionsTab, ViewTab } from "./impress/ImpressRibbonTabs";
+import { SlideNotesAndAnimations, SlideSettings } from "./impress/SlideProperties";
 import { simplifyStroke, strokeHit, strokePath, type StrokePoint } from "./impress/show-drawing";
 import {
   CropHandles,
@@ -2125,41 +2126,14 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
 
             <div className="slide-properties">
               <h4>{t("impress.properties")}</h4>
-              <div className="stack">
-                <label className="field">
-                  <span>{t("impress.master")}</span>
-                  <select
-                    value={slide.masterId ?? masters[0]?.id ?? ""}
-                    onChange={(event) => selectMaster(event.target.value)}
-                  >
-                    {masters.length === 0 ? <option value="">{t("impress.noMaster")}</option> : null}
-                    {masters.map((master) => (
-                      <option key={master.id} value={master.id}>
-                        {master.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>{t("impress.layout")}</span>
-                  <select value={slide.layoutId ?? ""} onChange={(event) => selectLayout(event.target.value)}>
-                    <option value="">{t("impress.noLayout")}</option>
-                    {(selectedMaster?.layouts ?? []).map((layout) => (
-                      <option key={layout.id} value={layout.id}>
-                        {layout.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>{t("impress.hiddenSlide")}</span>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(slide.hidden)}
-                    onChange={(event) => updateSlide((current) => ({ ...current, hidden: event.target.checked }))}
-                  />
-                </label>
-              </div>
+              <SlideSettings
+                slide={slide}
+                masters={masters}
+                layouts={selectedMaster?.layouts ?? []}
+                onMaster={selectMaster}
+                onLayout={selectLayout}
+                onHidden={(hidden) => updateSlide((current) => ({ ...current, hidden }))}
+              />
               {primary && primaryPath ? (
                 <div className="stack">
                   <div className="row">
@@ -2410,79 +2384,19 @@ export function ImpressEditor({ tab }: { tab: ImpressTab }) {
               ) : (
                 <p className="muted">{t("impress.noSelection")}</p>
               )}
-              <h4>{t("impress.notes")}</h4>
-              <textarea
-                className="notes-input"
-                value={slide.notes}
-                onChange={(event) => updateSlide((current) => ({ ...current, notes: event.target.value }))}
-                placeholder={t("impress.notesHint")}
+              <SlideNotesAndAnimations
+                slide={slide}
+                onNotes={(notes) => updateSlide((current) => ({ ...current, notes }))}
+                onReorder={reorderAnimation}
+                onEdit={setAnimationEditing}
+                onDelete={(id) =>
+                  updateSlide((current) => ({
+                    ...current,
+                    animations: (current.animations ?? []).filter((candidate) => candidate.id !== id),
+                  }))
+                }
+                onAdd={addAnimation}
               />
-              <h4>{t("impress.animations")}</h4>
-              <div className="stack">
-                {[...(slide.animations ?? [])]
-                  .sort((a, b) => a.order - b.order)
-                  .map((animation, index, list) => {
-                    const target = slide.objects.find((object) => object.id === animation.objectId);
-                    return (
-                      <div key={animation.id} className="row" style={{ alignItems: "center", gap: 4 }}>
-                        <span
-                          className="muted"
-                          style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                        >
-                          {target?.name ?? t("impress.animationMissingObject")} · {animation.kind} · {animation.effect}{" "}
-                          · {animation.trigger}
-                        </span>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => reorderAnimation(animation.id, -1)}
-                          disabled={index === 0}
-                          title={t("impress.moveUp")}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => reorderAnimation(animation.id, 1)}
-                          disabled={index === list.length - 1}
-                          title={t("impress.moveDown")}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => setAnimationEditing(animation)}
-                          title={t("common.edit")}
-                        >
-                          ✎
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() =>
-                            updateSlide((current) => ({
-                              ...current,
-                              animations: (current.animations ?? []).filter(
-                                (candidate) => candidate.id !== animation.id,
-                              ),
-                            }))
-                          }
-                          title={t("common.delete")}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })}
-                <ToolButton
-                  icon={<Sparkles size={14} />}
-                  label={t("impress.addAnimation")}
-                  onClick={addAnimation}
-                  disabled={slide.objects.length === 0}
-                />
-              </div>
             </div>
           </>
         )}
