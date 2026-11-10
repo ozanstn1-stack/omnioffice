@@ -5,57 +5,11 @@ import { extensionsFor } from "./lib/tool-files";
 import { openTokenDocument } from "./lib/file-refs";
 import { firstIncomingError, incomingErrorKey } from "./lib/incoming";
 import { useDropTokens, useLaunchTokens } from "./lib/use-file-ref-events";
-import {
-  Archive,
-  BookOpen,
-  Bot,
-  Combine,
-  FileSearch,
-  FolderClock,
-  FileImage,
-  FilePlus2,
-  Landmark,
-  CalendarClock,
-  FolderCheck,
-  FileSpreadsheet,
-  FileText,
-  Presentation,
-  LayoutGrid,
-  LayoutTemplate,
-  NotebookPen,
-  CalendarDays,
-  Database,
-  PenTool,
-  Repeat,
-  Receipt,
-  Mail,
-  Camera,
-  Sparkles,
-  ClipboardList,
-  Home,
-  Images,
-  Info,
-  Layers,
-  Library,
-  Lock,
-  LockOpen,
-  Menu,
-  Minimize2,
-  Moon,
-  Eraser,
-  FileDiff,
-  ListChecks,
-  Puzzle,
-  Scissors,
-  ShieldCheck,
-  Settings as SettingsIcon,
-  Shapes,
-  Stamp,
-  Sun,
-  Type,
-  Wand2,
-} from "lucide-react";
+import { Lock, Menu, Moon, Sun } from "lucide-react";
 import { useT } from "./lib/i18n";
+import { NAV_ICONS } from "./lib/nav-icons";
+import { GlobalOverlays } from "./components/global-overlays";
+import type { RecentEntry } from "./lib/types";
 import { useDev, useDrop, useIsDarkTheme, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
 import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
@@ -64,113 +18,12 @@ import { flagEnabled } from "./lib/flags";
 import { useFocusScrollIntoView, useKeyboardInset, useNarrowLayout } from "./lib/viewport";
 import { enabledRoutes, routeEnabled, routeFor } from "./lib/routes";
 import type { TaskPackId } from "./lib/ai-task-packs";
-// Route-level code splitting: every screen is loaded when it is first opened,
-// so the startup bundle only carries the shell, the navigation and the shared
-// UI primitives. The lazy import maps the named export to the default export
-// `React.lazy` expects.
-const HomeScreen = React.lazy(() => import("./screens/Home").then((module) => ({ default: module.Home })));
-const Reader = React.lazy(() => import("./screens/Reader").then((module) => ({ default: module.Reader })));
-const Ai = React.lazy(() => import("./screens/Ai").then((module) => ({ default: module.Ai })));
-const AiPacks = React.lazy(() => import("./screens/AiPacks").then((module) => ({ default: module.AiPacks })));
-const AiLibrary = React.lazy(() => import("./screens/AiLibrary").then((module) => ({ default: module.AiLibrary })));
-const Merge = React.lazy(() => import("./screens/Merge").then((module) => ({ default: module.Merge })));
-const Organize = React.lazy(() => import("./screens/Organize").then((module) => ({ default: module.Organize })));
-const Split = React.lazy(() => import("./screens/Split").then((module) => ({ default: module.Split })));
-// Phones only; until it loads an empty bar of the same height holds its place.
-// The sidebar and the drawer are their own chunk (7.31) so the entry stays in budget.
-const DesktopSidebar = React.lazy(() =>
-  import("./components/sidebar").then((module) => ({ default: module.DesktopSidebar })),
-);
-const DrawerNav = React.lazy(() => import("./components/sidebar").then((module) => ({ default: module.DrawerNav })));
-const OfficeLauncher = React.lazy(() =>
-  import("./screens/OfficeLauncher").then((module) => ({ default: module.OfficeLauncher })),
-);
-const BottomNav = React.lazy(() => import("./components/bottom-nav").then((module) => ({ default: module.BottomNav })));
-const PresendDialog = React.lazy(() =>
-  import("./components/presend-dialog").then((module) => ({ default: module.PresendDialog })),
-);
-const Compress = React.lazy(() => import("./screens/Compress").then((module) => ({ default: module.Compress })));
-const Ocr = React.lazy(() => import("./screens/Ocr").then((module) => ({ default: module.Ocr })));
-const Convert = React.lazy(() => import("./screens/Convert").then((module) => ({ default: module.Convert })));
-const Security = React.lazy(() => import("./screens/Security").then((module) => ({ default: module.Security })));
-const Watermark = React.lazy(() => import("./screens/Watermark").then((module) => ({ default: module.Watermark })));
-const PageTools = React.lazy(() => import("./screens/PageTools").then((module) => ({ default: module.PageTools })));
-const Annotate = React.lazy(() => import("./screens/Annotate").then((module) => ({ default: module.Annotate })));
-const Redact = React.lazy(() => import("./screens/Redact").then((module) => ({ default: module.Redact })));
-const Compare = React.lazy(() => import("./screens/Compare").then((module) => ({ default: module.Compare })));
-const Inspect = React.lazy(() => import("./screens/Inspect").then((module) => ({ default: module.Inspect })));
-const Metadata = React.lazy(() => import("./screens/Metadata").then((module) => ({ default: module.Metadata })));
-const Batch = React.lazy(() => import("./screens/Batch").then((module) => ({ default: module.Batch })));
-const History = React.lazy(() => import("./screens/History").then((module) => ({ default: module.History })));
-const Settings = React.lazy(() => import("./screens/Settings").then((module) => ({ default: module.Settings })));
-const InfoScreen = React.lazy(() => import("./screens/Info").then((module) => ({ default: module.InfoScreen })));
-const Vault = React.lazy(() => import("./screens/Vault").then((module) => ({ default: module.Vault })));
-const PdfStudio = React.lazy(() => import("./screens/PdfStudio").then((module) => ({ default: module.PdfStudio })));
-const CompatibilityScreen = React.lazy(() =>
-  import("./screens/Compatibility").then((module) => ({ default: module.CompatibilityScreen })),
-);
-const JobsScreen = React.lazy(() => import("./screens/Jobs").then((module) => ({ default: module.JobsScreen })));
-const Sync = React.lazy(() => import("./screens/Sync").then((module) => ({ default: module.Sync })));
-const Plugins = React.lazy(() => import("./screens/Plugins").then((module) => ({ default: module.Plugins })));
-const OfficeWorkspace = React.lazy(() =>
-  import("./office/OfficeWorkspace").then((module) => ({ default: module.OfficeWorkspace })),
-);
-const CleanerScreen = React.lazy(() =>
-  import("./office/tools/cleaner").then((module) => ({ default: module.CleanerScreen })),
-);
-const ConverterScreen = React.lazy(() =>
-  import("./office/tools/converter").then((module) => ({ default: module.ConverterScreen })),
-);
-const InvoicesScreen = React.lazy(() => import("./screens/Invoices").then((module) => ({ default: module.Invoices })));
-const EmlScreen = React.lazy(() => import("./screens/Eml").then((module) => ({ default: module.Eml })));
-const ScannerScreen = React.lazy(() => import("./screens/Scanner").then((module) => ({ default: module.Scanner })));
-const RecipesScreen = React.lazy(() => import("./screens/Recipes").then((module) => ({ default: module.Recipes })));
-const MailMergeScreen = React.lazy(() =>
-  import("./screens/MailMerge").then((module) => ({ default: module.MailMerge })),
-);
-const DataScreen = React.lazy(() => import("./office/tools/data").then((module) => ({ default: module.DataScreen })));
-const DrawScreen = React.lazy(() => import("./office/tools/draw").then((module) => ({ default: module.DrawScreen })));
-const NotesScreen = React.lazy(() =>
-  import("./office/tools/notes").then((module) => ({ default: module.NotesScreen })),
-);
-const PdfFormsScreen = React.lazy(() =>
-  import("./office/tools/pdf-forms").then((module) => ({ default: module.PdfFormsScreen })),
-);
-const PlannerScreen = React.lazy(() =>
-  import("./office/tools/planner").then((module) => ({ default: module.PlannerScreen })),
-);
-const TemplatesScreen = React.lazy(() =>
-  import("./office/tools/templates").then((module) => ({ default: module.TemplatesScreen })),
-);
-const DeadlineCalculatorScreen = React.lazy(() =>
-  import("./screens/DeadlineCalculator").then((module) => ({ default: module.DeadlineCalculatorScreen })),
-);
-const OfficialLetterScreen = React.lazy(() =>
-  import("./screens/OfficialLetterWizard").then((module) => ({ default: module.OfficialLetterWizard })),
-);
-const EvidenceBundleScreen = React.lazy(() =>
-  import("./screens/EvidenceBundle").then((module) => ({ default: module.EvidenceBundleScreen })),
-);
-const PetitionWizardScreen = React.lazy(() =>
-  import("./screens/PetitionWizard").then((module) => ({ default: module.PetitionWizard })),
-);
-const KvkkWizardScreen = React.lazy(() =>
-  import("./screens/KvkkWizard").then((module) => ({ default: module.KvkkWizard })),
-);
-const DocumentHealthScreen = React.lazy(() =>
-  import("./screens/DocumentHealthScreen").then((module) => ({ default: module.DocumentHealthScreen })),
-);
-const ToolsScreen = React.lazy(() => import("./screens/Tools").then((module) => ({ default: module.ToolsScreen })));
-const VerifyScreen = React.lazy(() => import("./screens/Verify").then((module) => ({ default: module.VerifyScreen })));
+import * as Screens from "./screens/registry";
 import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
 import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
-import { CommandPalette, GlobalSearch } from "./components/command-palette";
 import { useDeskTaskCommands } from "./lib/use-desk-task-commands";
-import { OverwriteDialog, PasswordDialog, Toasts } from "./components/files";
 import { usePresend } from "./lib/presend-gate";
-import { DataLossDialogHost } from "./components/data-loss-dialog";
-import { FileConflictDialogHost } from "./components/file-conflict-dialog";
 import { Badge, IconButton, Spinner } from "./components/ui";
 import { BrandMark } from "./components/brand";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -719,133 +572,87 @@ export default function App() {
 
   const screens: Record<ScreenId, React.ReactElement> = useMemo(
     () => ({
-      home: <HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} onFileList={setFiles} />,
-      reader: <Reader initialFiles={files} dragging={dragging} initialPage={readerPage} />,
-      ai: <Ai initialFiles={files} dragging={dragging} onNavigate={navigate} />,
-      aiLibrary: <AiLibrary onOpenAi={() => navigate("ai")} />,
+      home: (
+        <Screens.HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} onFileList={setFiles} />
+      ),
+      reader: <Screens.Reader initialFiles={files} dragging={dragging} initialPage={readerPage} />,
+      ai: <Screens.Ai initialFiles={files} dragging={dragging} onNavigate={navigate} />,
+      aiLibrary: <Screens.AiLibrary onOpenAi={() => navigate("ai")} />,
       // A desk task (D13) navigates with its pack; the key remounts the screen so the
       // preselection applies even when the user is already on it.
-      aiPacks: <AiPacks key={aiPack ?? "ai-packs"} initialPack={aiPack ?? undefined} initialFiles={files} />,
-      merge: <Merge initialFiles={files} dragging={dragging} />,
-      organize: <Organize initialFiles={files} dragging={dragging} />,
-      split: <Split initialFiles={files} dragging={dragging} />,
-      compress: <Compress initialFiles={files} dragging={dragging} />,
-      ocr: <Ocr initialFiles={files} dragging={dragging} />,
-      pdfToImages: <Convert tab={convertTab} initialFiles={files} dragging={dragging} />,
-      imagesToPdf: <Convert tab={convertTab} initialFiles={files} dragging={dragging} />,
-      protect: <Security tab={securityTab} initialFiles={files} dragging={dragging} />,
-      unlock: <Security tab={securityTab} initialFiles={files} dragging={dragging} />,
-      watermark: <Watermark initialFiles={files} dragging={dragging} />,
-      annotate: <Annotate initialFiles={files} dragging={dragging} />,
-      redact: <Redact initialFiles={files} dragging={dragging} />,
-      compare: <Compare initialFiles={files} dragging={dragging} />,
-      inspect: <Inspect initialFiles={files} dragging={dragging} />,
-      metadata: <Metadata initialFiles={files} dragging={dragging} />,
-      pageTools: <PageTools tab={pageToolTab} initialFiles={files} dragging={dragging} />,
-      batch: <Batch initialFiles={files} dragging={dragging} />,
-      history: <History onNavigate={navigate} />,
-      settings: <Settings />,
-      info: <InfoScreen initialFiles={files} />,
-      office: <OfficeWorkspace />,
+      aiPacks: <Screens.AiPacks key={aiPack ?? "ai-packs"} initialPack={aiPack ?? undefined} initialFiles={files} />,
+      merge: <Screens.Merge initialFiles={files} dragging={dragging} />,
+      organize: <Screens.Organize initialFiles={files} dragging={dragging} />,
+      split: <Screens.Split initialFiles={files} dragging={dragging} />,
+      compress: <Screens.Compress initialFiles={files} dragging={dragging} />,
+      ocr: <Screens.Ocr initialFiles={files} dragging={dragging} />,
+      pdfToImages: <Screens.Convert tab={convertTab} initialFiles={files} dragging={dragging} />,
+      imagesToPdf: <Screens.Convert tab={convertTab} initialFiles={files} dragging={dragging} />,
+      protect: <Screens.Security tab={securityTab} initialFiles={files} dragging={dragging} />,
+      unlock: <Screens.Security tab={securityTab} initialFiles={files} dragging={dragging} />,
+      watermark: <Screens.Watermark initialFiles={files} dragging={dragging} />,
+      annotate: <Screens.Annotate initialFiles={files} dragging={dragging} />,
+      redact: <Screens.Redact initialFiles={files} dragging={dragging} />,
+      compare: <Screens.Compare initialFiles={files} dragging={dragging} />,
+      inspect: <Screens.Inspect initialFiles={files} dragging={dragging} />,
+      metadata: <Screens.Metadata initialFiles={files} dragging={dragging} />,
+      pageTools: <Screens.PageTools tab={pageToolTab} initialFiles={files} dragging={dragging} />,
+      batch: <Screens.Batch initialFiles={files} dragging={dragging} />,
+      history: <Screens.History onNavigate={navigate} />,
+      settings: <Screens.Settings />,
+      info: <Screens.InfoScreen initialFiles={files} />,
+      office: <Screens.OfficeWorkspace />,
       documents: (
-        <OfficeLauncher kind="writer" onOpen={() => navigate("office")} onTemplates={() => navigate("templates")} />
+        <Screens.OfficeLauncher
+          kind="writer"
+          onOpen={() => navigate("office")}
+          onTemplates={() => navigate("templates")}
+        />
       ),
       spreadsheets: (
-        <OfficeLauncher kind="calc" onOpen={() => navigate("office")} onTemplates={() => navigate("templates")} />
+        <Screens.OfficeLauncher
+          kind="calc"
+          onOpen={() => navigate("office")}
+          onTemplates={() => navigate("templates")}
+        />
       ),
       presentations: (
-        <OfficeLauncher kind="impress" onOpen={() => navigate("office")} onTemplates={() => navigate("templates")} />
+        <Screens.OfficeLauncher
+          kind="impress"
+          onOpen={() => navigate("office")}
+          onTemplates={() => navigate("templates")}
+        />
       ),
-      notes: <NotesScreen />,
-      templates: <TemplatesScreen onOpen={() => navigate("office")} />,
-      converter: <ConverterScreen />,
-      invoices: <InvoicesScreen initialFiles={files} />,
-      eml: <EmlScreen initialFiles={files} onNavigate={navigate} />,
-      scanner: <ScannerScreen onNavigate={navigate} initialFiles={files} />,
-      recipes: <RecipesScreen />,
-      mailMerge: <MailMergeScreen />,
-      cleaner: <CleanerScreen />,
-      draw: <DrawScreen />,
-      planner: <PlannerScreen />,
-      data: <DataScreen />,
-      pdfForms: <PdfFormsScreen />,
-      vault: <Vault initialFiles={files} />,
-      pdfStudio: <PdfStudio initialFiles={files} dragging={dragging} />,
-      compat: <CompatibilityScreen />,
-      jobs: <JobsScreen />,
-      sync: <Sync />,
-      plugins: <Plugins />,
-      petition: <PetitionWizardScreen onNavigate={navigate} />,
-      officialLetter: <OfficialLetterScreen onNavigate={navigate} />,
-      deadline: <DeadlineCalculatorScreen initialFiles={files} dragging={dragging} />,
-      evidence: <EvidenceBundleScreen initialFiles={files} dragging={dragging} />,
-      kvkk: <KvkkWizardScreen onNavigate={navigate} />,
-      documentHealth: <DocumentHealthScreen onNavigate={navigate} />,
-      verify: <VerifyScreen initialFiles={files} dragging={dragging} />,
-      tools: <ToolsScreen onNavigate={navigate} />,
+      notes: <Screens.NotesScreen />,
+      templates: <Screens.TemplatesScreen onOpen={() => navigate("office")} />,
+      converter: <Screens.ConverterScreen />,
+      invoices: <Screens.InvoicesScreen initialFiles={files} />,
+      eml: <Screens.EmlScreen initialFiles={files} onNavigate={navigate} />,
+      scanner: <Screens.ScannerScreen onNavigate={navigate} initialFiles={files} />,
+      recipes: <Screens.RecipesScreen />,
+      mailMerge: <Screens.MailMergeScreen />,
+      cleaner: <Screens.CleanerScreen />,
+      draw: <Screens.DrawScreen />,
+      planner: <Screens.PlannerScreen />,
+      data: <Screens.DataScreen />,
+      pdfForms: <Screens.PdfFormsScreen />,
+      vault: <Screens.Vault initialFiles={files} />,
+      pdfStudio: <Screens.PdfStudio initialFiles={files} dragging={dragging} />,
+      compat: <Screens.CompatibilityScreen />,
+      jobs: <Screens.JobsScreen />,
+      sync: <Screens.Sync />,
+      plugins: <Screens.Plugins />,
+      petition: <Screens.PetitionWizardScreen onNavigate={navigate} />,
+      officialLetter: <Screens.OfficialLetterScreen onNavigate={navigate} />,
+      deadline: <Screens.DeadlineCalculatorScreen initialFiles={files} dragging={dragging} />,
+      evidence: <Screens.EvidenceBundleScreen initialFiles={files} dragging={dragging} />,
+      kvkk: <Screens.KvkkWizardScreen onNavigate={navigate} />,
+      documentHealth: <Screens.DocumentHealthScreen onNavigate={navigate} />,
+      verify: <Screens.VerifyScreen initialFiles={files} dragging={dragging} />,
+      tools: <Screens.ToolsScreen onNavigate={navigate} />,
     }),
     [aiPack, convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
   );
-
-  /** Icons are presentation, not routing: the manifest owns the ids. */
-  const NAV_ICONS: Record<ScreenId, React.ReactElement> = {
-    home: <Home size={16} />,
-    office: <LayoutGrid size={16} />,
-    reader: <BookOpen size={16} />,
-    tools: <Shapes size={16} />,
-    documents: <FileText size={16} />,
-    spreadsheets: <FileSpreadsheet size={16} />,
-    presentations: <Presentation size={16} />,
-    templates: <LayoutTemplate size={16} />,
-    petition: <FilePlus2 size={16} />,
-    officialLetter: <Landmark size={16} />,
-    deadline: <CalendarClock size={16} />,
-    evidence: <FolderCheck size={16} />,
-    kvkk: <ShieldCheck size={16} />,
-    notes: <NotebookPen size={16} />,
-    planner: <CalendarDays size={16} />,
-    data: <Database size={16} />,
-    draw: <PenTool size={16} />,
-    vault: <FileSearch size={16} />,
-    converter: <Repeat size={16} />,
-    invoices: <Receipt size={16} />,
-    eml: <Mail size={16} />,
-    scanner: <Camera size={16} />,
-    recipes: <ListChecks size={16} />,
-    mailMerge: <Mail size={16} />,
-    cleaner: <Sparkles size={16} />,
-    pdfForms: <ClipboardList size={16} />,
-    merge: <Combine size={16} />,
-    organize: <Layers size={16} />,
-    split: <Scissors size={16} />,
-    compress: <Minimize2 size={16} />,
-    pageTools: <Wand2 size={16} />,
-    pdfStudio: <ShieldCheck size={16} />,
-    documentHealth: <ShieldCheck size={16} />,
-    verify: <ShieldCheck size={16} />,
-    watermark: <Stamp size={16} />,
-    annotate: <Type size={16} />,
-    redact: <Eraser size={16} />,
-    compare: <FileDiff size={16} />,
-    inspect: <FileSearch size={16} />,
-    metadata: <Puzzle size={16} />,
-    pdfToImages: <FileImage size={16} />,
-    imagesToPdf: <Images size={16} />,
-    ocr: <FileSearch size={16} />,
-    protect: <Lock size={16} />,
-    unlock: <LockOpen size={16} />,
-    ai: <Bot size={16} />,
-    aiLibrary: <Library size={16} />,
-    aiPacks: <Bot size={16} />,
-    batch: <Archive size={16} />,
-    jobs: <ListChecks size={16} />,
-    sync: <Repeat size={16} />,
-    plugins: <Puzzle size={16} />,
-    compat: <ShieldCheck size={16} />,
-    info: <Info size={16} />,
-    history: <FolderClock size={16} />,
-    settings: <SettingsIcon size={16} />,
-  };
 
   // Flag-gated routes are closed, not just hidden: a deep link to a disabled
   // route renders Home instead of the unfinished screen.
@@ -859,6 +666,18 @@ export default function App() {
   };
 
   const activeLabel = routeEnabled(screen) ? t(routeFor(screen).labelKey) : t("app.name");
+
+  const overlayProps = {
+    screen,
+    backgroundJobs,
+    paletteOpen,
+    onClosePalette: () => setPaletteOpen(false),
+    searchOpen,
+    onCloseSearch: () => setSearchOpen(false),
+    onNavigate: (next: string) => setScreen(next as ScreenId),
+    onOpenPath: openAnyPath,
+    onOpenRecent: (entry: RecentEntry) => openDocumentRef({ token: entry.token, name: entry.fileName }),
+  };
 
   // Phones (and narrow desktop windows): drawer navigation with a top bar.
   if (compactNav) {
@@ -891,7 +710,7 @@ export default function App() {
                 </div>
               </div>
               <React.Suspense fallback={<div className="flex-1" />}>
-                <DrawerNav icons={NAV_ICONS} screen={screen} onPick={pickNav} />
+                <Screens.DrawerNav icons={NAV_ICONS} screen={screen} onPick={pickNav} />
               </React.Suspense>
               <div className="px-3 py-3 border-t" style={{ borderColor: "var(--border)" }}>
                 <Badge tone="ok">
@@ -910,36 +729,18 @@ export default function App() {
 
         {/* Thumb-reach navigation on phones (C11); More opens the full drawer. */}
         <React.Suspense fallback={<div className="bottom-nav bottom-nav-placeholder" aria-hidden />}>
-          <BottomNav screen={screen} onNavigate={navigate} onMore={() => setNavOpen(true)} />
+          <Screens.BottomNav screen={screen} onNavigate={navigate} onMore={() => setNavOpen(true)} />
         </React.Suspense>
 
-        <Toasts />
-        <div className="sr-only" role="status" aria-live="polite">
-          {backgroundJobs > 0 ? t("jobs.runningCount", { count: backgroundJobs }) : ""}
-        </div>
-        <OverwriteDialog />
-        {presendOpen ? (
-          <React.Suspense fallback={null}>
-            <PresendDialog onNavigate={navigate} />
-          </React.Suspense>
-        ) : null}
-        <PasswordDialog />
-        {/* One global host so the compatibility gate also covers the
-            converter, which is not rendered inside the office workspace. */}
-        <DataLossDialogHost />
-        <FileConflictDialogHost />
-        <CommandPalette
-          open={paletteOpen}
-          onClose={() => setPaletteOpen(false)}
-          context={{ screen }}
-          onNavigate={(next) => setScreen(next as ScreenId)}
-        />
-        <GlobalSearch
-          open={searchOpen}
-          onClose={() => setSearchOpen(false)}
-          onOpenPath={openAnyPath}
-          onOpenRecent={(entry) => openDocumentRef({ token: entry.token, name: entry.fileName })}
-          onNavigate={(next) => setScreen(next as ScreenId)}
+        <GlobalOverlays
+          {...overlayProps}
+          presend={
+            presendOpen ? (
+              <React.Suspense fallback={null}>
+                <Screens.PresendDialog onNavigate={navigate} />
+              </React.Suspense>
+            ) : null
+          }
         />
       </div>
     );
@@ -948,7 +749,7 @@ export default function App() {
   return (
     <div className="flex h-full" style={{ background: "var(--bg)" }}>
       <React.Suspense fallback={<aside className="sidebar shrink-0" style={{ width: sidebarCompact ? 68 : 252 }} />}>
-        <DesktopSidebar
+        <Screens.DesktopSidebar
           icons={NAV_ICONS}
           screen={screen}
           compact={sidebarCompact}
@@ -982,28 +783,7 @@ export default function App() {
         </div>
       </main>
 
-      <Toasts />
-      <div className="sr-only" role="status" aria-live="polite">
-        {backgroundJobs > 0 ? t("jobs.runningCount", { count: backgroundJobs }) : ""}
-      </div>
-      <OverwriteDialog />
-      <PasswordDialog />
-      {/* Global compatibility gate host (converter + office workspace). */}
-      <DataLossDialogHost />
-      <FileConflictDialogHost />
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        context={{ screen }}
-        onNavigate={(next) => setScreen(next as ScreenId)}
-      />
-      <GlobalSearch
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        onOpenPath={openAnyPath}
-        onOpenRecent={(entry) => openDocumentRef({ token: entry.token, name: entry.fileName })}
-        onNavigate={(next) => setScreen(next as ScreenId)}
-      />
+      <GlobalOverlays {...overlayProps} />
     </div>
   );
 }
