@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.34.0
+# Release Readiness — OmniOffice 7.35.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,25 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.35.0) - Writer ve Impress panelleri bileşenlere ayrıldı
+
+- **Writer's Find & replace, comments, review, spelling and official-letter panes are components; review cards select by key and resolve without selecting:**
+  `test:src/office/writer/panels/panels.test.tsx#selects a revision by click or key and resolves it without selecting it`
+- **The official-letter pane jumps only to violations with a paragraph and fixes one or all:**
+  `test:src/office/writer/panels/panels.test.tsx#jumps only to violations that have a paragraph and fixes one or all`
+- **Writer's cross-reference dialog inserts only with a target:**
+  `test:src/office/writer/panels/dialogs.test.tsx#inserts a cross-reference only once a target is chosen, then closes`
+- **Writer's sections dialog swaps the page for landscape and ignores the last section's start:**
+  `test:src/office/writer/panels/dialogs.test.tsx#swaps the page for landscape and leaves the last section's start alone`
+- **Impress's slideshow bar counts slides, picks ink tools and closes:**
+  `test:src/office/impress/show-chrome.test.tsx#counts slides, picks a tool and closes from the show bar`
+- **Impress's View tab starts the show with or without presenter view:**
+  `test:src/office/impress/show-chrome.test.tsx#starts the show with or without presenter view`
+- **Impress's animation list keeps its order and guards its ends:**
+  `test:src/office/impress/properties.test.tsx#orders animations, guards the ends, deletes by id and needs an object to add`
+- **Impress's text tools keep the focus in the edited frame:**
+  `test:src/office/impress/object-properties.test.tsx#formats through the editing handle and keeps the focus in the frame`
 
 ## Implemented (this cycle, 7.34.0) - Ortak geri alma geçmişi ve uygulama kabuğu
 
