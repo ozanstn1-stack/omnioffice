@@ -7,7 +7,6 @@
     "components/pages.tsx": 1,
     "office/calc/ui/PrintLayoutDialog.tsx": 2,
     "office/calc/ui/TablesUi.tsx": 1,
-    "office/CalcEditor.tsx": 1,
     "office/office-ui.tsx": 1,
     "office/tools/cleaner.tsx": 3,
     "office/tools/data.tsx": 2,
