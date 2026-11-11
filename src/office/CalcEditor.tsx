@@ -96,7 +96,8 @@ import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
 import { CfDecor } from "./calc/ui/CfDecor";
 import { cellTextStyle } from "./calc/ui/cell-style";
-import { ChartBox, ChartDialog } from "./calc/ui/ChartPanel";
+import { ChartDialog } from "./calc/ui/ChartDialogs";
+import { ChartLayer } from "./calc/ui/ChartLayer";
 import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
 import { RemoveDuplicatesDialog, TextToColumnsDialog } from "./calc/ui/DataToolsDialogs";
 import { FilterDialog } from "./calc/ui/FilterDialog";
@@ -2122,25 +2123,19 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                 display: fillHandlePlace.hidden ? "none" : undefined,
               }}
             />
-            {sheet.charts.map((chart) => {
-              const position = parseAddress(chart.anchor) ?? { row: 0, col: 0 };
-              return (
-                <ChartBox
-                  key={chart.id}
-                  chart={chart}
-                  sheet={sheet}
-                  workbook={workbook}
-                  x={columnX(position.col)}
-                  y={HEADER_HEIGHT + rowLayout.offsetOf(position.row)}
-                  onRemove={() =>
-                    updateSheet((current) => ({
-                      ...current,
-                      charts: current.charts.filter((candidate) => candidate.id !== chart.id),
-                    }))
-                  }
-                />
-              );
-            })}
+            <ChartLayer
+              sheet={sheet}
+              workbook={workbook}
+              place={(row, col) => ({ x: columnX(col), y: HEADER_HEIGHT + rowLayout.offsetOf(row) })}
+              onChange={(id, chart) =>
+                updateSheet((current) => ({
+                  ...current,
+                  charts: chart
+                    ? current.charts.map((entry) => (entry.id === id ? { ...entry, chart } : entry))
+                    : current.charts.filter((entry) => entry.id !== id),
+                }))
+              }
+            />
             <VisibleNotes
               cells={sheet.cells}
               place={(row, col) => ({
