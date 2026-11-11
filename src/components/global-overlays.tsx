@@ -1,11 +1,15 @@
-import type { ReactNode } from "react";
-import { CommandPalette, GlobalSearch } from "./command-palette";
+import { lazy, Suspense, type ReactNode } from "react";
 import { OverwriteDialog, PasswordDialog, Toasts } from "./files";
 import { DataLossDialogHost } from "./data-loss-dialog";
 import { FileConflictDialogHost } from "./file-conflict-dialog";
 import { useT } from "../lib/i18n";
 import type { RecentEntry } from "../lib/types";
 import type { ScreenId } from "../lib/nav";
+
+// The palette and global search load on first open (3.5): neither is drawn
+// while closed, so the entry chunk does not carry them or the command list.
+const CommandPalette = lazy(() => import("./command-palette").then((m) => ({ default: m.CommandPalette })));
+const GlobalSearch = lazy(() => import("./command-palette").then((m) => ({ default: m.GlobalSearch })));
 
 /**
  * Everything the app layers over the current screen, rendered once for the
@@ -51,14 +55,20 @@ export function GlobalOverlays({
       <PasswordDialog />
       <DataLossDialogHost />
       <FileConflictDialogHost />
-      <CommandPalette open={paletteOpen} onClose={onClosePalette} context={{ screen }} onNavigate={onNavigate} />
-      <GlobalSearch
-        open={searchOpen}
-        onClose={onCloseSearch}
-        onOpenPath={onOpenPath}
-        onOpenRecent={onOpenRecent}
-        onNavigate={onNavigate}
-      />
+      <Suspense fallback={null}>
+        {paletteOpen ? (
+          <CommandPalette open onClose={onClosePalette} context={{ screen }} onNavigate={onNavigate} />
+        ) : null}
+        {searchOpen ? (
+          <GlobalSearch
+            open
+            onClose={onCloseSearch}
+            onOpenPath={onOpenPath}
+            onOpenRecent={onOpenRecent}
+            onNavigate={onNavigate}
+          />
+        ) : null}
+      </Suspense>
     </>
   );
 }
