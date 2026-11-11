@@ -1,44 +1,20 @@
 /** The chart overlay drawn over the sheet; the dialogs live in ChartDialogs.tsx. */
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type PointerEvent } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { useT } from "../../../lib/i18n";
 import type { ChartData, Sheet, Workbook } from "../../../lib/office-types";
 import { computeSheetValues } from "../cells";
-import {
-  formatTick,
-  holeSizeOf,
-  niceScale,
-  ringBands,
-  ringSlices,
-  scatterPoints,
-  scatterStyleOf,
-  scatterXValues,
-  smoothPath,
-} from "../chart-geometry";
 import { addressesInRange } from "../formula";
+import { CartesianPlot, PALETTE, RingPlot, ScatterPlot, colorOf, type Plot, type Series } from "./chart-plots";
 
-const PALETTE = ["#2563eb", "#059669", "#d97706", "#dc2626", "#7c3aed", "#0891b2"];
-/** Height of the title bar above the drawing, and of the legend row below it. */
+/**
+ * Height of the title bar above the drawing and of the legend row below it,
+ * until they are measured (the buttons grow to touch size on a coarse pointer).
+ */
 const HEAD_HEIGHT = 26;
 const LEGEND_HEIGHT = 22;
-const AXIS_COLOR = "#cbd5e1";
-const LABEL_COLOR = "#64748b";
-
-interface Series {
-  name: string;
-  values: number[];
-  color: string | null;
-}
-
-/** The plot rectangle inside the SVG: room on the left for the value labels and below for the category labels. */
-interface Plot {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-const colorOf = (entry: Series, index: number) => entry.color ?? PALETTE[index % PALETTE.length];
+/** The box's top and bottom border, inside its height. */
+const BORDERS = 2;
 
 export function ChartBox({
   chart,
@@ -48,6 +24,8 @@ export function ChartBox({
   y,
   onRemove,
   onEdit,
+  onMoveStart,
+  onResizeStart,
 }: {
   chart: { id: string; chart: ChartData; anchor: string; widthPx: number; heightPx: number };
   sheet: Sheet;
@@ -56,8 +34,14 @@ export function ChartBox({
   y: number;
   onRemove: () => void;
   onEdit?: () => void;
+  /** Pointer down on the title bar (not on its buttons) starts a move. */
+  onMoveStart?: (event: PointerEvent) => void;
+  /** Pointer down on the bottom-right handle starts a resize. */
+  onResizeStart?: (event: PointerEvent) => void;
 }) {
   const t = useT();
+  const [headHeight, setHeadHeight] = useState(HEAD_HEIGHT);
+  const [legendHeight, setLegendHeight] = useState(LEGEND_HEIGHT);
   const values = useMemo(() => computeSheetValues(workbook, sheet), [workbook, sheet]);
   const data = chart.chart;
   const categoryCells = addressesInRange(data.categories, 5000).map((address) => values.get(address) ?? "");
@@ -69,13 +53,21 @@ export function ChartBox({
   }));
   const width = chart.widthPx;
   const height = chart.heightPx;
-  const svgHeight = height - HEAD_HEIGHT - (data.legend ? LEGEND_HEIGHT : 0);
+  const svgHeight = Math.max(20, height - BORDERS - headHeight - (data.legend ? legendHeight : 0));
   const plot: Plot = { left: 40, top: 10, width: width - 48, height: Math.max(20, svgHeight - 10 - 22) };
   const ring = data.kind === "pie" || data.kind === "doughnut";
 
   return (
     <div className="chart-box" style={{ left: x, top: y, width, height }}>
-      <div className="chart-head">
+      <div
+        className="chart-head"
+        ref={(node) => {
+          if (node && node.offsetHeight > 0 && node.offsetHeight !== headHeight) setHeadHeight(node.offsetHeight);
+        }}
+        onPointerDown={(event) => {
+          if (!(event.target as Element).closest("button")) onMoveStart?.(event);
+        }}
+      >
         <strong>{data.title}</strong>
         {onEdit ? (
           <button type="button" className="icon-btn" onClick={onEdit} title={t("calc.chartEdit")}>
@@ -103,7 +95,12 @@ export function ChartBox({
         )}
       </svg>
       {data.legend ? (
-        <div className="chart-legend">
+        <div
+          className="chart-legend"
+          ref={(node) => {
+            if (node && node.offsetHeight > 0 && node.offsetHeight !== legendHeight) setLegendHeight(node.offsetHeight);
+          }}
+        >
           {(ring
             ? categories.map((name, index) => ({ name, color: PALETTE[index % PALETTE.length] }))
             : series.map((entry, index) => ({ name: entry.name, color: colorOf(entry, index) }))
@@ -115,219 +112,7 @@ export function ChartBox({
           ))}
         </div>
       ) : null}
+      {onResizeStart ? <span className="chart-resize" aria-hidden="true" onPointerDown={onResizeStart} /> : null}
     </div>
-  );
-}
-
-/** Column, bar, line and area charts: values against categories. */
-function CartesianPlot({
-  kind,
-  plot,
-  categories,
-  series,
-}: {
-  kind: string;
-  plot: Plot;
-  categories: string[];
-  series: Series[];
-}) {
-  const all = series.flatMap((entry) => entry.values).filter(Number.isFinite);
-  const max = Math.max(1, ...all);
-  const min = Math.min(0, ...all);
-  const count = Math.max(1, categories.length, ...series.map((entry) => entry.values.length));
-  const horizontal = kind === "bar";
-  const span = max - min || 1;
-  const bottom = plot.top + plot.height;
-  /** Pixel position of a value on the value axis. */
-  const along = (value: number) =>
-    horizontal ? plot.left + ((value - min) / span) * plot.width : bottom - ((value - min) / span) * plot.height;
-  const zero = along(0);
-  const band = (horizontal ? plot.height : plot.width) / count;
-
-  const linePoints = (entry: Series) =>
-    entry.values
-      .map((value, index) => {
-        const px = plot.left + (count === 1 ? plot.width / 2 : (index / (count - 1)) * plot.width);
-        return `${px},${along(value)}`;
-      })
-      .join(" ");
-
-  return (
-    <>
-      <line x1={plot.left} y1={bottom} x2={plot.left + plot.width} y2={bottom} stroke={AXIS_COLOR} />
-      <line x1={plot.left} y1={plot.top} x2={plot.left} y2={bottom} stroke={AXIS_COLOR} />
-      {kind === "column" || kind === "bar"
-        ? series.map((entry, seriesIndex) =>
-            entry.values.map((value, index) => {
-              const thick = Math.max(2, (band * 0.7) / series.length);
-              const offset = index * band + band * 0.15 + seriesIndex * thick;
-              const at = along(value);
-              return (
-                <rect
-                  key={`${seriesIndex}-${index}`}
-                  x={horizontal ? Math.min(zero, at) : plot.left + offset}
-                  y={horizontal ? plot.top + offset : Math.min(zero, at)}
-                  width={horizontal ? Math.abs(at - zero) : thick}
-                  height={horizontal ? thick : Math.abs(at - zero)}
-                  fill={colorOf(entry, seriesIndex)}
-                  opacity={0.85}
-                />
-              );
-            }),
-          )
-        : null}
-      {kind === "line" || kind === "area"
-        ? series.map((entry, index) => (
-            <g key={index}>
-              {kind === "area" ? (
-                <polygon
-                  points={`${plot.left},${bottom} ${linePoints(entry)} ${plot.left + plot.width},${bottom}`}
-                  fill={colorOf(entry, index)}
-                  opacity={0.25}
-                />
-              ) : null}
-              <polyline points={linePoints(entry)} fill="none" stroke={colorOf(entry, index)} strokeWidth={2} />
-            </g>
-          ))
-        : null}
-      {categories.map((label, index) => (
-        <text
-          key={index}
-          x={horizontal ? plot.left - 4 : plot.left + (index + 0.5) * band}
-          y={horizontal ? plot.top + (index + 0.5) * band + 3 : bottom + 14}
-          fontSize={9}
-          textAnchor={horizontal ? "end" : "middle"}
-          fill={LABEL_COLOR}
-        >
-          {label.length > 8 ? `${label.slice(0, 7)}…` : label}
-        </text>
-      ))}
-    </>
-  );
-}
-
-/** Pie and doughnut: one series is a ring (a full disc for a pie); a doughnut with more series nests them. */
-function RingPlot({
-  chart,
-  width,
-  height,
-  series,
-}: {
-  chart: ChartData;
-  width: number;
-  height: number;
-  series: Series[];
-}) {
-  const radius = Math.max(10, Math.min(width, height) / 2 - 8);
-  const cx = width / 2;
-  const cy = height / 2;
-  const doughnut = chart.kind === "doughnut";
-  const bands = doughnut ? ringBands(series.length, radius, holeSizeOf(chart)) : [{ inner: 0, outer: radius }];
-  const rings: ReactNode[] = [];
-  (doughnut ? series : series.slice(0, 1)).forEach((entry, ringIndex) => {
-    const { inner, outer } = bands[ringIndex];
-    ringSlices(entry.values, PALETTE, { cx, cy, inner, outer }).forEach((slice, index) => {
-      rings.push(
-        <path
-          key={`${ringIndex}-${index}`}
-          d={slice.path}
-          fill={slice.color}
-          stroke="var(--surface)"
-          strokeWidth={1}
-          opacity={0.9}
-        />,
-      );
-      if (chart.showLabels && slice.fraction >= 0.04) {
-        rings.push(
-          <text
-            key={`label-${ringIndex}-${index}`}
-            x={slice.label.x}
-            y={slice.label.y + 3}
-            fontSize={10}
-            textAnchor="middle"
-            fill="#ffffff"
-          >
-            {Math.round(slice.fraction * 100)}%
-          </text>,
-        );
-      }
-    });
-  });
-  return <>{rings}</>;
-}
-
-/** XY scatter: the categories range holds the X values, each series range the Y values. */
-function ScatterPlot({
-  chart,
-  plot,
-  categories,
-  series,
-}: {
-  chart: ChartData;
-  plot: Plot;
-  categories: unknown[];
-  series: Series[];
-}) {
-  const look = scatterStyleOf(chart.scatterStyle);
-  const length = Math.max(categories.length, ...series.map((entry) => entry.values.length));
-  const xs = scatterXValues(categories, length);
-  const drawn = series.map((entry) => scatterPoints(xs, entry.values));
-  const every = drawn.flat();
-  const xScale = niceScale(Math.min(...every.map((p) => p.x)), Math.max(...every.map((p) => p.x)));
-  const yScale = niceScale(Math.min(...every.map((p) => p.y)), Math.max(...every.map((p) => p.y)));
-  const bottom = plot.top + plot.height;
-  const px = (value: number) => plot.left + ((value - xScale.min) / (xScale.max - xScale.min || 1)) * plot.width;
-  const py = (value: number) => bottom - ((value - yScale.min) / (yScale.max - yScale.min || 1)) * plot.height;
-
-  return (
-    <>
-      {yScale.ticks.map((tick) => (
-        <g key={`y${tick}`}>
-          <line
-            x1={plot.left}
-            y1={py(tick)}
-            x2={plot.left + plot.width}
-            y2={py(tick)}
-            stroke={AXIS_COLOR}
-            opacity={0.5}
-          />
-          <text x={plot.left - 4} y={py(tick) + 3} fontSize={9} textAnchor="end" fill={LABEL_COLOR}>
-            {formatTick(tick)}
-          </text>
-        </g>
-      ))}
-      {xScale.ticks.map((tick) => (
-        <text key={`x${tick}`} x={px(tick)} y={bottom + 14} fontSize={9} textAnchor="middle" fill={LABEL_COLOR}>
-          {formatTick(tick)}
-        </text>
-      ))}
-      <line x1={plot.left} y1={bottom} x2={plot.left + plot.width} y2={bottom} stroke={AXIS_COLOR} />
-      <line x1={plot.left} y1={plot.top} x2={plot.left} y2={bottom} stroke={AXIS_COLOR} />
-      {series.map((entry, index) => {
-        const color = colorOf(entry, index);
-        const points = drawn[index].map((point) => ({ x: px(point.x), y: py(point.y) }));
-        return (
-          <g key={index} data-series={index}>
-            {look.line && points.length > 1 ? (
-              look.smooth ? (
-                <path d={smoothPath(points)} fill="none" stroke={color} strokeWidth={2} />
-              ) : (
-                <polyline
-                  points={points.map((point) => `${point.x},${point.y}`).join(" ")}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={2}
-                />
-              )
-            ) : null}
-            {look.markers
-              ? points.map((point, at) => (
-                  <circle key={at} cx={point.x} cy={point.y} r={3.5} fill={color} opacity={0.9} />
-                ))
-              : null}
-          </g>
-        );
-      })}
-    </>
   );
 }

@@ -55,7 +55,7 @@ describe("Calc chart properties (4.1a)", () => {
   });
 });
 
-describe("Calc chart layer (4.1a)", () => {
+describe("Calc chart layer (4.1a, 4.1b)", () => {
   function setup() {
     const sheet = {
       ...newSheet("Sheet1"),
@@ -67,7 +67,8 @@ describe("Calc chart layer (4.1a)", () => {
       <ChartLayer
         sheet={sheet}
         workbook={workbook}
-        place={(row, col) => ({ x: col * 10, y: row * 10 })}
+        rowLayout={{ offsetOf: (row) => row * 24, rowAtY: (y) => Math.floor(y / 24) }}
+        zoom={1}
         onChange={onChange}
       />,
     );
@@ -79,8 +80,29 @@ describe("Calc chart layer (4.1a)", () => {
     fireEvent.click(screen.getByTitle("Edit chart"));
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Q1" } });
     fireEvent.click(screen.getByRole("button", { name: "Save chart" }));
-    expect(onChange).toHaveBeenCalledWith("c1", expect.objectContaining({ title: "Q1" }));
+    expect(onChange).toHaveBeenCalledWith("c1", { chart: expect.objectContaining({ title: "Q1" }) });
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("moves a chart by its title bar to the cell under the drop", () => {
+    const onChange = setup();
+    // Two columns right (96 px each) and three rows down (24 px each), at zoom 1.
+    fireEvent.pointerDown(screen.getByText("Chart"), { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { clientX: 100 + 2 * 96, clientY: 100 + 3 * 24 });
+    fireEvent.pointerUp(window);
+    expect(onChange).toHaveBeenCalledWith("c1", { anchor: "F5" });
+  });
+
+  it("resizes a chart by its corner and ignores a click", () => {
+    const onChange = setup();
+    const handle = document.querySelector(".chart-resize")!;
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(window);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 40 });
+    fireEvent.pointerUp(window);
+    expect(onChange).toHaveBeenCalledWith("c1", { widthPx: 500, heightPx: 300 });
   });
 
   it("deletes a chart", () => {

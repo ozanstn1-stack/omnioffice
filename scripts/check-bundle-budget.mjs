@@ -104,7 +104,9 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // and its search icon add ~1 KB of per-chunk overhead to the total.
 // Raised to 534 in 4.1a (Calc chart properties): editing a chart's title, kind,
 // legend and ranges adds ~0.8 KB gzip to the CalcEditor chunk (50.7 / 52 KB).
-const TOTAL_BUDGET_KB = 534;
+// Raised to 535 in 4.1b (move and resize Calc charts): the drag layer and the
+// measured head and legend add ~0.8 KB gzip to the CalcEditor chunk (51.5 / 52 KB).
+const TOTAL_BUDGET_KB = 535;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

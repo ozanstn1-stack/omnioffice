@@ -2764,6 +2764,28 @@ body {
 .chart-head > strong {
   margin-right: auto;
 }
+/* A Calc chart moves by its title bar and resizes by its corner (4.1b). */
+.chart-box > .chart-head {
+  cursor: move;
+  touch-action: none;
+}
+.chart-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, var(--border-strong) 50%);
+  border-bottom-right-radius: 10px;
+}
+@media (pointer: coarse) {
+  .chart-resize {
+    width: 28px;
+    height: 28px;
+  }
+}
 .chart-legend {
   display: flex;
   gap: 10px;
