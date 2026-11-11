@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.38.0] - 2026-11-11
+
+### Added
+
+- **Edit a Calc chart after inserting it:** each chart has an Edit button next to Delete. Chart
+  properties sets the title, the kind, the legend, the category range and each series' name and
+  range (a range that is not a cell reference blocks Save), the doughnut hole and the scatter
+  style. Until now an inserted chart could only be deleted.
+- **Move and resize Calc charts:** drag a chart by its title bar and it snaps to the cell under
+  its corner; drag the bottom-right handle to resize it (200x140 to 2400x1600 px).
+- **Stacked Calc charts, value labels and axis titles:** column, bar and area charts can stack
+  their series, every chart can show its values, and cartesian charts take a category and a
+  value axis title. The XLSX and ODS files already carried these settings; Calc could not set or
+  draw them.
+
+### Changed
+
+- **The command palette and global search load on first open:** the app's startup chunk drops
+  from 58.7 to 57.6 KB gzip.
+
+### Fixed
+
+- **A Calc chart's legend could hang below its box:** the box now measures its title bar and
+  legend instead of assuming their height (the buttons are larger on touch screens).
+
 ## [7.37.0] - 2026-11-11
 
 ### Changed

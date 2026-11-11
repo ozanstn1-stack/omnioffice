@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.37.0
+# Release Readiness — OmniOffice 7.38.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,23 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.38.0) - Calc grafikleri düzenlenir, taşınır, yığılır
+
+- **A Calc chart's title, kind, legend and ranges are edited after it is inserted:**
+  `test:src/office/calc/ui/ChartDialogs.test.tsx#saves the edited title, kind, legend and series`
+- **A Calc chart moves by its title bar to the cell under the drop:**
+  `test:src/office/calc/ui/ChartDialogs.test.tsx#moves a chart by its title bar to the cell under the drop`
+- **A Calc chart resizes by its corner, and a click on the handle changes nothing:**
+  `test:src/office/calc/ui/ChartDialogs.test.tsx#resizes a chart by its corner and ignores a click`
+- **Stacking, value labels and axis titles are saved with the chart:**
+  `test:src/office/calc/ui/ChartDialogs.test.tsx#saves stacking, value labels and axis titles`
+- **Stacked columns scale to the largest stack:**
+  `test:src/office/calc/ui/cartesian-plot.test.tsx#stacks columns so the tallest stack reaches the top of the plot`
+- **The category axis title follows the category axis:**
+  `test:src/office/calc/ui/cartesian-plot.test.tsx#puts the category title below a column chart and left of a bar chart`
+- **The command palette and global search load only when opened:**
+  `test:src/components/global-overlays.test.tsx#loads the command palette and global search only when opened`
 
 ## Implemented (this cycle, 7.37.0) - Uzun işler tipli komut bağlamalarıyla
 
