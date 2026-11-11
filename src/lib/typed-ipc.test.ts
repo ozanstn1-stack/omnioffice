@@ -101,8 +101,8 @@ describe("typed bindings: the plugin group", () => {
 });
 
 // The AI commands are called through api.ts, which loads the generated
-// wrappers on first use; the long jobs stay on `invokeTracked` so the Jobs
-// screen can re-run them.
+// wrappers on first use; the long jobs go through `trackedRequest`, which
+// records the retry entry first so the Jobs screen can re-run them.
 describe("typed bindings: the ai group", () => {
   const ipc = read("src-tauri/src/ipc.rs");
   const aiBlock = /ai_commands \{\n([\s\S]*?)\n\s*\}\n\}/.exec(ipc)?.[1] ?? "";
