@@ -98,6 +98,7 @@ import { CfDecor } from "./calc/ui/CfDecor";
 import { cellTextStyle } from "./calc/ui/cell-style";
 import { ChartDialog } from "./calc/ui/ChartDialogs";
 import { ChartLayer } from "./calc/ui/ChartLayer";
+import { applyChartPatch } from "./calc/chart-drag";
 import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
 import { RemoveDuplicatesDialog, TextToColumnsDialog } from "./calc/ui/DataToolsDialogs";
 import { FilterDialog } from "./calc/ui/FilterDialog";
@@ -2126,14 +2127,10 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             <ChartLayer
               sheet={sheet}
               workbook={workbook}
-              place={(row, col) => ({ x: columnX(col), y: HEADER_HEIGHT + rowLayout.offsetOf(row) })}
-              onChange={(id, chart) =>
-                updateSheet((current) => ({
-                  ...current,
-                  charts: chart
-                    ? current.charts.map((entry) => (entry.id === id ? { ...entry, chart } : entry))
-                    : current.charts.filter((entry) => entry.id !== id),
-                }))
+              rowLayout={rowLayout}
+              zoom={gridZoom}
+              onChange={(id, patch) =>
+                updateSheet((current) => ({ ...current, charts: applyChartPatch(current.charts, id, patch) }))
               }
             />
             <VisibleNotes
