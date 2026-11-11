@@ -88,8 +88,10 @@ formulas (XLSX), shared formulas and transition metadata (PPTX).
   the next D6 round should add them with the same counter style.
 - ODT tracked changes are read by a separate importer and are not part of the
   ODT corpus row; the row measures text, styles and tables.
-- Dynamic arrays (spill ranges) are read as their formula text; the app does
-  not calculate spill ranges yet.
+- Dynamic arrays: Calc calculates spill ranges, and an Excel spill imports as
+  its anchor formula (the cached spill cells are dropped so it spills again).
+  The XLSX writer still writes the formula without Excel's spill metadata
+  (`cm`, `metadata.xml`), so Excel shows only the first value.
 - XLSX structured tables and shared formulas are read and expanded, but the
   writer still writes plain formulas (no `t="shared"` output); Excel accepts
   the result, the file is just larger.

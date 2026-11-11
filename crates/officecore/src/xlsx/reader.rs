@@ -262,10 +262,10 @@ fn read_workbook_bytes_inner(bytes: &[u8]) -> OfficeResult<SheetRead> {
         }
         Err(ValuesFailure::Failed(error)) => return Err(error),
     }
-    // D6: `calamine` exposes only the base formula of a shared group, so the
-    // filled-down followers would import as empty cells. Expand them from the
-    // raw sheet XML before the layout pass.
+    // D6 / 4.2: `calamine` gives only the base formula of a shared group and keeps
+    // Excel's cached spill values; fix both from the raw sheet XML (see each module).
     let _ = crate::xlsx::shared_formulas::apply_all(bytes, &mut workbook.sheets);
+    let _ = crate::xlsx::array_formulas::apply_all(bytes, &mut workbook.sheets);
     if workbook.sheets.is_empty() {
         workbook.sheets.push(Sheet::new("Sheet1"));
     }
