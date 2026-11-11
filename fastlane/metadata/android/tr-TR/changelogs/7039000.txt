@@ -1,0 +1,1 @@
+7.39.0: Taşan formüller Excel dinamik dizisi olarak kaydediliyor, böylece Excel de onları taşırıyor. Excel'den açılan dinamik diziler artık #SPILL! hatası göstermiyor.

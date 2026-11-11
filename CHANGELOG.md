@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.39.0] - 2026-11-11
+
+### Added
+
+- **Spilled formulas are saved as Excel dynamic arrays:** a formula that spills in Calc
+  (`SEQUENCE`, `FILTER`, `SORT`, `UNIQUE`, ...) is written to XLSX the way Excel writes a dynamic
+  array (`cm="1"`, `t="array"` with its spill range and an `xl/metadata.xml` part), so Excel
+  spills it too instead of showing one value. Workbooks without spills are written as before.
+
+### Fixed
+
+- **Dynamic arrays opened from Excel showed #SPILL!:** Excel saves a spilled array as its formula
+  plus cached values in the rest of the range; those values were imported as ordinary cells and
+  blocked Calc's own spill. The cached cells are now dropped on import, so the formula spills
+  again. Legacy multi-cell array formulas are handled the same way.
+
 ## [7.38.0] - 2026-11-11
 
 ### Added
