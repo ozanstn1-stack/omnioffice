@@ -1,4 +1,5 @@
 //! ODP (Impress) import: timing, footers and the package reader.
+use super::slides_masters::{read_odp_masters, slide_master_id};
 use super::slides_read::*;
 use super::slides_write::*;
 use super::slides_write_file::{odp_graphic_clips, OdpImport};
@@ -220,6 +221,8 @@ pub fn read_odp(bytes: &[u8]) -> OfficeResult<DeckRead> {
         roots.push(styles_root);
     }
     import.clips = odp_graphic_clips(&roots);
+    deck.masters =
+        styles_root.as_ref().map_or_else(Vec::new, |root| read_odp_masters(root, &reader, &mut import, &mut warnings));
     let hidden_pages = odp_hidden_page_styles(&root);
     let mut pages = Vec::new();
     root.find_all("page", &mut pages);
@@ -228,7 +231,8 @@ pub fn read_odp(bytes: &[u8]) -> OfficeResult<DeckRead> {
         let animations = read_odp_timing(page, &objects, &mut warnings);
         let hidden = page.attr_any_ns("visibility") == Some("hidden")
             || page.attr_any_ns("style-name").map(|name| hidden_pages.contains(name)).unwrap_or(false);
-        let mut slide = Slide { objects, animations, hidden, ..Default::default() };
+        let mut slide =
+            Slide { objects, animations, hidden, master_id: slide_master_id(&deck, page), ..Default::default() };
         let mut notes = Vec::new();
         page.find_all("notes", &mut notes);
         if let Some(notes) = notes.first() {

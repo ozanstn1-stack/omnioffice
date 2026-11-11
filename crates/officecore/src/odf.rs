@@ -27,6 +27,7 @@ const NS: &str = concat!(
 );
 mod sheets_read;
 mod sheets_write;
+mod slides_masters;
 mod slides_read;
 mod slides_read_timing;
 use sheets_read::{ods_annotation, ods_href, read_ods_chart};

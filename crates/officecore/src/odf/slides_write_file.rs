@@ -1,5 +1,6 @@
 //! ODP (Impress) export: the package writer.
 
+use super::slides_masters::*;
 use super::slides_write::*;
 use super::slides_write_objects::*;
 use super::*;
@@ -42,7 +43,7 @@ fn odp_master_frame(class: &str, x: f64, y: f64, w: f64, h: f64, body: &str) -> 
 
 /// The placeholder frames of the default master page for an enabled footer,
 /// laid out along the bottom of the slide like the PPTX writer lays them out.
-fn odp_footer_shapes(deck: &Deck, footer: &SlideFooter) -> String {
+pub(super) fn odp_footer_shapes(deck: &Deck, footer: &SlideFooter) -> String {
     let width = deck.size.width_pt;
     let bottom = (deck.size.height_pt - 34.0).max(0.0);
     let mut out = String::new();
@@ -89,8 +90,9 @@ fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<
     for (index, slide) in deck.slides.iter().enumerate() {
         let style_attr = if slide.hidden { " draw:style-name=\"dp-hidden\"" } else { "" };
         body.push_str(&format!(
-            "<draw:page draw:name=\"Slide{}\" draw:master-page-name=\"Default\"{style_attr}>",
-            index + 1
+            "<draw:page draw:name=\"Slide{}\" draw:master-page-name=\"{}\"{style_attr}>",
+            index + 1,
+            master_page_name(deck, slide)
         ));
         ids.reset_slide();
         plan_odp_ids(&slide.objects, &mut ids);
@@ -145,6 +147,8 @@ fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<
     } else {
         ""
     };
+    // Masters first: their shapes add automatic styles, which styles.xml repeats (4.3a).
+    let masters = master_pages_xml(deck, &mut ids, &mut auto, &mut pictures);
     let automatic = auto.xml();
     let automatic =
         automatic.trim_start_matches("<office:automatic-styles>").trim_end_matches("</office:automatic-styles>");
@@ -152,29 +156,9 @@ fn write_odp_bytes(deck: &Deck, warnings: &mut Vec<String>) -> OfficeResult<Vec<
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {ANIM_NS} office:version=\"1.2\"><office:styles>{}</office:styles><office:automatic-styles>{page_layout}{hidden_style}{automatic}</office:automatic-styles><office:body><office:presentation>{body}</office:presentation></office:body></office:document-content>",
         odp_list_style_xml()
     );
-    let background = match deck.theme.as_str() {
-        "dark" => "#0F172A",
-        "business" => "#F8FAFC",
-        "education" => "#FEFCE8",
-        "modern" => "#FFFFFF",
-        _ => "#FFFFFF",
-    };
-    let mut drawing_props = format!("draw:fill=\"solid\" draw:fill-color=\"{background}\"");
-    let mut master_shapes = String::new();
-    if let Some(footer) = deck.footer.as_ref().filter(|footer| footer.enabled) {
-        if footer.show_text {
-            drawing_props.push_str(" presentation:display-footer=\"true\"");
-        }
-        if footer.show_slide_number {
-            drawing_props.push_str(" presentation:display-page-number=\"true\"");
-        }
-        if footer.show_date {
-            drawing_props.push_str(" presentation:display-date-time=\"true\"");
-        }
-        master_shapes = odp_footer_shapes(deck, footer);
-    }
+    let master_automatic = if deck.masters.is_empty() { "" } else { automatic };
     let styles = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"><office:styles/><office:automatic-styles>{page_layout}</office:automatic-styles><office:master-styles><style:master-page style:name=\"Default\" style:page-layout-name=\"pl1\"><style:drawing-page-properties {drawing_props}/>{master_shapes}</style:master-page></office:master-styles></office:document-styles>"
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} office:version=\"1.2\"><office:styles/><office:automatic-styles>{page_layout}{master_automatic}</office:automatic-styles><office:master-styles>{masters}</office:master-styles></office:document-styles>"
     );
     // Every chart object is a sub-document with its own manifest entries.
     let mut files = vec!["content.xml".to_string(), "styles.xml".to_string(), "meta.xml".to_string()];
