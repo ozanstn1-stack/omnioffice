@@ -1,0 +1,1 @@
+7.36.0: Calc düzenleyicisinin formül çubuğu, sütun ve satır başlıkları, hücre içi düzenleyicisi ve tablo görünümü ayrı, test edilen bileşenlere taşındı. Kullanıcının gördüğü davranış değişmedi; bu, sonraki özellikler için kodu sadeleştiren bir iç düzenlemedir.

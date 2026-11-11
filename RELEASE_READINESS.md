@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.35.0
+# Release Readiness — OmniOffice 7.36.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,19 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.36.0) - Calc düzenleyicisi bileşenlere ayrıldı
+
+- **Calc's formula bar turns Enter, Tab and Escape into intents for the editor to commit:**
+  `test:src/office/calc/ui/FormulaBar.test.tsx#passes the trimmed name box and turns Enter, Tab and Escape into intents`
+- **The formula assist gets a key before the formula bar:**
+  `test:src/office/calc/ui/FormulaBar.test.tsx#lets the formula assist consume a key first`
+- **Calc's column headers mark the active and hidden-neighbour columns and pin frozen ones:**
+  `test:src/office/calc/ui/GridHeaders.test.tsx#marks the active column, a hidden neighbour and pinned columns, and opens the menu`
+- **Structured tables band every other body row and never the totals row:**
+  `test:src/office/calc/ui/cell-look.test.ts#bands every other body row and never the totals row`
+- **Escape in a Calc cell editor does not reach the grid:**
+  `test:src/office/calc/ui/CellEditor.test.tsx#keeps Escape from reaching the grid`
 
 ## Implemented (this cycle, 7.35.0) - Writer ve Impress panelleri bileşenlere ayrıldı
 

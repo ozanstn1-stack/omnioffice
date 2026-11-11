@@ -623,3 +623,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   notlar/animasyonlar, nesne konum/boyut ve metin araçları (`office/impress/`).
   WriterEditor 3252 → 2823, ImpressEditor 2777 → 2422; davranış değişmedi. Sıradaki: 3.3f
   Calc formül çubuğu, sonra ızgara.
+
+## v7.36.0 sürüm PR'ı — 3.3f–3.3h Calc bölme — 2026-11-11
+- #731–#733 birleşti: Calc formül çubuğu (`calc/ui/FormulaBar.tsx`), sütun/satır başlıkları
+  (`GridHeaders.tsx`), hücre içi düzenleyici (`CellEditor.tsx`) ve tablo görünümü
+  (`cell-look.ts`). CalcEditor 2541 → 2453; davranış değişmedi. Sonrası: bölmeye ara verip
+  3.4 (IPC tipleri) ya da 4.1 (Calc grafik arayüzü) — sahibin tercihine göre.

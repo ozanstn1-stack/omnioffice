@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.36.0] - 2026-11-11
+
+### Changed
+
+- **Calc editor split into components (internal):** the formula bar, the column and row
+  headers, the editor drawn inside a cell while typing, and the rules a structured table
+  applies to its cells (header fill, banding, totals row) now live in their own files with
+  their own tests. `CalcEditor.tsx` went from 2541 to 2453 lines; no behaviour change.
+
 ## [7.35.0] - 2026-11-10
 
 ### Changed
