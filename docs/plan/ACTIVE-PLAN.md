@@ -642,3 +642,8 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - #739–#741: Calc grafikleri düzenlenir (başlık, tür, gösterge, aralıklar), başlıktan taşınır,
   köşeden boyutlandırılır; yığılmış seriler, değer etiketleri, eksen başlıkları; gösterge
   taşması düzeldi. Sonrası: Aşama 4.2 (dinamik dizi / spill) keşfi.
+
+## v7.39.0 sürüm PR'ı — 4.2 Excel dinamik dizileri — 2026-11-11
+- #743: Excel'in kaydettiği taşan diziler içe aktarmada önbellek hücreleri düşürülerek yeniden
+  taşar (`#SPILL!` hatası giderildi). #744: taşan formüller XLSX'e Excel dinamik dizisi olarak
+  yazılır (`cm`, `t="array" ref`, `xl/metadata.xml`). Sonrası: Aşama 4.3 (Impress medya) keşfi.

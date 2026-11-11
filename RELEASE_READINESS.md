@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.38.0
+# Release Readiness — OmniOffice 7.39.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,15 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.39.0) - Excel dinamik dizileri
+
+- **A spilled array saved by Excel imports as one formula that Calc spills again:**
+  `test:crates/officecore/src/xlsx/array_formulas.rs#an_excel_spill_imports_as_one_formula_the_editor_can_spill_again`
+- **A spilled formula is saved with Excel's dynamic-array metadata and reads back as one formula:**
+  `test:crates/officecore/src/xlsx/spill_write.rs#a_saved_spill_carries_excels_metadata_and_reads_back_as_one_formula`
+- **The saved copy carries each formula's spill range:**
+  `test:src/office/calc/spill-export.test.ts#gives a spilling formula the range it covers`
 
 ## Implemented (this cycle, 7.38.0) - Calc grafikleri düzenlenir, taşınır, yığılır
 
