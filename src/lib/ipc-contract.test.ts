@@ -1,30 +1,27 @@
 /**
- * The generated bindings are the naming source of truth for the IPC DTOs; the
- * app still narrows some of them by hand (string literal unions instead of
- * `string`, optional members for `#[serde(default)]` fields). A rename on the
- * Rust side regenerates the binding and this test fails on the hand-written
- * copy, instead of the value silently arriving as `undefined` (the v5.0.0
- * audit's `headerFooter` / `taxIdValid` failures).
+ * The specta bindings (`npm run bindings:gen`) are the naming source of truth
+ * for the IPC DTOs; the app still narrows some of them by hand (string literal
+ * unions instead of `string`, optional members for `#[serde(default)]`
+ * fields). A rename on the Rust side regenerates the binding and this test
+ * fails on the hand-written copy, instead of the value silently arriving as
+ * `undefined` (the v5.0.0 audit's `headerFooter` / `taxIdValid` failures).
  */
 import { describe, expect, it } from "vitest";
 
 import apiSource from "./api.ts?raw";
 import typesSource from "./types.ts?raw";
-import batesSource from "./generated/BatesOptions.ts?raw";
-import compressSource from "./generated/CompressOptions.ts?raw";
-import headerFooterSource from "./generated/HeaderFooterOptions.ts?raw";
-import ocrOptionsSource from "./generated/OcrOptions.ts?raw";
-import ocrPreprocessSource from "./generated/OcrPreprocess.ts?raw";
-import redactionAreaSource from "./generated/RedactionArea.ts?raw";
-import redactionOptionsSource from "./generated/RedactionOptions.ts?raw";
-import recipeStepSource from "./generated/RecipeStep.ts?raw";
 import spectaSource from "./generated/specta.ts?raw";
 
-/** Field names of a generated `export type X = { a: T, b?: U, };`. */
-function generatedFields(source: string, typeName: string): string[] {
-  const start = source.indexOf(`export type ${typeName} = {`);
+/**
+ * Field names of a generated `export type X = { a: T, b?: U, };`. Types that
+ * read and write differently come as `X_Deserialize` (what the app sends);
+ * doc comments are dropped so their words cannot read as fields.
+ */
+function generatedFields(typeName: string): string[] {
+  const split = spectaSource.indexOf(`export type ${typeName}_Deserialize = {`);
+  const start = split >= 0 ? split : spectaSource.indexOf(`export type ${typeName} = {`);
   if (start < 0) throw new Error(`generated type ${typeName} not found`);
-  const body = source.slice(start, source.indexOf("};", start));
+  const body = spectaSource.slice(start, spectaSource.indexOf("};", start)).replace(/\/\*[\s\S]*?\*\//g, "");
   return [...body.matchAll(/(?:^|[,{\s])(\w+)(?:\?)?:\s/g)].map((match) => match[1]).sort();
 }
 
@@ -59,29 +56,28 @@ function unionVariants(source: string, typeName: string): Map<string, string[]> 
 }
 
 describe("generated bindings match the hand-written types", () => {
-  const pairs: [string, string, string][] = [
-    // [hand-written type, generated source, generated type name]
-    ["CompressOptions", compressSource, "CompressOptions"],
-    ["OcrPreprocess", ocrPreprocessSource, "OcrPreprocess"],
-    ["OcrOptions", ocrOptionsSource, "OcrOptions"],
-    ["HeaderFooterOptions", headerFooterSource, "HeaderFooterOptions"],
-    ["BatesOptions", batesSource, "BatesOptions"],
-    ["RedactionArea", redactionAreaSource, "RedactionArea"],
-    ["RedactionOptions", redactionOptionsSource, "RedactionOptions"],
+  const pairs = [
+    "CompressOptions",
+    "OcrPreprocess",
+    "OcrOptions",
+    "HeaderFooterOptions",
+    "BatesOptions",
+    "RedactionArea",
+    "RedactionOptions",
   ];
 
-  for (const [declared, generatedSource, generatedName] of pairs) {
-    it(`${declared} uses the same field names as the Rust struct`, () => {
-      expect(declaredFields(typesSource, declared)).toEqual(generatedFields(generatedSource, generatedName));
+  for (const name of pairs) {
+    it(`${name} uses the same field names as the Rust struct`, () => {
+      expect(declaredFields(typesSource, name)).toEqual(generatedFields(name));
     });
   }
 
-  // The app's RecipeStep is the tauri-specta binding (#316); it must carry the
-  // same variants and fields as the ts-rs export of the same Rust enum.
+  // The app's RecipeStep is the tauri-specta binding (#316); what Rust sends
+  // back must carry the same variants and fields as what the app sends.
   it("RecipeStep carries the same variants and fields as the Rust enum", () => {
     expect(apiSource).toContain("export type RecipeStep = specta.RecipeStep_Deserialize;");
     expect(unionVariants(spectaSource, "RecipeStep_Deserialize")).toEqual(
-      unionVariants(recipeStepSource, "RecipeStep"),
+      unionVariants(spectaSource, "RecipeStep_Serialize"),
     );
   });
 
@@ -89,9 +85,9 @@ describe("generated bindings match the hand-written types", () => {
     // These two structs (unlike the rest) have no `rename_all`, so their
     // multi-word fields stay snake_case on the wire; the test pins that so a
     // future rename is a deliberate wire change.
-    expect(generatedFields(compressSource, "CompressOptions")).toContain("jpeg_quality");
-    expect(generatedFields(compressSource, "CompressOptions")).toContain("remove_metadata");
-    expect(generatedFields(ocrOptionsSource, "OcrOptions")).toContain("output_mode");
-    expect(generatedFields(ocrOptionsSource, "OcrOptions")).toContain("skip_text_pages");
+    expect(generatedFields("CompressOptions")).toContain("jpeg_quality");
+    expect(generatedFields("CompressOptions")).toContain("remove_metadata");
+    expect(generatedFields("OcrOptions")).toContain("output_mode");
+    expect(generatedFields("OcrOptions")).toContain("skip_text_pages");
   });
 });

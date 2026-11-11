@@ -29,7 +29,7 @@ import {
 import { suggestedOutputPath } from "../lib/file-tokens";
 import { useT } from "../lib/i18n";
 import { errorMessage, useSettings, useToasts } from "../lib/store";
-import { invokeTracked } from "../lib/api";
+import { trackedRequest } from "../lib/tracked-request";
 import { DropZone, FileList } from "../components/files";
 import { Badge, Card, Field, Toggle } from "../components/ui";
 import { Screen } from "../components/layout";
@@ -381,9 +381,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runSanitize = () =>
     run(async () => {
-      const report = await invokeTracked<SanitizeReport>("sanitize_pdf", {
-        request: { input, jobId: "studio-sanitize", options: null },
-      });
+      const report = await trackedRequest("sanitize_pdf", { input, jobId: "studio-sanitize", options: null }, (c, r) =>
+        c.sanitizePdf(r),
+      );
       setSanitizeReport(report);
       toast("success", t("studio.sanitizeDone"));
     }, "studio-sanitize");
@@ -398,9 +398,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
         );
         if (!androidTarget) return;
       }
-      const report = await invokeTracked<RepairReport>("pdf_repair", {
-        request: { input, jobId: "studio-repair" },
-      });
+      const report = await trackedRequest("pdf_repair", { input, jobId: "studio-repair" }, (c, r) => c.pdfRepair(r));
       setRepairReport(report);
       if (androidTarget) await publishOutputs([report.output], { file: androidTarget });
       toast("success", t("studio.repairDone"));
@@ -408,18 +406,18 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runLinearize = () =>
     run(async () => {
-      const report = await invokeTracked<RepairReport>("pdf_linearize", {
-        request: { input, jobId: "studio-linearize" },
-      });
+      const report = await trackedRequest("pdf_linearize", { input, jobId: "studio-linearize" }, (c, r) =>
+        c.pdfLinearize(r),
+      );
       setRepairReport(report);
       toast("success", t("studio.linearizeDone"));
     }, "studio-linearize");
 
   const runFlatten = () =>
     run(async () => {
-      const report = await invokeTracked<FlattenReport>("flatten_pdf", {
-        request: { input, jobId: "studio-flatten", options: null },
-      });
+      const report = await trackedRequest("flatten_pdf", { input, jobId: "studio-flatten", options: null }, (c, r) =>
+        c.flattenPdf(r),
+      );
       setFlattenReport(report);
       toast("success", t("studio.flattenDone"));
     }, "studio-flatten");
@@ -432,9 +430,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const runConvert = () =>
     run(async () => {
-      const report = await invokeTracked<PdfaReport>("pdfa_convert", {
-        request: { input, level, jobId: "studio-pdfa" },
-      });
+      const report = await trackedRequest("pdfa_convert", { input, level, jobId: "studio-pdfa" }, (c, r) =>
+        c.pdfaConvert(r),
+      );
       setPdfaReport(report);
       toast(report.valid ? "success" : "error", report.valid ? t("studio.pdfaValid") : t("studio.pdfaStillFailing"));
     }, "studio-pdfa");

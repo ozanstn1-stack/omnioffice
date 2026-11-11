@@ -181,13 +181,11 @@ export const invoiceSummary = (paths: string[]) =>
 export const vatRates = () => callPlain((c) => c.officeVatRates());
 
 /**
- * The GİB karekod (e-Fatura QR) payload and its reader result. Both types are
- * generated from the Rust structs (`npm run types:gen`), so a field rename on
- * the Rust side fails the TypeScript build instead of arriving as `undefined`.
+ * The GİB karekod (e-Fatura QR) payload and its reader result, as Rust sends
+ * them (the specta bindings), so a field rename fails the TypeScript build.
  */
-import type { InvoiceQr } from "./generated/InvoiceQr";
-export type { GibQr } from "./generated/GibQr";
-export type { InvoiceQr } from "./generated/InvoiceQr";
+export type GibQr = specta.GibQr_Serialize;
+export type InvoiceQr = specta.InvoiceQr_Serialize;
 
 /** Reads the GİB karekod from a PDF (first pages, or a specific page). */
 export const readInvoiceQr = (path: string, page?: number): Promise<InvoiceQr | null> =>

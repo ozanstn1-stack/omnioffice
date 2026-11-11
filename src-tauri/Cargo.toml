@@ -45,9 +45,6 @@ aicore = { path = "../crates/aicore" }
 officecore = { path = "../crates/officecore" }
 lopdf = "0.46.0"
 pdfcore = { path = "../crates/pdfcore" }
-# TypeScript bindings for the IPC DTOs (v5.1). Optional: only the `ts` feature
-# pulls it in, so shipped builds are unchanged.
-ts-rs = { version = "12", optional = true }
 time = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 # Release URLs are parsed and normalised (dot-segment escapes) before they are
@@ -67,9 +64,6 @@ libc = "0.2"
 # The AI extraction test writes real DOCX/XLSX/PPTX fixtures with the engines.
 [features]
 bindings = ["dep:tauri-specta", "dep:specta", "dep:specta-typescript", "pdfcore/bindings", "synccore/bindings", "officecore/bindings", "aicore/bindings"]
-# Generates the TypeScript bindings for the IPC DTOs (`cargo test export_bindings`).
-# Enabling it also turns on pdfcore's `ts` feature, so its DTOs export too.
-ts = ["dep:ts-rs", "pdfcore/ts"]
 
 [dev-dependencies]
 tempfile = "3"

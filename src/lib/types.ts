@@ -179,7 +179,7 @@ export interface Annotation {
   x2: number | null;
   y2: number | null;
   /** Freehand strokes in display space (top-left origin), absolute on page. */
-  strokes?: number[][][];
+  strokes?: [number, number][][];
   /** Image/signature bytes as base64 (PNG); preferred over `image_path`. */
   image_base64?: string | null;
 }
@@ -651,7 +651,7 @@ export interface CompareOptions {
 
 export interface TextDifference {
   page: number;
-  kind: "added" | "removed" | "changed";
+  kind: string; // "added" | "removed" | "changed", sent by Rust as a plain string
   left: string;
   right: string;
 }

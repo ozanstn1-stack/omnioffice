@@ -1,6 +1,5 @@
 import type * as specta from "./generated/specta";
 import type { SyncState, VaultScanRequest_Deserialize } from "./generated/specta";
-import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { FileToken } from "./file-tokens";
 import type {
@@ -8,7 +7,6 @@ import type {
   AnnotationEditItem,
   BatesOptions,
   CompareOptions,
-  CompareReport,
   CompressOptions,
   CropItem,
   EditableAnnotation,
@@ -18,7 +16,6 @@ import type {
   NumberingOptions,
   NupOptions,
   OcrOptions,
-  OpResult,
   OutlineEntry,
   OutputSpec,
   PagePlanItem,
@@ -26,7 +23,6 @@ import type {
   ProtectOptions,
   RecentAdd,
   RedactionArea,
-  RedactionMatch,
   RedactionOptions,
   Settings,
   SplitMode,
@@ -36,21 +32,8 @@ import type {
 // older ts-rs files typed them as bigint, which the JSON never carries).
 type CertificateItem = specta.CertificateItem;
 type RedactionCertificate = specta.RedactionCertificate_Serialize;
-import { trackJobInvocation } from "./job-retries";
 import { asJson, call, callPlain } from "./typed-call";
 import { trackedRequest } from "./tracked-request";
-
-/**
- * Every long operation goes through here: the retry metadata (kind + the exact
- * invoke args) is persisted before the work starts, so the Jobs screen can
- * re-run it after a restart. A no-op for commands without a job.
- */
-function invokeTracked<T>(command: string, args: Record<string, unknown>): Promise<T> {
-  trackJobInvocation(command, args);
-  return invoke<T>(command, args);
-}
-
-export { invokeTracked };
 
 /** Normalizes any thrown value into a friendly {code, message} pair. */
 export function toAppError(error: unknown): { code: string; message: string } {
@@ -118,7 +101,7 @@ export const aiBatchRun = (request: specta.AiBatchRequest_Deserialize) =>
 export const aiCleanupText = (request: specta.AiCleanupRequest_Deserialize) =>
   trackedRequest("ai_cleanup_text", request, (c, r) => c.aiCleanupText(r));
 /**
- * In-editor AI action. Deliberately NOT `invokeTracked`: the retry store
+ * In-editor AI action. Deliberately NOT `trackedRequest`: the retry store
  * persists the invoke args, which here hold the user's selected document text.
  */
 export const aiEditText = (request: specta.AiEditRequest_Deserialize) => call((c) => c.aiEditText(request));
@@ -257,7 +240,7 @@ export const onLaunchFilesQueued = (handler: () => void): Promise<UnlistenFn> =>
 // ---------------------------------------------------------------------------
 
 export const mergePdfs = (inputs: string[], output: OutputSpec, preserveMetadata: boolean, jobId: string) =>
-  invokeTracked<OpResult>("merge_pdfs", { request: { inputs, output, preserveMetadata, jobId } });
+  trackedRequest("merge_pdfs", { inputs, output, preserveMetadata, jobId }, (c, r) => c.mergePdfs(r));
 
 interface PagesPayload {
   input: string;
@@ -269,11 +252,14 @@ interface PagesPayload {
   jobId: string;
 }
 
-export const extractPages = (payload: PagesPayload) => invokeTracked<OpResult>("extract_pages", { request: payload });
+export const extractPages = (payload: PagesPayload) =>
+  trackedRequest("extract_pages", payload, (c, r) => c.extractPages(r));
 
-export const deletePages = (payload: PagesPayload) => invokeTracked<OpResult>("delete_pages", { request: payload });
+export const deletePages = (payload: PagesPayload) =>
+  trackedRequest("delete_pages", payload, (c, r) => c.deletePages(r));
 
-export const rotatePages = (payload: PagesPayload) => invokeTracked<OpResult>("rotate_pages", { request: payload });
+export const rotatePages = (payload: PagesPayload) =>
+  trackedRequest("rotate_pages", payload, (c, r) => c.rotatePages(r));
 
 export const applyPagePlan = (
   input: string,
@@ -281,7 +267,7 @@ export const applyPagePlan = (
   output: OutputSpec,
   jobId: string,
   password?: string,
-) => invokeTracked<OpResult>("apply_page_plan", { request: { input, plan, output, password, jobId } });
+) => trackedRequest("apply_page_plan", { input, plan, output, password, jobId }, (c, r) => c.applyPagePlan(r));
 
 export const splitPdf = (
   input: string,
@@ -290,10 +276,7 @@ export const splitPdf = (
   overwrite: OutputSpec["overwrite"],
   jobId: string,
   password?: string,
-) =>
-  invokeTracked<{ parts: { path: string; first_page: number; last_page: number }[]; outputDir: string }>("split_pdf", {
-    request: { input, mode, outputDir, overwrite, password, jobId },
-  });
+) => trackedRequest("split_pdf", { input, mode, outputDir, overwrite, password, jobId }, (c, r) => c.splitPdf(r));
 
 export const estimateCompression = (input: string, options: CompressOptions, password?: string) =>
   call((c) => c.estimateCompression(input, options, password || null));
@@ -304,10 +287,10 @@ export const compressPdf = (
   options: CompressOptions,
   jobId: string,
   password?: string,
-) => invokeTracked<OpResult>("compress_pdf", { request: { input, output, options, password, jobId } });
+) => trackedRequest("compress_pdf", { input, output, options, password, jobId }, (c, r) => c.compressPdf(r));
 
 export const ocrPdf = (input: string, output: OutputSpec, options: OcrOptions, jobId: string, password?: string) =>
-  invokeTracked<OpResult>("ocr_pdf", { request: { input, output, options, password, jobId } });
+  trackedRequest("ocr_pdf", { input, output, options, password, jobId }, (c, r) => c.ocrPdf(r));
 
 export const protectPdf = (
   input: string,
@@ -315,13 +298,10 @@ export const protectPdf = (
   options: ProtectOptions,
   jobId: string,
   password?: string,
-) =>
-  invokeTracked<OpResult>("protect_pdf", {
-    request: { input, output, ...options, password, jobId },
-  });
+) => trackedRequest("protect_pdf", { input, output, ...options, password, jobId }, (c, r) => c.protectPdf(r));
 
 export const unlockPdf = (input: string, output: OutputSpec, password: string, jobId: string) =>
-  invokeTracked<OpResult>("unlock_pdf", { request: { input, output, password, jobId } });
+  trackedRequest("unlock_pdf", { input, output, password, jobId }, (c, r) => c.unlockPdf(r));
 
 export const pdfToImages = (request: {
   input: string;
@@ -335,16 +315,10 @@ export const pdfToImages = (request: {
   overwrite?: OutputSpec["overwrite"];
   password?: string;
   jobId: string;
-}) =>
-  invokeTracked<{
-    files: { path: string; page: number; width: number; height: number; bytes: number }[];
-    totalBytes: number;
-    dpi: number;
-    format: string;
-  }>("pdf_to_images", { request });
+}) => trackedRequest("pdf_to_images", request, (c, r) => c.pdfToImages(r));
 
 export const imagesToPdf = (items: ImageItem[], output: OutputSpec, options: ImageToPdfOptions, jobId: string) =>
-  invokeTracked<OpResult>("images_to_pdf", { request: { items, output, options, jobId } });
+  trackedRequest("images_to_pdf", { items, output, options, jobId }, (c, r) => c.imagesToPdf(r));
 
 export const resizePages = (
   input: string,
@@ -359,10 +333,10 @@ export const resizePages = (
   },
   jobId: string,
   password?: string,
-) => invokeTracked<OpResult>("resize_pages", { request: { input, output, options, password, jobId } });
+) => trackedRequest("resize_pages", { input, output, options, password, jobId }, (c, r) => c.resizePages(r));
 
 export const cropPages = (input: string, output: OutputSpec, crops: CropItem[], jobId: string, password?: string) =>
-  invokeTracked<OpResult>("crop_pages", { request: { input, output, crops, password, jobId } });
+  trackedRequest("crop_pages", { input, output, crops, password, jobId }, (c, r) => c.cropPages(r));
 
 export const editMetadata = (
   input: string,
@@ -386,9 +360,9 @@ export const editMetadata = (
    */
   keepSignatures = true,
 ) =>
-  invokeTracked<OpResult>("edit_metadata", {
-    request: { input, output, metadata, remove, password, jobId, keepSignatures },
-  });
+  trackedRequest("edit_metadata", { input, output, metadata, remove, password, jobId, keepSignatures }, (c, r) =>
+    c.editMetadata(r),
+  );
 
 export const addPageNumbers = (
   input: string,
@@ -399,9 +373,9 @@ export const addPageNumbers = (
   /** Keep existing signatures by appending the numbers as a new revision. */
   keepSignatures = true,
 ) =>
-  invokeTracked<OpResult>("add_page_numbers", {
-    request: { input, output, options, password, jobId, keepSignatures },
-  });
+  trackedRequest("add_page_numbers", { input, output, options, password, jobId, keepSignatures }, (c, r) =>
+    c.addPageNumbers(r),
+  );
 
 export const watermarkPdf = (
   input: string,
@@ -412,9 +386,9 @@ export const watermarkPdf = (
   /** Keep existing signatures by appending the watermark as a new revision. */
   keepSignatures = true,
 ) =>
-  invokeTracked<OpResult>("watermark_pdf", {
-    request: { input, output, options, password, jobId, keepSignatures },
-  });
+  trackedRequest("watermark_pdf", { input, output, options, password, jobId, keepSignatures }, (c, r) =>
+    c.watermarkPdf(r),
+  );
 
 export const annotatePdf = (
   input: string,
@@ -425,9 +399,9 @@ export const annotatePdf = (
   /** Keep existing signatures by appending the stamp as a new revision. */
   keepSignatures = true,
 ) =>
-  invokeTracked<OpResult>("annotate_pdf", {
-    request: { input, output, annotations, password, jobId, keepSignatures },
-  });
+  trackedRequest("annotate_pdf", { input, output, annotations, password, jobId, keepSignatures }, (c, r) =>
+    c.annotatePdf(r),
+  );
 
 /** Real (editable) annotations written into the page's `/Annots` array. */
 export const pdfAnnotateEditable = (
@@ -438,9 +412,9 @@ export const pdfAnnotateEditable = (
   password?: string,
   keepSignatures = true,
 ) =>
-  invokeTracked<OpResult>("pdf_annotate_editable", {
-    request: { input, output, annotations, password, jobId, keepSignatures },
-  });
+  trackedRequest("pdf_annotate_editable", { input, output, annotations, password, jobId, keepSignatures }, (c, r) =>
+    c.pdfAnnotateEditable(r),
+  );
 
 /** Lists the document's annotations in display space (top-left origin). */
 export const pdfListAnnotations = (path: string, password?: string) =>
@@ -508,9 +482,11 @@ export const detectRedactionMatches = (
   password?: string,
   auto = false,
 ) =>
-  invokeTracked<RedactionMatch[]>("detect_redaction_matches", {
-    request: { path, keywords, pattern, caseSensitive, pages, auto, password, jobId },
-  });
+  trackedRequest(
+    "detect_redaction_matches",
+    { path, keywords, pattern, caseSensitive, pages, auto, password, jobId },
+    (c, r) => c.detectRedactionMatches(r),
+  );
 
 /** Writes the document outline (bookmarks) as a new revision. */
 export const pdfSetOutline = (
@@ -519,10 +495,7 @@ export const pdfSetOutline = (
   entries: OutlineEntry[],
   jobId: string,
   password?: string,
-) =>
-  invokeTracked<OpResult>("pdf_set_outline", {
-    request: { input, output, entries, password, jobId },
-  });
+) => trackedRequest("pdf_set_outline", { input, output, entries, password, jobId }, (c, r) => c.pdfSetOutline(r));
 
 /** Header/footer text and Bates numbering stamps in one revision. */
 export const stampPdf = (
@@ -534,15 +507,13 @@ export const stampPdf = (
   password?: string,
   keepSignatures = true,
 ) =>
-  invokeTracked<OpResult>("stamp_pdf", {
-    request: { input, output, headerFooter, bates, password, jobId, keepSignatures },
-  });
+  trackedRequest("stamp_pdf", { input, output, headerFooter, bates, password, jobId, keepSignatures }, (c, r) =>
+    c.stampPdf(r),
+  );
 
 /** N-up sheets and saddle-stitch booklets. */
 export const nupPdf = (input: string, output: OutputSpec, options: NupOptions, jobId: string, password?: string) =>
-  invokeTracked<OpResult>("nup_pdf", {
-    request: { input, output, options, password, jobId },
-  });
+  trackedRequest("nup_pdf", { input, output, options, password, jobId }, (c, r) => c.nupPdf(r));
 
 export const redactPdf = (
   input: string,
@@ -551,7 +522,7 @@ export const redactPdf = (
   options: RedactionOptions,
   jobId: string,
   password?: string,
-) => invokeTracked<OpResult>("redact_pdf", { request: { input, output, areas, options, password, jobId } });
+) => trackedRequest("redact_pdf", { input, output, areas, options, password, jobId }, (c, r) => c.redactPdf(r));
 
 export const detectSensitiveText = (path: string, page: number, password?: string) =>
   call((c) => c.detectSensitiveText(path, page, password || null));
@@ -583,8 +554,9 @@ export const comparePdfs = (
   leftPassword?: string,
   rightPassword?: string,
 ) =>
-  invokeTracked<CompareReport>("compare_pdfs", {
-    request: {
+  trackedRequest(
+    "compare_pdfs",
+    {
       left,
       right,
       leftPassword,
@@ -592,7 +564,8 @@ export const comparePdfs = (
       options,
       jobId,
     },
-  });
+    (c, r) => c.comparePdfs(r),
+  );
 
 export const inspectDocument = (path: string, password?: string) =>
   call((c) => c.inspectDocument(path, password || null));

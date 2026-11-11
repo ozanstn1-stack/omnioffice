@@ -36,8 +36,6 @@ use crate::textbox::{self, CharBox, PageChars};
 
 /// A rectangle to redact, in PDF page space (origin bottom-left, points).
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct RedactionArea {
     /// 1-based page number.
@@ -60,8 +58,6 @@ impl RedactionArea {
 
 /// How aggressively images under a redaction area are handled.
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum ImageRedaction {
@@ -76,9 +72,6 @@ pub enum ImageRedaction {
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
-#[cfg_attr(feature = "ts", ts(optional_fields))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RedactionOptions {

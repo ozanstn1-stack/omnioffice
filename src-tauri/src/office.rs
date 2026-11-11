@@ -1480,8 +1480,6 @@ pub async fn office_open_eml(path: String) -> Result<officecore::eml::EmlMessage
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InvoiceQr {
