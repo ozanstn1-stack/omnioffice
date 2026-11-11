@@ -91,7 +91,7 @@ import { planAutoSum } from "./calc/autosum";
 import { clipboardText, snapshotClipboard } from "./calc/paste-special";
 import { isSheetProtected } from "./calc/protection";
 import { planSort, sortContext, type SortLevel, type SortRange } from "./calc/sort";
-import { edgeVisible, isHiddenIndex, stepVisible } from "./calc/visibility";
+import { edgeVisible, stepVisible } from "./calc/visibility";
 import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
 import { CfDecor } from "./calc/ui/CfDecor";
@@ -121,6 +121,7 @@ import { ValidationDialog } from "./calc/ui/ValidationDialog";
 import { useCellAnnotations } from "./calc/ui/useCellAnnotations";
 import { VisibleNotes } from "./calc/ui/NoteViews";
 import { FormulaBar } from "./calc/ui/FormulaBar";
+import { ColumnHeaders, RowHeaders } from "./calc/ui/GridHeaders";
 import { isLinkCell } from "./calc/links";
 import { noteOf } from "./calc/notes";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
@@ -1899,49 +1900,24 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
             className="calc-canvas"
             style={{ width: HEADER_WIDTH + totalWidth, height: HEADER_HEIGHT + rowLayout.total, zoom: gridZoom }}
           >
-            <div
-              className="calc-col-headers"
-              aria-hidden="true"
-              style={{ transform: `translate(${HEADER_WIDTH}px, ${scroll.top / gridZoom}px)` }}
-            >
-              {visible.columns.map(({ col, x }) => (
-                <div
-                  key={col}
-                  data-col-header={col}
-                  className={`calc-col-header${selection.focus.col === col ? " is-active" : ""}${isHiddenIndex(sheet.colWidths, col - 1) ? " has-hidden-before" : ""}`}
-                  style={{
-                    left: pinnedPosition(col, freeze.cols, x, scrollX),
-                    width: sheet.colWidths[String(col)] ?? DEFAULT_COL_WIDTH,
-                    zIndex: col < freeze.cols ? 1 : undefined,
-                  }}
-                  onContextMenu={(event) => openHeaderMenu("col", col, event)}
-                >
-                  {columnLabel(col)}
-                  <span className="col-resize" data-col-resize={col} />
-                </div>
-              ))}
-            </div>
-            <div
-              className="calc-row-headers"
-              aria-hidden="true"
-              style={{ transform: `translate(${scroll.left / gridZoom}px, 0)` }}
-            >
-              {visible.rows.map((row) => (
-                <div
-                  key={row}
-                  data-row-header={row}
-                  className={`calc-row-header${selection.focus.row === row ? " is-active" : ""}${rowLayout.isHidden(row - 1) ? " has-hidden-before" : ""}`}
-                  style={{
-                    top: pinnedPosition(row, freeze.rows, rowLayout.offsetOf(row), scrollY),
-                    height: rowLayout.heightOf(row),
-                    zIndex: row < freeze.rows ? 1 : undefined,
-                  }}
-                  onContextMenu={(event) => openHeaderMenu("row", row, event)}
-                >
-                  {row + 1}
-                </div>
-              ))}
-            </div>
+            <ColumnHeaders
+              columns={visible.columns}
+              activeCol={selection.focus.col}
+              colWidths={sheet.colWidths}
+              frozenCols={freeze.cols}
+              scrollX={scrollX}
+              offsetTop={scroll.top / gridZoom}
+              onMenu={(col, event) => openHeaderMenu("col", col, event)}
+            />
+            <RowHeaders
+              rows={visible.rows}
+              activeRow={selection.focus.row}
+              layout={rowLayout}
+              frozenRows={freeze.rows}
+              scrollY={scrollY}
+              offsetLeft={scroll.left / gridZoom}
+              onMenu={(row, event) => openHeaderMenu("row", row, event)}
+            />
             <div
               className="calc-corner"
               aria-hidden="true"
