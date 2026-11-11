@@ -24,8 +24,6 @@ use tauri::{AppHandle, Emitter, Manager};
 /// `headerFooter` reaches `header_footer` (it used to be silently dropped, and
 /// the stamp step ran empty).
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum RecipeStep {
@@ -65,8 +63,6 @@ impl RecipeStep {
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Recipe {

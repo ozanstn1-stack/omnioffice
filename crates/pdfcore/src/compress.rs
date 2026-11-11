@@ -19,9 +19,6 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
-#[cfg_attr(feature = "ts", ts(optional_fields))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompressOptions {
     /// lossless | raster

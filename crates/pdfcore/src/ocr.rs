@@ -19,8 +19,6 @@ use std::process::Stdio;
 use std::time::Instant;
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OcrPreprocess {
     #[serde(default)]
@@ -44,9 +42,6 @@ impl Default for OcrPreprocess {
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
-#[cfg_attr(feature = "ts", ts(optional_fields))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OcrOptions {
     #[serde(default = "default_languages")]

@@ -21,9 +21,6 @@ use std::path::{Path, PathBuf};
 
 /// Header and footer templates; empty strings skip that slot.
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
-#[cfg_attr(feature = "ts", ts(optional_fields))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct HeaderFooterOptions {
@@ -67,9 +64,6 @@ impl Default for HeaderFooterOptions {
 
 /// Bates numbering: `{prefix}{number}{suffix}` with zero padding.
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
-#[cfg_attr(feature = "ts", ts(optional_fields))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BatesOptions {

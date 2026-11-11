@@ -355,13 +355,6 @@ jobs:
       - name: Workspace compile
         if: runner.os != 'Windows'
         run: cargo build --workspace --locked
-      # The IPC DTOs are generated from the Rust structs; a hand-written copy
-      # that drifts fails here instead of shipping as `undefined` (the v5.0.0
-      # audit's `headerFooter`/`taxIdValid` failures). One platform is enough:
-      # the bindings do not depend on the OS.
-      - name: Generated TypeScript bindings
-        if: runner.os == 'Linux'
-        run: npm run types:check
       # The typed command wrappers (tauri-specta, #316) come from the Rust
       # command signatures; a signature change without a regenerated
       # src/lib/generated/specta.ts fails here.
