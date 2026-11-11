@@ -304,8 +304,6 @@
     "src/office/calc/sort.ts": 211,
     "src/office/calc/structured.ts": 312,
     "src/office/calc/ui/CalcRibbon.tsx": 421,
-    "src/office/calc/ui/chart-plots.tsx": 247,
-    "src/office/calc/ui/ChartDialogs.tsx": 218,
     "src/office/calc/ui/ConditionalDialog.tsx": 385,
     "src/office/calc/ui/TablesUi.tsx": 255,
     "src/office/calc/ui/useCellAnnotations.tsx": 288,

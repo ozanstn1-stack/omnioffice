@@ -106,7 +106,11 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // legend and ranges adds ~0.8 KB gzip to the CalcEditor chunk (50.7 / 52 KB).
 // Raised to 535 in 4.1b (move and resize Calc charts): the drag layer and the
 // measured head and legend add ~0.8 KB gzip to the CalcEditor chunk (51.5 / 52 KB).
-const TOTAL_BUDGET_KB = 535;
+// Raised to 536 in 4.1c (stacked Calc charts, value labels, axis titles): the
+// cartesian plot and the three new chart properties add ~0.6 KB gzip; the
+// CalcEditor chunk is 52,155 bytes (50.9 / 52 KB; the two notes above counted
+// thousands of bytes, not KB).
+const TOTAL_BUDGET_KB = 536;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

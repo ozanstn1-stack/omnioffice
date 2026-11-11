@@ -1,14 +1,14 @@
 /**
- * Calc's chart dialogs: the kind picked when a chart is inserted, and the
- * properties of a chart already on the sheet (title, kind, legend and the
- * ranges it reads, 4.1a).
+ * The properties of a chart already on the sheet: title, kind, legend and the
+ * ranges it reads (4.1a); stacking, value labels and axis titles (4.1c).
  */
 import { useState } from "react";
 import { useT } from "../../../lib/i18n";
 import type { ChartData } from "../../../lib/office-types";
 import { Dialog } from "../../office-ui";
+import { CHART_KINDS } from "./ChartInsertDialog";
 import { parseRange } from "../addresses";
-import type { ChartOptions } from "../chart-data";
+import { STACKABLE } from "../chart-stack";
 import { DEFAULT_HOLE_SIZE, SCATTER_STYLES, holeSizeOf } from "../chart-geometry";
 
 /** A range field holds a valid `A1:B2` (or single cell) reference. */
@@ -43,6 +43,7 @@ export function ChartProperties({
       ...current,
       series: current.series.map((entry, position) => (position === index ? { ...entry, ...change } : entry)),
     }));
+  const ring = draft.kind === "pie" || draft.kind === "doughnut";
   const valid = validRange(draft.categories) && draft.series.every((entry) => validRange(entry.range));
   const save = () => {
     if (!valid) return;
@@ -110,6 +111,44 @@ export function ChartProperties({
           <input type="checkbox" checked={draft.legend} onChange={(event) => patch({ legend: event.target.checked })} />
           <span>{t("calc.chartLegend")}</span>
         </label>
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={draft.showLabels}
+            onChange={(event) => patch({ showLabels: event.target.checked })}
+          />
+          <span>{t("calc.chartLabels")}</span>
+        </label>
+        {STACKABLE.has(draft.kind) ? (
+          <label className="row">
+            <input
+              type="checkbox"
+              checked={draft.stacked}
+              onChange={(event) => patch({ stacked: event.target.checked })}
+            />
+            <span>{t("calc.chartStacked")}</span>
+          </label>
+        ) : null}
+        {ring ? null : (
+          <div className="row">
+            <label className="field">
+              <span>{t("calc.chartXTitle")}</span>
+              <input
+                className="input"
+                value={draft.xTitle}
+                onChange={(event) => patch({ xTitle: event.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>{t("calc.chartYTitle")}</span>
+              <input
+                className="input"
+                value={draft.yTitle}
+                onChange={(event) => patch({ yTitle: event.target.value })}
+              />
+            </label>
+          </div>
+        )}
         <label className="field">
           <span>{t("calc.chartCategories")}</span>
           <input
@@ -142,75 +181,6 @@ export function ChartProperties({
         {valid ? null : <p className="muted">{t("calc.chartRangeInvalid")}</p>}
         <button type="button" className="btn btn-primary" disabled={!valid} onClick={save}>
           {t("calc.chartSave")}
-        </button>
-      </div>
-    </Dialog>
-  );
-}
-
-export const CHART_KINDS = ["column", "bar", "line", "pie", "doughnut", "area", "scatter"] as const;
-export type ChartKind = (typeof CHART_KINDS)[number];
-
-/** Picks the kind of the chart built from the current selection, and the options that kind has. */
-export function ChartDialog({
-  onPick,
-  onClose,
-}: {
-  onPick: (kind: string, options: ChartOptions) => void;
-  onClose: () => void;
-}) {
-  const t = useT();
-  const [kind, setKind] = useState<ChartKind>("column");
-  const [holeSize, setHoleSize] = useState(DEFAULT_HOLE_SIZE);
-  const [scatterStyle, setScatterStyle] = useState<string>("marker");
-  return (
-    <Dialog title={t("calc.chart")} onClose={onClose}>
-      <div className="stack">
-        <div className="chart-kind-grid" role="radiogroup" aria-label={t("calc.chartType")}>
-          {CHART_KINDS.map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              role="radio"
-              aria-checked={kind === candidate}
-              className={`btn ${kind === candidate ? "btn-primary" : "btn-soft"}`}
-              onClick={() => setKind(candidate)}
-            >
-              {t(`calc.chart_${candidate}`)}
-            </button>
-          ))}
-        </div>
-        {kind === "doughnut" ? (
-          <label className="field">
-            <span>{t("calc.chartHole")}</span>
-            <div className="row">
-              <input
-                type="range"
-                min={10}
-                max={90}
-                step={5}
-                value={holeSize}
-                onChange={(event) => setHoleSize(Number(event.target.value))}
-              />
-              <output>{holeSize}%</output>
-            </div>
-          </label>
-        ) : null}
-        {kind === "scatter" ? (
-          <label className="field">
-            <span>{t("calc.chartScatterStyle")}</span>
-            <select value={scatterStyle} onChange={(event) => setScatterStyle(event.target.value)}>
-              {SCATTER_STYLES.map((style) => (
-                <option key={style} value={style}>
-                  {t(`calc.scatter_${style}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <p className="muted">{t(kind === "scatter" ? "calc.chartHintScatter" : "calc.chartHint")}</p>
-        <button type="button" className="btn btn-primary" onClick={() => onPick(kind, { holeSize, scatterStyle })}>
-          {t("calc.chartInsert")}
         </button>
       </div>
     </Dialog>

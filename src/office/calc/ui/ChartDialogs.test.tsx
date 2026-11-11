@@ -17,7 +17,7 @@ const CHART: ChartData = {
   holeSize: 40,
 };
 
-describe("Calc chart properties (4.1a)", () => {
+describe("Calc chart properties (4.1a, 4.1c)", () => {
   it("saves the edited title, kind, legend and series", () => {
     const onSave = vi.fn();
     render(<ChartProperties chart={CHART} onSave={onSave} onClose={vi.fn()} />);
@@ -33,6 +33,29 @@ describe("Calc chart properties (4.1a)", () => {
     expect(saved.series).toEqual([{ name: "Net", range: "C2:C4", color: null }]);
     // The hole only belongs to a doughnut.
     expect(saved.holeSize).toBeUndefined();
+  });
+
+  it("saves stacking, value labels and axis titles", () => {
+    const onSave = vi.fn();
+    render(<ChartProperties chart={{ ...CHART, kind: "column" }} onSave={onSave} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("Stack the series"));
+    fireEvent.click(screen.getByLabelText("Show values"));
+    fireEvent.change(screen.getByLabelText("Category axis title"), { target: { value: "Month" } });
+    fireEvent.change(screen.getByLabelText("Value axis title"), { target: { value: "Sales" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save chart" }));
+    expect(onSave.mock.calls[0][0]).toMatchObject({
+      stacked: true,
+      showLabels: true,
+      xTitle: "Month",
+      yTitle: "Sales",
+    });
+  });
+
+  it("offers no stacking or axis titles on a doughnut", () => {
+    render(<ChartProperties chart={CHART} onSave={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("Stack the series")).toBeNull();
+    expect(screen.queryByLabelText("Category axis title")).toBeNull();
+    expect(screen.getByLabelText("Show values")).toBeTruthy();
   });
 
   it("does not save while a range is not a cell reference", () => {
