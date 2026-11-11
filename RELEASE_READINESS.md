@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.36.0
+# Release Readiness — OmniOffice 7.37.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,17 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.37.0) - Uzun işler tipli komut bağlamalarıyla
+
+- **Every retryable job names the same command its typed wrapper invokes:**
+  `test:src/lib/api-tracked.test.ts#finds every tracked job`
+- **A tracked job records the request it sends, built before recording:**
+  `test:src/lib/api-tracked.test.ts#builds the metadata request before recording it`
+- **Recipe steps carry the same variants and fields in both directions of the specta bindings:**
+  `test:src/lib/ipc-contract.test.ts#RecipeStep carries the same variants and fields as the Rust enum`
+- **The compress and OCR options keep their snake_case wire names:**
+  `test:src/lib/ipc-contract.test.ts#documents the snake_case wire names of the compress/OCR options`
 
 ## Implemented (this cycle, 7.36.0) - Calc düzenleyicisi bileşenlere ayrıldı
 

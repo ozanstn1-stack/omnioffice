@@ -1,0 +1,1 @@
+7.37.0: Uzun işler (AI görevleri, kasa taraması ve tüm PDF işleri) artık tipli komut bağlamalarını kullanıyor; Rust tarafıyla bir uyumsuzluk derlemede yakalanıyor. Eski ts-rs bağlamaları kaldırıldı. Kullanıcının gördüğü davranış değişmedi; bu bir iç düzenlemedir.

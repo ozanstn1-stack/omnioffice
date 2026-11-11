@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.37.0] - 2026-11-11
+
+### Changed
+
+- **Long jobs use the typed command bindings (internal):** the 39 jobs the Jobs screen can
+  retry (AI tasks, the vault scan and every PDF job) now call their generated tauri-specta
+  wrapper, so a request or result that disagrees with the Rust command fails the TypeScript
+  build. They are still recorded for retry under the same command name, which a test checks
+  for each one. The older ts-rs bindings, `npm run types:gen` / `types:check` and their CI step
+  are removed; the specta bindings (`npm run bindings:gen`) are the only generated types.
+
+### Fixed
+
+- **Two front-end types matched Rust again:** ink annotation strokes are lists of `[x, y]`
+  points, and a compare result's `kind` is a plain string. Neither changed what the app did.
+
 ## [7.36.0] - 2026-11-11
 
 ### Changed
