@@ -19,7 +19,7 @@ use crate::xml::parse_xml;
 use crate::zip::ZipReader;
 
 /// Path of the sheet part for the `index`-th `<sheet>` entry in the workbook.
-fn sheet_part(reader: &ZipReader, index: usize) -> Option<String> {
+pub(crate) fn sheet_part(reader: &ZipReader, index: usize) -> Option<String> {
     let workbook = parse_xml(&reader.read_text("xl/workbook.xml").ok()?).ok()?;
     let mut collections = Vec::new();
     workbook.find_all("sheets", &mut collections);
@@ -37,7 +37,7 @@ fn sheet_part(reader: &ZipReader, index: usize) -> Option<String> {
 }
 
 /// Converts an A1-address to (row, column); both 0-based.
-fn coordinates(address: &str) -> Option<(i64, i64)> {
+pub(crate) fn coordinates(address: &str) -> Option<(i64, i64)> {
     let mut column = 0i64;
     let mut row = String::new();
     let mut letters = String::new();
