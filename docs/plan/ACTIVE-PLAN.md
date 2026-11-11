@@ -629,3 +629,10 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   (`GridHeaders.tsx`), hücre içi düzenleyici (`CellEditor.tsx`) ve tablo görünümü
   (`cell-look.ts`). CalcEditor 2541 → 2453; davranış değişmedi. Sonrası: bölmeye ara verip
   3.4 (IPC tipleri) ya da 4.1 (Calc grafik arayüzü) — sahibin tercihine göre.
+
+## v7.37.0 sürüm PR'ı — 3.4 IPC tipleri — 2026-11-11
+- #735 ve #736 birleşti: Jobs ekranının yeniden deneyebildiği 39 uzun iş (AI, vault taraması,
+  PDF) `lib/tracked-request.ts` `trackedRequest` ile tipli specta sarmalayıcılarına gidiyor;
+  `invokeTracked` kaldırıldı. ts-rs bağlamaları (`types-gen.mjs`, 17 dosya, `ts` özelliği)
+  kaldırıldı; tek kaynak `generated/specta.ts`. İki tip düzeltmesi (mürekkep çizgileri,
+  karşılaştırma türü). Sonrası: 3.5 performans ya da 4.1 Calc grafik arayüzü.
