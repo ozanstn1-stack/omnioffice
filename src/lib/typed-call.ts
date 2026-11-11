@@ -10,7 +10,7 @@ import type { Value } from "./generated/specta";
 import type { CommandResult } from "./typed-ipc";
 
 type TypedIpc = typeof import("./typed-ipc");
-type Commands = TypedIpc["commands"];
+export type Commands = TypedIpc["commands"];
 
 let typedIpc: TypedIpc | null = null;
 

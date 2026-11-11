@@ -38,6 +38,7 @@ type CertificateItem = specta.CertificateItem;
 type RedactionCertificate = specta.RedactionCertificate_Serialize;
 import { trackJobInvocation } from "./job-retries";
 import { asJson, call, callPlain } from "./typed-call";
+import { trackedRequest } from "./tracked-request";
 
 /**
  * Every long operation goes through here: the retry metadata (kind + the exact
@@ -90,16 +91,16 @@ export const aiClearKey = (provider?: string) => call((c) => c.aiClearKey(provid
 export const aiTestConnection = () => call((c) => c.aiTestConnection());
 export const aiDocumentPreview = (path: string, pages: number[] | undefined, password?: string) =>
   call((c) => c.aiDocumentPreview(path, pages ?? null, password || null));
-// The long AI jobs stay on `invokeTracked` (the Jobs screen re-runs them from
-// the stored args); their request and result types are the generated ones.
+// The long AI jobs go through `trackedRequest`: the Jobs screen re-runs them
+// from the stored args, and their request and result types are the generated ones.
 export const aiSummarize = (request: specta.AiSummarizeRequest_Deserialize) =>
-  invokeTracked<specta.AiTextResult>("ai_summarize", { request });
+  trackedRequest("ai_summarize", request, (c, r) => c.aiSummarize(r));
 export const aiTranslate = (request: specta.AiTranslateRequest_Deserialize) =>
-  invokeTracked<specta.AiTextResult>("ai_translate", { request });
+  trackedRequest("ai_translate", request, (c, r) => c.aiTranslate(r));
 export const aiAsk = (request: specta.AiAskRequest_Deserialize) =>
-  invokeTracked<specta.AiTextResult>("ai_ask", { request });
+  trackedRequest("ai_ask", request, (c, r) => c.aiAsk(r));
 export const aiChat = (request: specta.AiChatRequest_Deserialize) =>
-  invokeTracked<specta.AiChatResult_Serialize>("ai_chat", { request });
+  trackedRequest("ai_chat", request, (c, r) => c.aiChat(r));
 export const aiChatSave = async (thread: specta.SavedChatThread_Deserialize) => {
   await call((c) => c.aiChatSave(thread));
 };
@@ -111,11 +112,11 @@ export const aiChatDelete = async (id: string) => {
 /** Deletes AI data: saved chats (all, or older than the retention) and the derived vault index. */
 export const aiClearData = (olderThanDays?: number) => call((c) => c.aiClearData(olderThanDays ?? null));
 export const aiExtractTable = (request: specta.AiExtractRequest_Deserialize) =>
-  invokeTracked<specta.AiTableResult_Serialize>("ai_extract_table", { request });
+  trackedRequest("ai_extract_table", request, (c, r) => c.aiExtractTable(r));
 export const aiBatchRun = (request: specta.AiBatchRequest_Deserialize) =>
-  invokeTracked<specta.AiBatchResult_Serialize>("ai_batch_run", { request });
+  trackedRequest("ai_batch_run", request, (c, r) => c.aiBatchRun(r));
 export const aiCleanupText = (request: specta.AiCleanupRequest_Deserialize) =>
-  invokeTracked<specta.AiTextResult>("ai_cleanup_text", { request });
+  trackedRequest("ai_cleanup_text", request, (c, r) => c.aiCleanupText(r));
 /**
  * In-editor AI action. Deliberately NOT `invokeTracked`: the retry store
  * persists the invoke args, which here hold the user's selected document text.
@@ -123,7 +124,7 @@ export const aiCleanupText = (request: specta.AiCleanupRequest_Deserialize) =>
 export const aiEditText = (request: specta.AiEditRequest_Deserialize) => call((c) => c.aiEditText(request));
 export const aiSuggestMetadata = (path: string, password: string | undefined, jobId: string, consent = true) => {
   const request: specta.AiMetadataRequest_Deserialize = { path, password: password || null, jobId, consent };
-  return invokeTracked<specta.MetadataSuggestion>("ai_suggest_metadata", { request });
+  return trackedRequest("ai_suggest_metadata", request, (c, r) => c.aiSuggestMetadata(r));
 };
 export const aiSaveOutput = (path: string, text: string, overwrite?: string) =>
   call((c) => c.aiSaveOutput(path, text, overwrite ?? null));
@@ -608,10 +609,9 @@ export const loadRecent = () => call((c) => c.loadRecent());
 export const addRecent = (entry: RecentAdd) => call((c) => c.addRecent(entry));
 export const clearRecent = () => call((c) => c.clearRecent());
 
-/** Vault scan: tracked so a failed/interrupted scan can be retried from Jobs. */
-// The request type is generated from the Rust struct (#316); the call stays
-// on invokeTracked because the job tracker needs the command name.
-export const vaultScan = <T>(request: VaultScanRequest_Deserialize) => invokeTracked<T>("vault_scan", { request });
+/** Vault scan: tracked so a failed or interrupted scan can be retried from Jobs (typed, #316). */
+export const vaultScan = (request: VaultScanRequest_Deserialize) =>
+  trackedRequest("vault_scan", request, (c, r) => c.vaultScan(r));
 
 // ---------------------------------------------------------------------------
 // Digital signatures - real CMS/PKCS#7 detached signatures (SHA-256)

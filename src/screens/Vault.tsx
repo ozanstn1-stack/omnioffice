@@ -198,7 +198,7 @@ export function Vault({ initialFiles }: { initialFiles?: string[] } = {}) {
     setProgress(null);
     try {
       const request: VaultScanRequest = { folders, rescan: false, maxFiles: 20000 };
-      const next = await vaultScan<VaultStatus>(request);
+      const next = await vaultScan(request);
       setStatus(next);
       setStatusError(null);
     } catch (err) {
