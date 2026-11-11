@@ -1,0 +1,1 @@
+7.38.0: Calc grafikleri eklendikten sonra düzenlenebiliyor (başlık, tür, gösterge, aralıklar), başlık çubuğundan taşınıp köşesinden boyutlandırılabiliyor; seriler üst üste yığılabiliyor, değerler ve eksen başlıkları gösterilebiliyor. Komut paleti ilk açıldığında yükleniyor.

@@ -636,3 +636,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   `invokeTracked` kaldırıldı. ts-rs bağlamaları (`types-gen.mjs`, 17 dosya, `ts` özelliği)
   kaldırıldı; tek kaynak `generated/specta.ts`. İki tip düzeltmesi (mürekkep çizgileri,
   karşılaştırma türü). Sonrası: 3.5 performans ya da 4.1 Calc grafik arayüzü.
+
+## v7.38.0 sürüm PR'ı — 3.5a + 4.1 Calc grafikleri — 2026-11-11
+- #738: komut paleti ve genel arama ilk açılışta yüklenir (giriş 58,7 → 57,6 KB).
+- #739–#741: Calc grafikleri düzenlenir (başlık, tür, gösterge, aralıklar), başlıktan taşınır,
+  köşeden boyutlandırılır; yığılmış seriler, değer etiketleri, eksen başlıkları; gösterge
+  taşması düzeldi. Sonrası: Aşama 4.2 (dinamik dizi / spill) keşfi.
