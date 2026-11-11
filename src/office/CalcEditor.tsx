@@ -122,6 +122,8 @@ import { useCellAnnotations } from "./calc/ui/useCellAnnotations";
 import { VisibleNotes } from "./calc/ui/NoteViews";
 import { FormulaBar } from "./calc/ui/FormulaBar";
 import { ColumnHeaders, RowHeaders } from "./calc/ui/GridHeaders";
+import { CellEditor } from "./calc/ui/CellEditor";
+import { tableLook } from "./calc/ui/cell-look";
 import { isLinkCell } from "./calc/links";
 import { noteOf } from "./calc/notes";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
@@ -1951,25 +1953,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                     const invalid = validation ? !isValid(validation, value, listItems.get(validation.id)) : false;
                     // The structured table (if any) that owns this cell decides
                     // header/banding/outline; the cell's own formatting still wins.
-                    const tableEntry = sheetTables.find(
-                      ({ parts }) =>
-                        row >= parts.start.row &&
-                        row <= parts.end.row &&
-                        col >= parts.start.col &&
-                        col <= parts.end.col,
-                    );
-                    let tableFill: string | undefined;
-                    let tableHeader = false;
-                    if (tableEntry) {
-                      const { table, parts } = tableEntry;
-                      tableHeader = table.hasHeaders && row === parts.start.row;
-                      const totalsRow = table.hasTotals && row === parts.end.row;
-                      if (tableHeader) tableFill = table.headerFill ?? undefined;
-                      else if (!totalsRow && table.bandedRows) {
-                        const bodyStart = parts.start.row + (table.hasHeaders ? 1 : 0);
-                        if ((row - bodyStart) % 2 === 1) tableFill = "#EFF6FF";
-                      }
-                    }
+                    const {
+                      entry: tableEntry,
+                      fill: tableFill,
+                      header: tableHeader,
+                    } = tableLook(sheetTables, row, col);
                     const traceKind = tracedCells.get(address);
                     const errorTip = isError(value) ? errorTitle(t, value.code) : null;
                     const linked = isLinkCell(cell);
@@ -2013,47 +2001,30 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
                         onContextMenu={(event) => annotations.openMenu(event, row, col)}
                       >
                         {isEditing ? (
-                          <input
-                            className="cell-editor"
-                            ref={cellInputRef}
+                          <CellEditor
                             value={editing!.value}
-                            // eslint-disable-next-line jsx-a11y/no-autofocus -- typing replaces the cell content; focusing the editor is the whole point of the interaction
-                            autoFocus
-                            onFocus={(event) => {
+                            inputRef={cellInputRef}
+                            onFocus={(caret) => {
                               setFocusMode("cell");
                               setSuggestDismissed(false);
-                              setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
+                              setDraftCaret(caret);
                             }}
-                            onSelect={(event) =>
-                              setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)
-                            }
-                            onChange={(event) => {
-                              setDraftCaret(event.target.selectionStart ?? event.target.value.length);
+                            onCaret={setDraftCaret}
+                            onChange={(next, caret) => {
+                              setDraftCaret(caret);
                               setSuggestDismissed(false);
-                              setEditing({ row, col, value: event.target.value });
+                              setEditing({ row, col, value: next });
                             }}
                             onBlur={() => {
                               setFocusMode(null);
                               commitEdit("none", false);
                             }}
-                            onKeyDown={(event) => {
-                              if (event.nativeEvent.isComposing) return;
-                              // The popup owns Tab/Enter/Escape/arrows while it is open.
-                              if (handleAssistKey(event)) return;
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                commitEdit(event.shiftKey ? "up" : "down");
-                              }
-                              if (event.key === "Tab") {
-                                event.preventDefault();
-                                commitEdit(event.shiftKey ? "left" : "right");
-                              }
-                              if (event.key === "Escape") {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                restoreGridFocusRef.current = true;
-                                setEditing(null);
-                              }
+                            assistKey={handleAssistKey}
+                            onEnter={(shift) => commitEdit(shift ? "up" : "down")}
+                            onTab={(shift) => commitEdit(shift ? "left" : "right")}
+                            onEscape={() => {
+                              restoreGridFocusRef.current = true;
+                              setEditing(null);
                             }}
                           />
                         ) : (
