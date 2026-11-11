@@ -164,11 +164,11 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
   const [draftW, setDraftW] = useState(0);
   const [draftH, setDraftH] = useState(0);
   const [movePreview, setMovePreview] = useState<{ key: string; dx: number; dy: number } | null>(null);
-  const [inkPoints, setInkPoints] = useState<number[][] | null>(null);
+  const [inkPoints, setInkPoints] = useState<[number, number][] | null>(null);
   const [dragRect, setDragRect] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
-  const inkRef = useRef<number[][] | null>(null);
+  const inkRef = useRef<[number, number][] | null>(null);
   const dragRectRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const moveRef = useRef<{ key: string; startX: number; startY: number } | null>(null);
   const originalsRef = useRef(new Map<string, EditableAnnotation>());
@@ -446,7 +446,7 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
     );
   };
 
-  const addInkStroke = (stroke: number[][]) => {
+  const addInkStroke = (stroke: [number, number][]) => {
     if (!geometry || stroke.length < 2) return;
     const xs = stroke.map(([x]) => x);
     const ys = stroke.map(([, y]) => y);
