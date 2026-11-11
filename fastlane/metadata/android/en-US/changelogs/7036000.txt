@@ -1,0 +1,1 @@
+7.36.0: Calc editor split into components (internal): the formula bar, the column and row headers, the editor drawn inside a cell while typing, and the rules a structured table applies to its cells (header fill, banding, totals row) now live in their own files with their own tests. CalcEditor.tsx went from 2541 to 2453 lines; no behaviour change.
