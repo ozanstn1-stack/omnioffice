@@ -5,7 +5,8 @@ import { useT } from "../../../lib/i18n";
 import type { ChartData, Sheet, Workbook } from "../../../lib/office-types";
 import { computeSheetValues } from "../cells";
 import { addressesInRange } from "../formula";
-import { CartesianPlot, PALETTE, RingPlot, ScatterPlot, colorOf, type Plot, type Series } from "./chart-plots";
+import { CartesianPlot, titledPlot } from "./cartesian-plot";
+import { PALETTE, RingPlot, ScatterPlot, colorOf, type Plot, type Series } from "./chart-plots";
 
 /**
  * Height of the title bar above the drawing and of the legend row below it,
@@ -91,7 +92,16 @@ export function ChartBox({
         ) : ring ? (
           <RingPlot chart={data} width={width} height={svgHeight} series={series} />
         ) : (
-          <CartesianPlot kind={data.kind} plot={plot} categories={categories} series={series} />
+          <CartesianPlot
+            kind={data.kind}
+            plot={titledPlot(plot, data.kind, data.xTitle, data.yTitle)}
+            categories={categories}
+            series={series}
+            stacked={data.stacked}
+            showLabels={data.showLabels}
+            xTitle={data.xTitle}
+            yTitle={data.yTitle}
+          />
         )}
       </svg>
       {data.legend ? (

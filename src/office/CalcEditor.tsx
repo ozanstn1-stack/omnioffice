@@ -96,7 +96,7 @@ import { uniqueColumnName, uniqueTableName } from "./calc/table-names";
 import { CalcRibbon } from "./calc/ui/CalcRibbon";
 import { CfDecor } from "./calc/ui/CfDecor";
 import { cellTextStyle } from "./calc/ui/cell-style";
-import { ChartDialog } from "./calc/ui/ChartDialogs";
+import { ChartDialog } from "./calc/ui/ChartInsertDialog";
 import { ChartLayer } from "./calc/ui/ChartLayer";
 import { applyChartPatch } from "./calc/chart-drag";
 import { ConditionalDialog } from "./calc/ui/ConditionalDialog";
