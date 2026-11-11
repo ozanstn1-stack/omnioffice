@@ -1098,6 +1098,10 @@ pub struct Cell {
     /// The screen tip shown when pointing at the link.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link_tooltip: Option<String>,
+    /// The range a dynamic-array formula spills into (`B2:B4`), set by the
+    /// editor when it saves; the XLSX writer marks the cell as Excel's dynamic array.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spill: Option<String>,
 }
 
 /// The longest hyperlink target kept, comfortably above Excel's own limit.

@@ -550,7 +550,7 @@ pub fn write_xlsx_package(workbook: &Workbook) -> OfficeResult<SheetWrite> {
         }
     }
 
-    content_types.push_str("</Types>");
+    super::spill_write::close_package(workbook, &mut content_types, &mut workbook_rels, &mut zip);
     zip.add_text("[Content_Types].xml", &content_types);
     zip.add_text("_rels/.rels", &root_rels);
     zip.add_text("docProps/core.xml", &core);

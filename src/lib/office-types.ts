@@ -404,6 +404,8 @@ export interface Cell {
   linkDisplay?: string | null;
   /** The screen tip shown when pointing at the link. */
   linkTooltip?: string | null;
+  /** The range a dynamic array spills into, set only on the copy saved as XLSX (4.2b). */
+  spill?: string | null;
 }
 
 export interface MergeRange {

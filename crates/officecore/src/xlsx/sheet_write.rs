@@ -275,7 +275,8 @@ pub(super) fn sheet_xml(
                     styles,
                     shared,
                     shared_index,
-                ),
+                )
+                .map(|xml| super::spill_write::dynamic_array(xml, cell)),
                 RowCell::Pivot(value) => {
                     cell_xml(&address, value, None, &CellStyle::default(), false, false, styles, shared, shared_index)
                 }

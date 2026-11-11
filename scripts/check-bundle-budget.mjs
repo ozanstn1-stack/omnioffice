@@ -110,7 +110,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // cartesian plot and the three new chart properties add ~0.6 KB gzip; the
 // CalcEditor chunk is 52,155 bytes (50.9 / 52 KB; the two notes above counted
 // thousands of bytes, not KB).
-const TOTAL_BUDGET_KB = 536;
+// Raised to 537 in 4.2b (Excel dynamic arrays on XLSX save): the save path
+// loads calc/spill-export lazily, which moves the Calc cell evaluator into its
+// own shared chunk (~1 KB of chunk overhead; the code itself adds 0.5 KB).
+const TOTAL_BUDGET_KB = 537;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
