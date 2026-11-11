@@ -102,7 +102,9 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 533 in 3.5 (the command palette and global search load on first
 // open): the entry chunk drops 58.7 -> 57.6 KB, the new palette chunk (1.8 KB)
 // and its search icon add ~1 KB of per-chunk overhead to the total.
-const TOTAL_BUDGET_KB = 533;
+// Raised to 534 in 4.1a (Calc chart properties): editing a chart's title, kind,
+// legend and ranges adds ~0.8 KB gzip to the CalcEditor chunk (50.7 / 52 KB).
+const TOTAL_BUDGET_KB = 534;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
