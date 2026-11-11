@@ -90,8 +90,8 @@ formulas (XLSX), shared formulas and transition metadata (PPTX).
   ODT corpus row; the row measures text, styles and tables.
 - Dynamic arrays: Calc calculates spill ranges, and an Excel spill imports as
   its anchor formula (the cached spill cells are dropped so it spills again).
-  The XLSX writer still writes the formula without Excel's spill metadata
-  (`cm`, `metadata.xml`), so Excel shows only the first value.
+  On save the spill range is written as Excel's dynamic array (`cm="1"`,
+  `t="array" ref`, `xl/metadata.xml`), so Excel spills it as well.
 - XLSX structured tables and shared formulas are read and expanded, but the
   writer still writes plain formulas (no `t="shared"` output); Excel accepts
   the result, the file is just larger.

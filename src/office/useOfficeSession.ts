@@ -23,6 +23,7 @@ import { useSettings, useToasts, reportError } from "../lib/store";
 import { useT } from "../lib/i18n";
 import * as api from "../lib/office-api";
 import { historyKeyFor } from "./historyKey";
+import { exportModel } from "./export-model";
 import { compatibilityReport, gatingLossItems, type CompatibilityReport } from "../components/compatibility";
 import { useDataLossPrompt } from "../components/data-loss-dialog";
 import { shareDocumentFile, shareExtensionFor } from "../lib/share";
@@ -283,7 +284,7 @@ export function useOfficeSession(tab: OfficeTab) {
         const writeTarget = saveToken ?? (!targetPath && !forceDestination && tab.token ? tab.token : path);
         const result = lossless
           ? await api.saveUnit(tab.kind, tab.title, tab.model, writeTarget)
-          : await api.saveDocument(tab.kind, tab.model, writeTarget);
+          : await api.saveDocument(tab.kind, await exportModel(tab.kind, tab.model), writeTarget);
         // Re-fingerprint the file we just wrote so the next save compares
         // against our own bytes, not the pre-save version.
         let savedFingerprint: string | null = null;

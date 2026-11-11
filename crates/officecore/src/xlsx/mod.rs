@@ -35,6 +35,7 @@ mod pivot_read;
 mod reader;
 mod sheet_read;
 mod sheet_write;
+mod spill_write;
 mod styles_read;
 mod styles_write;
 mod writer;
