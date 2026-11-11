@@ -280,7 +280,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             true,
             true,
             vec![
-                feature("masters", SupportLevel::Partial, "A single default master page (now carrying the footer, date and slide-number frames)."),
+                feature("masters", SupportLevel::Partial, "Every slide master is a master page with its name, background colour and shapes, and each slide keeps its master; the footer, date and slide-number frames sit on every master page. Layouts have no ODP equivalent and stay PPTX-only."),
                 feature("groups", SupportLevel::Full, "Nested shape groups round-trip as draw:g elements."),
                 feature("charts", SupportLevel::Full, "Column, bar, line, pie, area, scatter and doughnut charts are written as embedded chart objects (Object N sub-documents) with their ranges, title, legend and cached values, and read back; a chart kind ODF cannot name is reported and keeps a placeholder."),
                 feature("richText", SupportLevel::Full, "Paragraph runs round-trip as text:span with named character styles."),
