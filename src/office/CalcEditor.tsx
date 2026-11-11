@@ -4,7 +4,7 @@
  * and SVG charts fed from cell ranges.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { isAndroid } from "../lib/mobile";
 import type { OfficeTab, Workbook } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
@@ -120,6 +120,7 @@ import { useVisibilityActions, type Axis } from "./calc/ui/useVisibilityActions"
 import { ValidationDialog } from "./calc/ui/ValidationDialog";
 import { useCellAnnotations } from "./calc/ui/useCellAnnotations";
 import { VisibleNotes } from "./calc/ui/NoteViews";
+import { FormulaBar } from "./calc/ui/FormulaBar";
 import { isLinkCell } from "./calc/links";
 import { noteOf } from "./calc/notes";
 import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
@@ -1723,86 +1724,50 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
   // On phones the bar is docked above the keyboard at the bottom of the
   // editor; on desktop it keeps its place under the ribbon, byte for byte.
   const formulaBar = (
-    <div className={`calc-formula-bar${android ? " is-docked" : ""}`}>
-      <input
-        className="name-box"
-        value={nameBox}
-        onChange={(event) => {
-          const parts = parseRange(event.target.value.trim());
-          if (parts) setSelection({ anchor: parts.start, focus: parts.end });
-        }}
-      />
-      <span className="fx">fx</span>
-      <input
-        className="formula-input"
-        ref={formulaInputRef}
-        value={editing ? editing.value : formulaDraft}
-        placeholder={t("calc.formulaHint")}
-        onFocus={(event) => {
-          setFocusMode("bar");
-          setSuggestDismissed(false);
-          setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length);
-        }}
-        onSelect={(event) => setDraftCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
-        onBlur={() => setFocusMode(null)}
-        onChange={(event) => {
-          setFormulaDraft(event.target.value);
-          setDraftCaret(event.target.selectionStart ?? event.target.value.length);
-          setSuggestDismissed(false);
-          // Read through the ref so the draft and the open editor can never
-          // disagree about the current text.
-          const current = editingRef.current;
-          if (current) setEditing({ row: current.row, col: current.col, value: event.target.value });
-        }}
-        onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing) return;
-          // The popup owns Tab/Enter/Escape/arrows while it is open.
-          if (handleAssistKey(event)) return;
-          if (event.key === "Enter") {
-            event.preventDefault();
-            if (editingRef.current) {
-              commitEdit(event.shiftKey ? "up" : "down");
-            } else {
-              // Typing straight into the formula bar and pressing Enter has to
-              // commit the draft, not open the cell editor with a stale value.
-              setEditing({ row: selection.focus.row, col: selection.focus.col, value: formulaDraft });
-              commitEdit(event.shiftKey ? "up" : "down");
-            }
-            restoreGridFocusRef.current = true;
-          }
-          if (event.key === "Tab") {
-            event.preventDefault();
-            if (editingRef.current) commitEdit(event.shiftKey ? "left" : "right");
-          }
-          if (event.key === "Escape") {
-            event.preventDefault();
-            restoreGridFocusRef.current = true;
-            setEditing(null);
-            setFormulaDraft(activeCell?.formula ?? cellText(activeCell));
-          }
-        }}
-      />
-      {android ? (
-        <>
-          <button
-            type="button"
-            className="icon-btn calc-bar-action"
-            aria-label={t("common.cancel")}
-            onClick={cancelFormulaBar}
-          >
-            <X size={17} />
-          </button>
-          <button
-            type="button"
-            className="icon-btn calc-bar-action is-primary"
-            aria-label={t("common.apply")}
-            onClick={commitFormulaBar}
-          >
-            <Check size={17} />
-          </button>
-        </>
-      ) : null}
-    </div>
+    <FormulaBar
+      docked={android}
+      nameBox={nameBox}
+      onNameBox={(text) => {
+        const parts = parseRange(text);
+        if (parts) setSelection({ anchor: parts.start, focus: parts.end });
+      }}
+      value={editing ? editing.value : formulaDraft}
+      inputRef={formulaInputRef}
+      onFocus={(caret) => {
+        setFocusMode("bar");
+        setSuggestDismissed(false);
+        setDraftCaret(caret);
+      }}
+      onCaret={setDraftCaret}
+      onBlur={() => setFocusMode(null)}
+      onChange={(value, caret) => {
+        setFormulaDraft(value);
+        setDraftCaret(caret);
+        setSuggestDismissed(false);
+        // Read through the ref so the draft and the open editor can never
+        // disagree about the current text.
+        const current = editingRef.current;
+        if (current) setEditing({ row: current.row, col: current.col, value });
+      }}
+      assistKey={handleAssistKey}
+      onEnter={(shift) => {
+        // Typing straight into the formula bar and pressing Enter has to
+        // commit the draft, not open the cell editor with a stale value.
+        if (!editingRef.current)
+          setEditing({ row: selection.focus.row, col: selection.focus.col, value: formulaDraft });
+        commitEdit(shift ? "up" : "down");
+        restoreGridFocusRef.current = true;
+      }}
+      onTab={(shift) => {
+        if (editingRef.current) commitEdit(shift ? "left" : "right");
+      }}
+      onEscape={() => {
+        cancelFormulaBar();
+        restoreGridFocusRef.current = true;
+      }}
+      onCancel={cancelFormulaBar}
+      onApply={commitFormulaBar}
+    />
   );
 
   return (
