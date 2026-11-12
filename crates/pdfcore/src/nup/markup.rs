@@ -14,15 +14,17 @@
 //! links, redactions and print-production kinds are left alone.
 
 use super::dests::resolve;
-use super::links::{clip_rect, map_rect, number, read_rect, source_annotations};
+use super::links::{self, clip_rect, map_rect, number, read_rect, source_annotations};
 use super::sheet::Placement;
 use crate::docutil::{page_rotation, Matrix};
 use lopdf::{Dictionary, Document, Object, ObjectId};
 use std::collections::BTreeSet;
 
 mod appearance;
+mod flat;
 mod install;
 mod widget;
+pub(crate) use flat::synthesized_appearance;
 use install::install;
 
 /// `/Hidden`: a hidden annotation is not printed even when Print is set.
