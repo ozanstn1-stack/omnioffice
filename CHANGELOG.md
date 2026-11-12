@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.40.0] - 2026-11-12
+
+### Fixed
+
+- **ODP presentations lost their slide masters:** OmniOffice wrote every ODP deck with a single
+  "Default" master page and did not read master pages back, so a deck's masters, their
+  backgrounds and their shapes disappeared after a save to ODP. Every master is now written as
+  its own master page, each slide names the master it uses, and master pages with their
+  background colour and shapes are read back. Layouts still travel only in PPTX; plain
+  single-master ODP files are read and written as before.
+
 ## [7.39.0] - 2026-11-11
 
 ### Added

@@ -1,0 +1,1 @@
+7.40.0: ODP sunularında asıl sayfalar artık korunuyor: her asıl sayfa arka planı ve şekilleriyle kaydediliyor ve geri okunuyor.

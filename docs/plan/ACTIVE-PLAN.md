@@ -647,3 +647,8 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - #743: Excel'in kaydettiği taşan diziler içe aktarmada önbellek hücreleri düşürülerek yeniden
   taşar (`#SPILL!` hatası giderildi). #744: taşan formüller XLSX'e Excel dinamik dizisi olarak
   yazılır (`cm`, `t="array" ref`, `xl/metadata.xml`). Sonrası: Aşama 4.3 (Impress medya) keşfi.
+
+## v7.40.0 sürüm PR'ı — 4.3a ODP asıl sayfaları — 2026-11-12
+- #746: ODP'ye her asıl sayfa ayrı yazılır, slaytlar kendi asıl sayfasını adlandırır; okuyucu asıl
+  sayfaları arka plan rengi ve şekilleriyle geri okur. Impress video/ses (4.3b) model + PPTX/ODP +
+  arayüz gerektirdiği için ayrı bir iş olarak ertelendi. Sonrası: Aşama 4.4 (Türkiye'ye özel).
