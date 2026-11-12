@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.39.0
+# Release Readiness — OmniOffice 7.40.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,15 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.40.0) - ODP asıl sayfaları
+
+- **Every slide master is written to ODP and each slide names its own:**
+  `test:crates/officecore/src/odf/slides_masters.rs#every_master_is_written_and_each_slide_names_its_own`
+- **ODP masters round-trip with their names, backgrounds and shapes:**
+  `test:crates/officecore/src/odf/slides_masters.rs#masters_round_trip_with_their_names_backgrounds_and_shapes`
+- **A deck without masters keeps the single default page and reads back without masters:**
+  `test:crates/officecore/src/odf/slides_masters.rs#a_deck_without_masters_keeps_the_single_default_page_and_reads_back_without_masters`
 
 ## Implemented (this cycle, 7.39.0) - Excel dinamik dizileri
 
