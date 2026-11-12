@@ -77,7 +77,7 @@
     "crates/officecore/tests/xlsx_import_test.rs": 654,
     "crates/officecore/tests/xlsx_roundtrip_test.rs": 774,
     "crates/pdfcore/examples/make-samples.rs": 258,
-    "crates/pdfcore/src/annotate.rs": 1438,
+    "crates/pdfcore/src/annotate.rs": 1442,
     "crates/pdfcore/src/attachment.rs": 212,
     "crates/pdfcore/src/certificate.rs": 336,
     "crates/pdfcore/src/cmap.rs": 237,
