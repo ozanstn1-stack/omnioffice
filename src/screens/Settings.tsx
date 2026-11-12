@@ -19,6 +19,7 @@ import { AiSettings } from "../components/ai-settings";
 import { appInfo, aiClearData, updateOpen } from "../lib/api";
 import { DiagnosticsExport, OpenWithDiagnostics } from "../components/open-with-diagnostics";
 import { PROFESSIONS, type ProfessionChoice } from "../lib/desks";
+import { consentScopeLabel } from "../lib/ai-consent";
 
 function VersionLine() {
   const t = useT();
@@ -163,6 +164,14 @@ function AiPrivacyControls() {
       <h3 className="font-semibold flex items-center gap-2">
         <ShieldCheck size={16} style={{ color: "var(--accent)" }} /> {t("settings.aiPrivacy")}
       </h3>
+      {settings.aiConsentRemembered ? (
+        <div className="flex items-center gap-2 text-[13px] flex-wrap">
+          <span>{t("settings.aiConsentRemembered", { scope: consentScopeLabel(settings.aiConsentRemembered) })}</span>
+          <Button size="sm" variant="ghost" onClick={() => void update({ aiConsentRemembered: "" })}>
+            {t("ai.consentForget")}
+          </Button>
+        </div>
+      ) : null}
       <div>
         <label className="label">{t("settings.aiRetention")}</label>
         <input

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpenCheck,
   Bot,
-  Check,
   Brain,
   Copy,
   ExternalLink,
@@ -64,6 +63,8 @@ import { useT } from "../lib/i18n";
 import { resolveCitationTarget } from "../lib/citation-target";
 import { openOfficePath } from "../lib/office-store";
 import { consentKeys, isLocalProvider, plainProviderName, providerDisplayName } from "../lib/ai-providers";
+import { consentScope, isConsentRemembered } from "../lib/ai-consent";
+import { AiConsentNotice } from "../components/ai-consent-notice";
 import { useTool } from "../lib/useTool";
 import { useDev, useSettings, useToasts } from "../lib/store";
 import { clamp, fileBaseName, formatBytes, isPdf, uid } from "../lib/format";
@@ -149,7 +150,15 @@ export function Ai({
   );
   const [examples, setExamples] = useState<AiExamplePrompts | null>(null);
   const [preview, setPreview] = useState<AiPreview | null>(null);
-  const [consent, setConsent] = useState(false);
+  const [consentChecked, setConsent] = useState(false);
+  const updateSettings = useSettings((s) => s.update);
+  // A consent remembered for this provider and host counts for every document (4.5b).
+  const rememberedConsent = isConsentRemembered(
+    settings.aiConsentRemembered,
+    aiSettings?.provider,
+    aiSettings?.baseUrl,
+  );
+  const consent = consentChecked || rememberedConsent;
   // Separate consents for the vault scope, embeddings and a page image.
   const [vaultConsent, setVaultConsent] = useState(false);
   const [embeddingConsent, setEmbeddingConsent] = useState(false);
@@ -1084,21 +1093,22 @@ export function Ai({
                         : t("common.loading")}
                     </span>
                   </div>
-                  {consent ? (
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="flex items-center gap-1.5" style={{ color: "var(--ok)" }}>
-                        <Check size={13} /> {t("ai.consentShort")}
-                      </span>
-                      <Button size="sm" variant="ghost" onClick={() => setConsent(false)}>
-                        {t("ai.consentChange")}
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-[13px] muted">{t(notice.privacyBody, noticeParams)}</p>
-                      <Checkbox checked={consent} onChange={setConsent} label={t(notice.consent, noticeParams)} />
-                    </>
-                  )}
+                  <AiConsentNotice
+                    consent={consent}
+                    remembered={rememberedConsent}
+                    notice={notice}
+                    params={noticeParams}
+                    onConsent={setConsent}
+                    onRemember={() =>
+                      void updateSettings({
+                        aiConsentRemembered: consentScope(aiSettings?.provider, aiSettings?.baseUrl),
+                      })
+                    }
+                    onForget={() => {
+                      setConsent(false);
+                      void updateSettings({ aiConsentRemembered: "" });
+                    }}
+                  />
                 </Card>
 
                 <Card className="p-4">
