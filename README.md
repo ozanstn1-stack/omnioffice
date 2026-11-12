@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.42.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.43.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,7 +23,7 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new (6.2 to 7.42.0)
+## What's new (6.2 to 7.43.0)
 
 6.1 and 6.2 are one continuous arc: user files are no longer handed to the
 webview as raw paths, release builds enforce that boundary, and the office core
@@ -308,14 +308,14 @@ was split into per-format modules.
   deletion, with an Android foreground service keeping the folder reachable;
   6.13.0 adds the two-host acceptance contract, a 30-day deletion trash with
   tombstones and resumable chunked uploads with live progress.
-**Downloads (v7.42.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v7.22.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.42.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.42.0/OmniOffice-Setup-7.42.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.42.0/OmniOffice-Portable-7.42.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.42.0/OmniOffice-Linux-7.42.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.42.0/OmniOffice-Linux-7.42.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.42.0/OmniOffice-Android-7.42.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.42.0/OmniOffice-Android-7.42.0-armeabi-v7a.apk)
+**Downloads (v7.43.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v7.22.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.43.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Setup-7.43.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Portable-7.43.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Linux-7.43.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Linux-7.43.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Android-7.43.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Android-7.43.0-armeabi-v7a.apk)
 
 ## Release history
 

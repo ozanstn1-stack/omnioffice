@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.42.0
+# Release Readiness — OmniOffice 7.43.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,15 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.43.0) - PDF: görünümsüz işaretleme, not silme
+
+- **Flatten draws markup without an appearance stream and burns it in:**
+  `test:crates/pdfcore/tests/flatten_synth_test.rs#markup_without_an_appearance_is_drawn_and_burned_in`
+- **A delete in an annotation batch does not shift the index of a later edit:**
+  `test:crates/pdfcore/tests/annotation_delete_test.rs#a_delete_does_not_shift_the_index_of_a_later_edit`
+- **Deleting a comment removes its popup and every reply:**
+  `test:crates/pdfcore/tests/annotation_delete_test.rs#deleting_a_comment_removes_its_popup_and_every_reply`
 
 ## Implemented (this cycle, 7.42.0) - Yapay zekâ: toplu gömme, hatırlanan onay
 
