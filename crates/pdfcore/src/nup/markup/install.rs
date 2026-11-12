@@ -61,7 +61,7 @@ pub(super) fn install(doc: &mut Document, sheet_id: ObjectId, draws: Vec<Draw>) 
 /// The form XObject that carries a synthesized appearance. Its content is in
 /// page space, so the block's placement matrix is all that is needed; the box
 /// only bounds the content.
-fn synthesized_form(
+pub(super) fn synthesized_form(
     doc: &mut Document,
     synth: &Synth,
     fonts: &mut BTreeMap<BTreeSet<char>, Option<ObjectId>>,

@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 mod dests;
 mod links;
 mod markup;
+pub(crate) use markup::synthesized_appearance;
 mod outline;
 mod sheet;
 

@@ -58,8 +58,7 @@ pub(crate) struct FontCache {
 impl FontCache {
     /// A cache with this many bytes of room; zero stores nothing, which is how a
     /// test compares the cached output with the uncached one.
-    /// A cache with the default budget, which is what an imposition uses.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// A cache with the default budget (imposition, and flattening one annotation).
     pub(crate) fn new() -> Self {
         Self::with_budget(crate::nup::DEFAULT_FONT_CACHE_BYTES)
     }

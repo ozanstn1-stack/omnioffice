@@ -257,14 +257,8 @@ fn appearance_matrix(doc: &Document, appearance_id: ObjectId, rect: [f64; 4]) ->
         .mul(matrix)
 }
 
-fn burn_annotation(
-    doc: &mut Document,
-    page_id: ObjectId,
-    annot: &Dictionary,
-    appearance_id: ObjectId,
-) -> PdfResult<()> {
-    let rect = rect_of(doc, annot).unwrap_or([0.0, 0.0, 1.0, 1.0]);
-    let matrix = appearance_matrix(doc, appearance_id, rect);
+/// Paints the appearance form on the page with `matrix` (form space -> page space).
+fn burn_annotation(doc: &mut Document, page_id: ObjectId, appearance_id: ObjectId, matrix: Matrix) -> PdfResult<()> {
     let name = format!("FA{}", appearance_id.0);
     add_resource_entry(doc, page_id, b"XObject", &name, Object::Reference(appearance_id))?;
     let snippet = format!("q\n{}\n/{name} Do\nQ\n", matrix.to_cm());
@@ -497,9 +491,24 @@ pub fn flatten_pdf(
                         appearance = generated_appearance(&mut doc, id, &annot);
                     }
                 }
-                match appearance {
+                // Markup without an /AP (highlight, ink, shapes, lines, free
+                // text) is drawn from its geometry, in page space (4.6a).
+                let synthesized = if appearance.is_none() && !is_field {
+                    crate::nup::synthesized_appearance(&mut doc, &annot)
+                } else {
+                    None
+                };
+                match appearance.or(synthesized) {
                     Some(appearance_id) => {
-                        burn_annotation(&mut doc, *page_id, &annot, appearance_id)?;
+                        let matrix = match synthesized {
+                            Some(_) => Matrix::IDENTITY,
+                            None => appearance_matrix(
+                                &doc,
+                                appearance_id,
+                                rect_of(&doc, &annot).unwrap_or([0.0, 0.0, 1.0, 1.0]),
+                            ),
+                        };
+                        burn_annotation(&mut doc, *page_id, appearance_id, matrix)?;
                         match annot_id {
                             Some(id) => {
                                 remove_ids.insert(id);
