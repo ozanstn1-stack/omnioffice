@@ -930,6 +930,29 @@ async fn openai_embed_parses_response() {
     handle.join().unwrap();
 }
 
+#[tokio::test]
+async fn openai_embed_batch_sends_one_request_and_keeps_input_order() {
+    // The provider answers out of order; `index` puts each vector back.
+    let body = r#"{"data": [{"index": 1, "embedding": [2.0]}, {"index": 0, "embedding": [1.0]}]}"#;
+    let (url, captured, handle) = mock_server_capturing(body.to_string(), "application/json", false);
+    let client = provider_client(url, ProviderKind::OpenAiCompatible, "test-key");
+    let vectors = client.embed_batch(&["first", "second"]).await.expect("embed batch");
+    assert_eq!(vectors, vec![vec![1.0], vec![2.0]]);
+    handle.join().unwrap();
+    let request = captured.lock().unwrap().clone();
+    assert!(request.contains(r#""input":["first","second"]"#), "{request}");
+}
+
+#[tokio::test]
+async fn openai_embed_batch_rejects_a_short_answer() {
+    let body = r#"{"data": [{"index": 0, "embedding": [1.0]}]}"#;
+    let (url, handle) = mock_server(200, "application/json", body.to_string(), false);
+    let client = provider_client(url, ProviderKind::OpenAiCompatible, "test-key");
+    let error = client.embed_batch(&["first", "second"]).await.unwrap_err();
+    assert!(matches!(error, AiError::InvalidResponse(_)), "{error:?}");
+    handle.join().unwrap();
+}
+
 #[test]
 fn invoice_extract_prompt_and_reply_parser() {
     let pages = vec![(1, "Invoice #1001 from Acme Corp on 2026-10-10. Total: $120".to_string())];
