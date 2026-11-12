@@ -1,0 +1,58 @@
+name: Bug report
+description: Something does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not attach confidential documents: describe the file or
+        share a copy with personal data removed. Security problems go through SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Settings > About, or the file name of the installer you used.
+      placeholder: "7.43.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows (Setup)
+        - Windows (Portable)
+        - Linux (.deb)
+        - Linux (.AppImage)
+        - Android
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Where
+      description: The screen or tool, for example "Calc", "PDF Studio > Flatten", "Deadline calculator".
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Settings > "Export diagnostics" saves a text report with paths replaced; read it before attaching.
+      render: text
