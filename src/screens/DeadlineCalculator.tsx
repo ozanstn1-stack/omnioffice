@@ -60,13 +60,14 @@ export function DeadlineCalculatorScreen({
   const [amount, setAmount] = useState(2);
   const [unit, setUnit] = useState<PeriodUnit>("week");
   const [recess, setRecess] = useState(true);
+  const [criminal, setCriminal] = useState(false);
   const [title, setTitle] = useState("");
   const [candidates, setCandidates] = useState<NotificationDateCandidate[] | null>(null);
   const [reading, setReading] = useState(false);
 
   const result = useMemo(
-    () => computeDeadline({ received, electronic, period: { amount, unit }, judicialRecess: recess }),
-    [received, electronic, amount, unit, recess],
+    () => computeDeadline({ received, electronic, period: { amount, unit }, judicialRecess: recess, criminal }),
+    [received, electronic, amount, unit, recess, criminal],
   );
 
   const choosePreset = (key: string) => {
@@ -258,7 +259,11 @@ export function DeadlineCalculatorScreen({
         </label>
         <label className="checkbox">
           <input type="checkbox" checked={recess} onChange={(event) => setRecess(event.target.checked)} />
-          <span>{t("deadline.recess")}</span>
+          <span>{t(criminal ? "deadline.recessCriminal" : "deadline.recess")}</span>
+        </label>
+        <label className="checkbox">
+          <input type="checkbox" checked={criminal} onChange={(event) => setCriminal(event.target.checked)} />
+          <span>{t("deadline.criminal")}</span>
         </label>
       </Card>
 
