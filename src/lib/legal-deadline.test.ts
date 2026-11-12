@@ -59,6 +59,14 @@ describe("notification deadline", () => {
     expect(result?.halfDay).toBe(true);
   });
 
+  it("moves past a calculated feast after 2029 and still asks to check the day", () => {
+    // Served Saturday 30 March 2030; two weeks end Saturday 13 April, the first
+    // day of the calculated Kurban Bayramı (13-16 April), so Wednesday 17 April.
+    const result = computeDeadline({ ...base, received: "2030-03-25" });
+    expect(result?.deadline).toBe("2030-04-17");
+    expect(result?.outsideHolidayTable).toBe(true);
+  });
+
   it("warns when a year has no religious holiday table and refuses bad input", () => {
     expect(computeDeadline({ ...base, received: "2031-03-03" })?.outsideHolidayTable).toBe(true);
     expect(computeDeadline(base)?.outsideHolidayTable).toBe(false);

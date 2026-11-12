@@ -2777,7 +2777,7 @@
   "deadline.step.recess": "That falls in the judicial recess, so it moves to {date}.",
   "deadline.step.nonWorking": "{skipped} is not a working day, so the last day is {date}.",
   "deadline.halfDay": "The last day is a half-day eve: courts close at 12:30–13:00. File in the morning.",
-  "deadline.outsideTable": "The holiday table covers 2020–2029; religious holidays outside it are not counted. Check the last day.",
+  "deadline.outsideTable": "Religious holidays for 2020–2029 come from the Diyanet calendar; 2030–2050 are calculated with Diyanet's rule and later years are not counted. Check the last day.",
   "deadline.invalid": "Enter a valid date and a period of at least one day.",
   "deadline.addToPlanner": "Add to the planner",
   "deadline.addedToPlanner": "Added to the planner",

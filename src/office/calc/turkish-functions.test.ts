@@ -12,7 +12,7 @@ import { registerBuiltinFunctions } from "./functions";
 import { evaluateFormula, isError, type FormulaContext, type Scalar } from "./formula";
 import { ibanValid, integerToTurkishWords, tcknValid, vknValid } from "./functions/turkish";
 import { dateToSerial } from "./numberFormat";
-import { turkishHolidaySerials } from "./tr-holidays";
+import { KURBAN_STARTS, RAMAZAN_STARTS, turkishHalfDaySerials, turkishHolidaySerials } from "./tr-holidays";
 
 registerBuiltinFunctions();
 
@@ -114,8 +114,37 @@ describe("Turkish holidays", () => {
     expect(holidays).toContain(dateToSerial(new Date(Date.UTC(2026, 4, 30))));
   });
 
-  it("keeps only the fixed days outside the tabulated range", () => {
-    expect(turkishHolidaySerials(2031)).toHaveLength(7);
+  it("keeps only the fixed days after the last listed year", () => {
+    expect(turkishHolidaySerials(2051)).toHaveLength(7);
+  });
+
+  it("counts the calculated feasts after 2029, twice in a year when the calendar does", () => {
+    const day = (y: number, m: number, d: number) => dateToSerial(new Date(Date.UTC(y, m - 1, d)));
+    // 2030: Ramazan Bayramı 4-6 February, Kurban Bayramı 13-16 April.
+    expect(turkishHolidaySerials(2030)).toHaveLength(14);
+    expect(turkishHolidaySerials(2030)).toContain(day(2030, 2, 4));
+    expect(turkishHolidaySerials(2030)).toContain(day(2030, 4, 16));
+    expect(turkishHalfDaySerials(2030)).toContain(day(2030, 4, 12));
+    // 2033 has Ramazan Bayramı on 2 January and again on 23 December.
+    expect(turkishHolidaySerials(2033)).toHaveLength(17);
+    expect(turkishHolidaySerials(2033)).toContain(day(2033, 12, 25));
+  });
+
+  it("spaces the listed feasts one lunar year apart, Kurban ten weeks after Ramazan", () => {
+    const serial = (iso: string) => dateToSerial(new Date(`${iso}T00:00:00Z`));
+    for (const starts of [RAMAZAN_STARTS, KURBAN_STARTS]) {
+      for (let i = 1; i < starts.length; i += 1) {
+        const gap = serial(starts[i]) - serial(starts[i - 1]);
+        expect(gap, starts[i]).toBeGreaterThanOrEqual(353);
+        expect(gap, starts[i]).toBeLessThanOrEqual(356);
+      }
+    }
+    expect(KURBAN_STARTS).toHaveLength(RAMAZAN_STARTS.length);
+    RAMAZAN_STARTS.forEach((ramazan, i) => {
+      const gap = serial(KURBAN_STARTS[i]) - serial(ramazan);
+      expect(gap, ramazan).toBeGreaterThanOrEqual(67);
+      expect(gap, ramazan).toBeLessThanOrEqual(69);
+    });
   });
 
   it("NETWORKDAYS skips the TR holidays with the flag", () => {
