@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.41.0
+# Release Readiness — OmniOffice 7.42.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,15 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.42.0) - Yapay zekâ: toplu gömme, hatırlanan onay
+
+- **Embeddings for many texts go in one request and come back in input order:**
+  `test:crates/aicore/tests/client_test.rs#openai_embed_batch_sends_one_request_and_keeps_input_order`
+- **A remembered AI data notice applies only to the same provider and host:**
+  `test:src/lib/ai-consent.test.ts#remembers a consent only for the same provider and host`
+- **A remembered notice shows a Forget button instead of the consent checkbox:**
+  `test:src/components/ai-consent-notice.test.tsx#shows a remembered consent with a forget button and no checkbox`
 
 ## Implemented (this cycle, 7.41.0) - Türkiye: 2030+ bayramlar, CMK adli tatil
 

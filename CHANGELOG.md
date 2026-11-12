@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.42.0] - 2026-11-12
+
+### Added
+
+- **Remember the AI data notice for a provider:** after confirming the notice that document text
+  will be sent to the AI provider, "Remember for {provider}" keeps that consent for the same
+  provider and host, so the next documents do not ask again. Switching provider or host asks
+  again, and Settings > AI privacy shows what is remembered with a Forget button. The vault,
+  embedding and page-image consents are still asked each time.
+
+### Changed
+
+- **Embeddings are sent in batches:** vault indexing and document Q&A sent one embeddings request
+  per chunk or page; OpenAI-compatible providers now get one request per 64 texts (a 300-page PDF
+  was 301 requests, now 5). Ollama keeps one request per text so older versions still work.
+
 ## [7.41.0] - 2026-11-12
 
 ### Added
