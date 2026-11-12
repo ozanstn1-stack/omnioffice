@@ -37,7 +37,12 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const documentPath = join(root, "RELEASE_READINESS.md");
-const document = readFileSync(documentPath, "utf8");
+// Older cycles live in the archive; they are checked exactly like the current
+// file, so moving a section there never retires its claims.
+const archivePath = join(root, "docs", "archive", "release-readiness-6.x-and-older.md");
+// Both files are required: a missing archive fails here instead of silently
+// checking fewer claims.
+const document = [documentPath, archivePath].map((path) => readFileSync(path, "utf8")).join("\n");
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 
 const args = process.argv.slice(2);
