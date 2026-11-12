@@ -303,6 +303,8 @@ export interface Settings {
   aiAutoSave: boolean;
   /** Retention for saved AI chats in days; 0 keeps them forever. */
   aiRetentionDays: number;
+  /** AI data notice remembered for one "provider|host" (4.5b); empty asks every time. */
+  aiConsentRemembered?: string;
   /** AI library folder; empty means Documents/OmniOffice AI. */
   aiLibraryDir: string;
   /** Keep an operation log (paths and sizes only). */
