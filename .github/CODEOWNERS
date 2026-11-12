@@ -1,0 +1,3 @@
+# Every change is reviewed by the maintainer. Narrower owners can be added
+# per path (for example `crates/pdfcore/ @someone`) as the project grows.
+* @ozanstn1-stack

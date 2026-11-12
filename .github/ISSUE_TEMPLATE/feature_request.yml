@@ -1,0 +1,32 @@
+name: Feature request
+description: Something OmniOffice should do, or do differently.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help
+      description: How you would like it to work. Mockups or examples from other tools are welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - Windows
+        - Linux
+        - Android
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: File formats involved, Turkish-specific rules (e-Tebligat, UYAP, KVKK ...), links.
