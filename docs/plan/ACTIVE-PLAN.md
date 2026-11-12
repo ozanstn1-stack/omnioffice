@@ -658,3 +658,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   (2020–2029 Diyanet tarihlerinin 20'sini de veriyor; yöntem `docs/tr-holidays.md`). #749: ceza
   işlerinde adli tatilde biten süre 3 Eylül'e uzar (CMK 331/4). UDF bayrakta kalır (gerçek UYAP
   dosyasıyla doğrulama gerekir). Sonrası: Aşama 4.5 (AI) keşfi.
+
+## v7.42.0 sürüm PR'ı — 4.5 Yapay zekâ — 2026-11-12
+- #751: gömmeler OpenAI uyumlu sağlayıcılarda 64'lük gruplarla tek istekte gönderilir (kasa
+  dizinleme, belge Soru-Cevap); Ollama tek tek. #752: AI veri bildirimi sağlayıcı + ana makine için
+  hatırlanabilir, Ayarlar'da Unut; kasa/gömme/görüntü onayları her seferinde sorulur.
+  Sonrası: Aşama 4.6 (PDF) keşfi.

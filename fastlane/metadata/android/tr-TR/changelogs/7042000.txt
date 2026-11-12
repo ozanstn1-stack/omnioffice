@@ -1,0 +1,1 @@
+7.42.0: Yapay zekâ veri bildirimi bir sağlayıcı için hatırlanabiliyor; belge gömmeleri toplu gönderiliyor (300 sayfalık PDF için 301 yerine 5 istek).
