@@ -2777,7 +2777,7 @@
   "deadline.step.recess": "Bu tarih adli tatile denk geliyor; süre {date} tarihine uzar.",
   "deadline.step.nonWorking": "{skipped} iş günü değil; son gün {date}.",
   "deadline.halfDay": "Son gün yarım gün (arife): adliyeler öğleden sonra kapanır. İşlemi sabah yapın.",
-  "deadline.outsideTable": "Tatil tablosu 2020–2029 yıllarını kapsar; dışındaki dinî bayramlar sayılmaz. Son günü kontrol edin.",
+  "deadline.outsideTable": "Dinî bayramlar 2020–2029 için Diyanet takviminden alınır; 2030–2050 Diyanet'in kuralıyla hesaplanır, sonraki yıllar sayılmaz. Son günü kontrol edin.",
   "deadline.invalid": "Geçerli bir tarih ve en az bir günlük süre girin.",
   "deadline.addToPlanner": "Ajandaya ekle",
   "deadline.addedToPlanner": "Ajandaya eklendi",
