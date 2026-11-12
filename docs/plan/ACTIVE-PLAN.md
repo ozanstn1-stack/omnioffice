@@ -664,3 +664,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   dizinleme, belge Soru-Cevap); Ollama tek tek. #752: AI veri bildirimi sağlayıcı + ana makine için
   hatırlanabilir, Ayarlar'da Unut; kasa/gömme/görüntü onayları her seferinde sorulur.
   Sonrası: Aşama 4.6 (PDF) keşfi.
+
+## v7.43.0 sürüm PR'ı — 4.6 PDF — 2026-11-12
+- #754: düzleştirme, görünüm akışı olmayan işaretlemeyi (vurgu, mürekkep, şekil, çizgi, serbest
+  metin) N-up sentezleyicisiyle çizip sayfaya yakar. #755: not toplu düzenlemesinde silme sonraki
+  düzenlemeleri kaydırıyordu (düzeltildi; silmeler en sonda); yorum silinince açılır notu ve
+  yanıtları da gider. Sonrası: Aşama 4.6'nın kalanı (etiketli PDF tablo etiketleri) ya da Aşama 5.

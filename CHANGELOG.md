@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.43.0] - 2026-11-12
+
+### Changed
+
+- **Flatten burns markup that has no appearance stream:** highlights, ink, shapes, lines and
+  free text saved by tools that leave drawing to the viewer were left in place by Flatten
+  ("no appearance stream"). They are now drawn from their own geometry, the way N-up already
+  draws them, and burned into the page. Annotations that ship an appearance are unchanged;
+  sticky notes and stamps without one are still left with a warning.
+
+### Fixed
+
+- **Deleting an annotation could make the next edit hit the wrong one:** the PDF annotation
+  editor sends its changes in the order they were made, and a delete shifted the position of
+  every later annotation, so "delete one, then move another" missed or moved the wrong
+  annotation. Positions now refer to the list as shown, and deletions are applied last.
+- **Deleted comments left their popup and replies behind:** deleting a comment now also removes
+  its popup note and every reply to it (and replies to those replies).
+
 ## [7.42.0] - 2026-11-12
 
 ### Added
