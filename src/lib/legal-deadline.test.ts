@@ -53,6 +53,14 @@ describe("notification deadline", () => {
     expect(computeDeadline({ ...inRecess, judicialRecess: false })?.deadline).toBe("2026-07-24");
   });
 
+  it("extends a criminal period ending in the recess by three days, to 3 September", () => {
+    // 2026: Thursday 3 September; in 2028 the 3rd is a Sunday, so Monday 4 September.
+    const inRecess = { ...base, received: "2026-07-10", electronic: false, criminal: true };
+    expect(computeDeadline(inRecess)?.deadline).toBe("2026-09-03");
+    expect(computeDeadline({ ...inRecess, received: "2028-07-10" })?.deadline).toBe("2028-09-04");
+    expect(computeDeadline({ ...inRecess, judicialRecess: false })?.deadline).toBe("2026-07-24");
+  });
+
   it("flags a deadline on a half-day eve", () => {
     const result = computeDeadline({ ...base, received: "2026-10-14", electronic: false });
     expect(result?.deadline).toBe("2026-10-28");

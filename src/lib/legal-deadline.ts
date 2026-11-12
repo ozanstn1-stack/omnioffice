@@ -10,7 +10,8 @@
  *    or months ends on the same weekday / day of the month (HMK 92/2), the
  *    month's last day when that month is shorter.
  * 3. Judicial recess (HMK 102-104): a period ending between 20 July and
- *    31 August ends one week after the recess, on 7 September.
+ *    31 August ends one week after the recess, on 7 September; in a criminal
+ *    case (CMK 331/4) three days after it, on 3 September.
  * 4. An end on a weekend or an official holiday moves to the next working
  *    day (HMK 93; Saturday counts as a non-working day for the courts).
  *
@@ -35,6 +36,8 @@ export interface DeadlineInput {
   period: Period;
   /** Apply the judicial recess extension (HMK 104). */
   judicialRecess: boolean;
+  /** Criminal procedure: the recess extends by three days (CMK 331/4), not a week. */
+  criminal?: boolean;
 }
 
 export type DeadlineStepKind = "served" | "periodEnd" | "recess" | "nonWorking";
@@ -122,7 +125,7 @@ export function computeDeadline(input: DeadlineInput): DeadlineResult | null {
     const recessStart = Date.UTC(year, 6, 20);
     const recessEnd = Date.UTC(year, 7, 31);
     if (end.getTime() >= recessStart && end.getTime() <= recessEnd) {
-      end = new Date(Date.UTC(year, 8, 7));
+      end = new Date(Date.UTC(year, 8, input.criminal ? 3 : 7));
       steps.push({ kind: "recess", date: formatDay(end) });
     }
   }
