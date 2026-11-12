@@ -23,9 +23,11 @@ use std::time::Duration;
 
 pub mod anthropic;
 pub mod citations;
+mod embed;
 pub mod prompts;
 
 pub use anthropic::{ANTHROPIC_BASE_URL, ANTHROPIC_DEFAULT_MODEL, ANTHROPIC_MODELS};
+pub use embed::EMBED_BATCH;
 pub use prompts::{chunk_text, summarize_prompt_with_budget, Plan};
 
 pub const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
@@ -1376,71 +1378,6 @@ impl DeepSeekClient {
             return Err(AiError::InvalidResponse(self.provider_name()));
         }
         Ok(full)
-    }
-
-    /// Endpoint for embeddings computation.
-    fn embeddings_endpoint(&self) -> String {
-        let base = self.config.base_url.trim().trim_end_matches('/');
-        match self.provider() {
-            ProviderKind::Ollama => format!("{base}/api/embeddings"),
-            ProviderKind::Gemini => format!("{base}/openai/embeddings"),
-            _ => format!("{base}/embeddings"),
-        }
-    }
-
-    /// Computes embeddings vector for the provided text.
-    pub async fn embed(&self, text: &str) -> AiResult<Vec<f32>> {
-        let model = self.config.embedding_model.as_deref().unwrap_or("nomic-embed-text");
-        let endpoint = self.embeddings_endpoint();
-        let request = match self.provider() {
-            ProviderKind::Ollama => {
-                #[derive(Serialize)]
-                struct OllamaEmbedReq<'a> {
-                    model: &'a str,
-                    prompt: &'a str,
-                }
-                self.authorize(self.http.post(&endpoint)).json(&OllamaEmbedReq { model, prompt: text })
-            }
-            _ => {
-                #[derive(Serialize)]
-                struct OpenAiEmbedReq<'a> {
-                    model: &'a str,
-                    input: &'a str,
-                }
-                self.authorize(self.http.post(&endpoint)).json(&OpenAiEmbedReq { model, input: text })
-            }
-        };
-
-        let response = request.send().await.map_err(|error| self.unreachable(error))?;
-        let status = response.status();
-        let retry_after = retry_after_seconds(&response);
-        let body = self.response_text(response).await?;
-        if !status.is_success() {
-            return Err(map_http_error(status.as_u16(), &body, &self.provider_name(), retry_after));
-        }
-
-        #[derive(Deserialize)]
-        struct OllamaEmbedResp {
-            embedding: Vec<f32>,
-        }
-        #[derive(Deserialize)]
-        struct OpenAiData {
-            embedding: Vec<f32>,
-        }
-        #[derive(Deserialize)]
-        struct OpenAiEmbedResp {
-            data: Vec<OpenAiData>,
-        }
-
-        if let Ok(resp) = serde_json::from_str::<OllamaEmbedResp>(&body) {
-            return Ok(resp.embedding);
-        }
-        if let Ok(mut resp) = serde_json::from_str::<OpenAiEmbedResp>(&body) {
-            if let Some(first) = resp.data.pop() {
-                return Ok(first.embedding);
-            }
-        }
-        Err(AiError::InvalidResponse(self.provider_name()))
     }
 
     /// Cheap connectivity/credentials check for the settings screen.

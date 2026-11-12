@@ -1321,17 +1321,20 @@ pub async fn ai_chat(
                     && (aicore::ProviderCapabilities::for_kind(client.config().provider).embeddings
                         || client.config().embedding_model.is_some())
                 {
-                    if let Ok(query_vec) = client.embed(&request.question).await {
-                        let mut scored: Vec<((u32, String), f32)> = Vec::new();
-                        for (page_num, page_text) in &extracted {
-                            let excerpt: String = page_text.chars().take(600).collect();
-                            if let Ok(page_vec) = client.embed(&excerpt).await {
-                                let sim = aicore::cosine_similarity(&query_vec, &page_vec);
-                                scored.push(((*page_num, page_text.clone()), sim));
-                            } else {
-                                scored.push(((*page_num, page_text.clone()), 0.0));
-                            }
-                        }
+                    // The question and every page excerpt go in one batch: one request per
+                    // 64 texts on OpenAI-compatible providers instead of one per page.
+                    let excerpts: Vec<String> = extracted.iter().map(|(_, text)| text.chars().take(600).collect()).collect();
+                    let texts: Vec<&str> =
+                        std::iter::once(request.question.as_str()).chain(excerpts.iter().map(String::as_str)).collect();
+                    if let Ok(vectors) = client.embed_batch(&texts).await {
+                        let query_vec = &vectors[0];
+                        let mut scored: Vec<((u32, String), f32)> = extracted
+                            .iter()
+                            .zip(&vectors[1..])
+                            .map(|((page_num, page_text), page_vec)| {
+                                ((*page_num, page_text.clone()), aicore::cosine_similarity(query_vec, page_vec))
+                            })
+                            .collect();
                         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                         retrieved_pages = scored.into_iter().take(8).map(|(p, _)| p).collect();
                         retrieval_mode = "hybrid".to_string();

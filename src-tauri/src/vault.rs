@@ -2411,22 +2411,20 @@ pub async fn vault_index_build(
     if enabled {
         if let Some(client) = client {
             emit_progress(&app, &job_id, &ProgressEvent::new("index", 0, total as u64));
-            for (position, (key, chunk_index, text)) in pending.iter().enumerate() {
+            // One request per batch (OpenAI-compatible providers take many inputs).
+            for batch in pending.chunks(aicore::EMBED_BATCH) {
                 if cancel.is_cancelled() {
                     cancelled = true;
                     break;
                 }
-                match client.embed(text).await {
-                    Ok(vector) => {
-                        index.set_embedding(key, *chunk_index, &vector);
-                        embedded += 1;
-                    }
-                    // A provider error stops the run but keeps what is cached.
-                    Err(_) => break,
+                let texts: Vec<&str> = batch.iter().map(|(_, _, text)| text.as_str()).collect();
+                // A provider error stops the run but keeps what is cached.
+                let Ok(vectors) = client.embed_batch(&texts).await else { break };
+                for ((key, chunk_index, _), vector) in batch.iter().zip(&vectors) {
+                    index.set_embedding(key, *chunk_index, vector);
+                    embedded += 1;
                 }
-                if position % 8 == 7 || position + 1 == total {
-                    emit_progress(&app, &job_id, &ProgressEvent::new("index", (position + 1) as u64, total as u64));
-                }
+                emit_progress(&app, &job_id, &ProgressEvent::new("index", embedded as u64, total as u64));
             }
         }
     }
