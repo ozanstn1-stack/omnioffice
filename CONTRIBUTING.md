@@ -61,7 +61,8 @@ or E2E scenario proves it. Pull requests are squash-merged once CI is green.
 A release is its own pull request that bumps the version everywhere it is written:
 `package.json` and `package-lock.json`, `Cargo.toml` and `Cargo.lock`, `src-tauri/tauri.conf.json`,
 `src-tauri/gen/android/app/tauri.properties` (`versionName` and `versionCode`), the README version
-and downloads block, a `CHANGELOG.md` section, a new "Implemented (this cycle, X)" section in
+and its "Download" block, the README "What's new" section (the latest release only; the history
+stays in the changelog), a `CHANGELOG.md` section, a new "Implemented (this cycle, X)" section in
 `RELEASE_READINESS.md` whose claims name their tests, and the store notes under
 `fastlane/metadata/android/` (`npm run fastlane:sync` writes en-US; tr-TR is written by hand).
 `node scripts/release-guard.mjs` checks that they agree.
