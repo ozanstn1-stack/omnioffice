@@ -652,3 +652,9 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
 - #746: ODP'ye her asıl sayfa ayrı yazılır, slaytlar kendi asıl sayfasını adlandırır; okuyucu asıl
   sayfaları arka plan rengi ve şekilleriyle geri okur. Impress video/ses (4.3b) model + PPTX/ODP +
   arayüz gerektirdiği için ayrı bir iş olarak ertelendi. Sonrası: Aşama 4.4 (Türkiye'ye özel).
+
+## v7.41.0 sürüm PR'ı — 4.4 Türkiye'ye özel — 2026-11-12
+- #748: 2030–2050 Ramazan/Kurban Bayramı tarihleri 2016 Hicri takvim kongresi kuralıyla hesaplandı
+  (2020–2029 Diyanet tarihlerinin 20'sini de veriyor; yöntem `docs/tr-holidays.md`). #749: ceza
+  işlerinde adli tatilde biten süre 3 Eylül'e uzar (CMK 331/4). UDF bayrakta kalır (gerçek UYAP
+  dosyasıyla doğrulama gerekir). Sonrası: Aşama 4.5 (AI) keşfi.

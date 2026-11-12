@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.40.0
+# Release Readiness — OmniOffice 7.41.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -64,6 +64,15 @@ release-train schedule is decided.
   Windows ARM64 package exists; each version ships only the Windows, Linux and
   Android assets verified in the release checklist.
   (no test: decision record.)
+
+## Implemented (this cycle, 7.41.0) - Türkiye: 2030+ bayramlar, CMK adli tatil
+
+- **Religious holidays after 2029 are counted, including two feasts in one year:**
+  `test:src/office/calc/turkish-functions.test.ts#counts the calculated feasts after 2029, twice in a year when the calendar does`
+- **A deadline after 2029 moves past a calculated feast and is still flagged for checking:**
+  `test:src/lib/legal-deadline.test.ts#moves past a calculated feast after 2029 and still asks to check the day`
+- **A criminal period ending in the recess ends on 3 September:**
+  `test:src/lib/legal-deadline.test.ts#extends a criminal period ending in the recess by three days, to 3 September`
 
 ## Implemented (this cycle, 7.40.0) - ODP asıl sayfaları
 

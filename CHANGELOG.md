@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.41.0] - 2026-11-12
+
+### Added
+
+- **Turkish religious holidays for 2030-2050:** the holiday table behind `WORKDAY`/`NETWORKDAYS`
+  `"TR"` and the deadline calculator ended in 2029, so later Ramazan and Kurban Bayramı days were
+  not counted. 2030-2050 are now listed, calculated with the rule Diyanet has used since 2016
+  (International Hijri Calendar Union Congress); the calculation reproduces all twenty 2020-2029
+  Diyanet dates (method in `docs/tr-holidays.md`). A year can hold two feasts of one kind
+  (Ramazan Bayramı falls twice in 2033). The deadline calculator still asks you to check the last
+  day after 2029, because those years are calculated, not published.
+- **Criminal periods in the judicial recess:** the deadline calculator has a "Criminal case (CMK)"
+  option: a period ending in the recess is extended by three days, to 3 September (CMK 331/4),
+  instead of the civil week to 7 September (HMK 104).
+
 ## [7.40.0] - 2026-11-12
 
 ### Fixed
