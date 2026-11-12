@@ -220,7 +220,7 @@ fn editable_annotations_can_be_moved_resized_updated_and_deleted() {
             index: 6,
             action: AnnotationAction::Resize { x: 320.0, y: 350.0, w: 100.0, h: 50.0 },
         },
-        // The delete shifts indexes after it, so it runs last.
+        // Indexes refer to the list before the batch; deletions are applied last.
         AnnotationEditItem { page: 1, index: 3, action: AnnotationAction::Delete },
     ];
     let (edited, report) = edit_annotations(&bytes, &items).expect("edit");

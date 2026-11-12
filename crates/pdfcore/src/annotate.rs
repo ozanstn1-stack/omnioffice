@@ -19,12 +19,13 @@ use crate::textimg::{self, TextRenderRequest};
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 use serde::{Deserialize, Serialize};
 
+mod delete;
 mod geometry_util;
 use geometry_util::{
     inherited_box, normalize_rect, page_mediabox_or_inherited, page_rotation_or_inherited, real, to_page_space,
     visible_box,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -1189,16 +1190,13 @@ fn store_annotation(doc: &mut Document, handle: AnnotHandle, dict: Dictionary) -
     Ok(())
 }
 
-/// Removes the entry from the page's `/Annots` array. The annotation object
-/// itself (if indirect and no longer referenced anywhere) is intentionally
-/// left in the file: `incremental::apply_difference` only supports adding and
-/// replacing objects, never removing them, so an incremental edit must not
-/// drop it. A later full rewrite prunes it.
-fn delete_annotation(doc: &mut Document, page_id: ObjectId, index: u32) -> PdfResult<()> {
-    let mut items = annots_items(doc, page_id);
-    if (index as usize) < items.len() {
-        items.remove(index as usize);
-    }
+/// Removes the entries at `indexes` (positions before any deletion) from the
+/// page's `/Annots` array, with the popups and replies that belong to them.
+/// The annotation objects themselves (if indirect) stay in the file:
+/// `incremental::apply_difference` only adds and replaces objects, so an
+/// incremental edit must not drop them. A later full rewrite prunes them.
+fn delete_annotations(doc: &mut Document, page_id: ObjectId, indexes: &BTreeSet<usize>) -> PdfResult<()> {
+    let items = delete::without_deleted(doc, annots_items(doc, page_id), indexes);
     set_page_annots(doc, page_id, items)
 }
 
@@ -1210,10 +1208,11 @@ fn delete_annotation(doc: &mut Document, page_id: ObjectId, index: u32) -> PdfRe
 /// callers that need the object gone should save the document with
 /// [`annotate_editable_pdf`]-style rewriting instead.
 ///
-/// Items are applied in order, and an index refers to the annotation array as
-/// it exists at that moment: a deletion shifts the indexes of everything after
-/// it, so callers that mix deletes with other edits should send the delete
-/// last (or adjust later indexes).
+/// Every index refers to the page's annotation array as it was listed before
+/// the batch (`list_annotations`): moves, resizes and updates are applied in
+/// order, and all deletions are applied together at the end, so a delete never
+/// shifts the index of a later edit. Deleting a comment also removes its popup
+/// and the replies that point at it.
 pub fn edit_annotations(pdf: &[u8], items: &[AnnotationEditItem]) -> PdfResult<(Vec<u8>, AnnotationEditReport)> {
     let mut doc = Document::load_mem(pdf).map_err(|error| PdfError::from_lopdf(error, None))?;
     if doc.is_encrypted() || doc.was_encrypted() {
@@ -1221,6 +1220,7 @@ pub fn edit_annotations(pdf: &[u8], items: &[AnnotationEditItem]) -> PdfResult<(
     }
     let moment = annotation_moment();
     let mut report = AnnotationEditReport::default();
+    let mut deletions: BTreeMap<ObjectId, BTreeSet<usize>> = BTreeMap::new();
 
     for item in items {
         let page_id = match doc.get_pages().get(&item.page).copied() {
@@ -1247,8 +1247,9 @@ pub fn edit_annotations(pdf: &[u8], items: &[AnnotationEditItem]) -> PdfResult<(
 
         match &item.action {
             AnnotationAction::Delete => {
-                delete_annotation(&mut doc, page_id, item.index)?;
-                report.deleted += 1;
+                if deletions.entry(page_id).or_default().insert(item.index as usize) {
+                    report.deleted += 1;
+                }
                 continue;
             }
             AnnotationAction::Move { dx, dy } => {
@@ -1304,6 +1305,9 @@ pub fn edit_annotations(pdf: &[u8], items: &[AnnotationEditItem]) -> PdfResult<(
         dict.set("M", Object::String(moment.as_bytes().to_vec(), StringFormat::Literal));
         store_annotation(&mut doc, handle, dict)?;
         report.edited += 1;
+    }
+    for (page_id, indexes) in &deletions {
+        delete_annotations(&mut doc, *page_id, indexes)?;
     }
 
     let output = crate::incremental::apply_difference(pdf, &doc)?;
