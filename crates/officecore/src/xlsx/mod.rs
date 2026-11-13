@@ -33,6 +33,7 @@ mod drawings_read;
 mod import;
 mod pivot_read;
 mod reader;
+mod shared_write;
 mod sheet_read;
 mod sheet_write;
 mod spill_write;

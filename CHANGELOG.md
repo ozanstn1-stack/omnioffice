@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.46.0] - 2026-11-13
+
+### Added
+
+- **XLSX `t="shared"` formula export grouping:** groups consecutive filled-down and filled-right Calc formulas into OOXML `t="shared"` groups (`ref`/`si` anchors + `si` followers), keeping absolute refs, `_xlfn.`, `t="str"`, and `spill` arrays intact.
+
+### Changed
+
+- **Cross-platform CI engine lock check:** `.github/workflows/desktop.yml` now runs `node scripts/fetch-engines.mjs --verify-lock` in `lint` to validate all 20 pinned artifacts on Linux, macOS, and Windows.
+
 ## [7.45.0] - 2026-11-13
 
 ### Fixed

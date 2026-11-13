@@ -1,0 +1,2 @@
+- XLSX dışa aktarımda ardışık formüller OOXML `t="shared"` grupları olarak paketleniyor; mutlak başvurular, `_xlfn.` önekleri ve dinamik dizi yayılımları tam korunuyor.
+- Masaüstü CI hattında 20 motor/yazı tipi doğrulaması için platformdan bağımsız `fetch-engines.mjs --verify-lock` denetimi etkinleştirildi.

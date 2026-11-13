@@ -89,3 +89,16 @@ describe("reproducibility inputs (D11)", () => {
     expect(result.output).toContain("What is not reproducible yet");
   });
 });
+
+describe("engine artifact lock verifier", () => {
+  it("verifies scripts/engines.lock.json across all pinned artifacts via fetch-engines.mjs", () => {
+    const fetchScript = path.join(root, "scripts", "fetch-engines.mjs");
+    const output = execFileSync(process.execPath, [fetchScript, "--verify-lock"], { encoding: "utf8" });
+    expect(output).toContain("engines.lock.json covers all");
+  });
+
+  it("runs fetch-engines.mjs --verify-lock in desktop workflow lint job", () => {
+    const desktopWorkflow = readFileSync(path.join(root, ".github", "workflows", "desktop.yml"), "utf8");
+    expect(desktopWorkflow).toContain("node scripts/fetch-engines.mjs --verify-lock");
+  });
+});

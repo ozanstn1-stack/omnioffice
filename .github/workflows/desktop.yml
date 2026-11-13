@@ -116,6 +116,7 @@ jobs:
         run: |
           pwsh -NoProfile -File scripts/fetch-engines.ps1 -VerifyLock
           pwsh -NoProfile -File scripts/fetch-engines-android.ps1 -VerifyLock
+          node scripts/fetch-engines.mjs --verify-lock
 
   frontend:
     name: Frontend (tests, type check, build)

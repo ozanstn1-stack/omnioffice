@@ -40,7 +40,7 @@ pub(super) struct SheetNote {
 fn cell_xml(
     address: &str,
     value: &CellValue,
-    formula: Option<&str>,
+    formula_xml: Option<&str>,
     style: &CellStyle,
     has_link: bool,
     has_comment: bool,
@@ -50,8 +50,7 @@ fn cell_xml(
 ) -> Option<String> {
     let style_id = styles.xf_id(style);
     let style_attr = if style_id > 0 { format!(" s=\"{style_id}\"") } else { String::new() };
-    // Excel refuses the plain name of every function added after 2007.
-    let formula = formula.map(crate::formula::to_xlsx);
+    let has_formula = formula_xml.is_some();
     let mut value_xml = String::new();
     let mut type_attr = String::new();
     match value {
@@ -65,7 +64,7 @@ fn cell_xml(
             value_xml = format!("<v>{}</v>", crate::formula::excel_error(error));
         }
         CellValue::Text(text) if !text.is_empty() => {
-            if formula.is_some() {
+            if has_formula {
                 type_attr = " t=\"str\"".into();
                 value_xml = format!("<v>{}</v>", escape_text(text));
             } else {
@@ -84,7 +83,7 @@ fn cell_xml(
         }
         _ => {}
     }
-    let formula_xml = formula.map(|formula| format!("<f>{}</f>", escape_text(&formula))).unwrap_or_default();
+    let formula_xml = formula_xml.unwrap_or_default();
     if formula_xml.is_empty() && value_xml.is_empty() && style == &CellStyle::default() && !has_link && !has_comment {
         return None;
     }
@@ -194,6 +193,7 @@ pub(super) fn sheet_xml(
     }
 
     writer.raw("<sheetData>");
+    let shared_plan = super::shared_write::plan(sheet);
     let mut rows: BTreeMap<u32, Vec<(u32, &Cell)>> = BTreeMap::new();
     // (address, target, display, tooltip) of every link that passes the target check.
     let mut hyperlinks: Vec<(String, String, Option<String>, Option<String>)> = Vec::new();
@@ -268,7 +268,7 @@ pub(super) fn sheet_xml(
                 RowCell::Model(cell) => cell_xml(
                     &address,
                     &cell.value,
-                    cell.formula.as_deref(),
+                    super::shared_write::formula_xml(&shared_plan, row, column, cell).as_deref(),
                     &cell.style,
                     cell.link.is_some(),
                     cell.comment.as_deref().map(|text| !text.trim().is_empty()).unwrap_or(false),
