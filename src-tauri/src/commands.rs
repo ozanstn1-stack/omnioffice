@@ -148,6 +148,16 @@ pub async fn pdf_info(path: String, password: Option<String>) -> Result<pdfcore:
             let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfInfo { path }).map_err(|msg| {
                 if msg == "document is password protected" {
                     PdfError::PasswordRequired
+                } else if let Some(rest) = msg.strip_prefix("invalid PDF: ") {
+                    PdfError::InvalidPdf(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("corrupt PDF: ") {
+                    PdfError::CorruptPdf(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("file not found: ") {
+                    PdfError::NotFound(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("permission denied: ") {
+                    PdfError::PermissionDenied(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("unsupported input: ") {
+                    PdfError::Unsupported(rest.to_string())
                 } else {
                     PdfError::ProcessingFailed(msg)
                 }

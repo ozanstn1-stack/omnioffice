@@ -18,6 +18,7 @@ run the suites also verify the markers against the test output
   `Job::PdfInfo` in the contained `--worker` subprocess while preserving
   `PdfError::PasswordRequired` and keeping passworded calls off process `argv`.
   `test:src-tauri/src/worker_tests.rs#parses_worker_arguments`
+  `test:crates/pdfcore/tests/serialization_test.rs#pdf_info_round_trips_through_json`
 - **LAN sync frame decoder hardening & fuzzing:** `synccore::lan::parse_frame_bytes`
   and `transport::read_frame` decode frames with bounded body reads; added
   `eml_parse`, `odf_read`, and `lan_frame` fuzz targets and removed `catch_unwind`

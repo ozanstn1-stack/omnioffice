@@ -69,6 +69,39 @@ fn pdf_info_is_camel_case() {
 }
 
 #[test]
+fn pdf_info_round_trips_through_json() {
+    let info = PdfInfo {
+        path: "C:/in.pdf".into(),
+        file_name: "in.pdf".into(),
+        file_size_bytes: 2048,
+        page_count: 1,
+        pdf_version: "1.7".into(),
+        encrypted: true,
+        has_text_layer: true,
+        metadata: PdfMetadata { title: "Title".into(), ..PdfMetadata::default() },
+        page_geometries: vec![PageGeometry {
+            page: 1,
+            width_pt: 595.28,
+            height_pt: 841.89,
+            display_width_pt: 595.28,
+            display_height_pt: 841.89,
+            rotation: 90,
+        }],
+        image_count: 1,
+        title: "Title".into(),
+        author: "Ada".into(),
+        producer: "OmniOffice".into(),
+        outline: vec![],
+    };
+    let json = serde_json::to_string(&info).unwrap();
+    let decoded: PdfInfo = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.file_name, info.file_name);
+    assert_eq!(decoded.page_count, 1);
+    assert_eq!(decoded.page_geometries.len(), 1);
+    assert_eq!(decoded.page_geometries[0].rotation, 90);
+}
+
+#[test]
 fn geometry_and_metadata_keep_snake_case() {
     let geometry = PageGeometry {
         page: 1,
