@@ -5,7 +5,6 @@ import {
   loadRecent,
   loadSettings,
   ocrLanguages,
-  onProgress,
   saveSettings,
   engineStatus,
   toAppError,
@@ -15,7 +14,6 @@ import {
   type AppError,
   type EngineStatus,
   type OcrLanguage,
-  type ProgressPayload,
   type RecentAdd,
   type RecentEntry,
   type Settings,
@@ -146,28 +144,10 @@ export const useToasts = create<ToastState>((set, get) => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Jobs / progress
+// Jobs / progress (re-exported from the single unified jobs store)
 // ---------------------------------------------------------------------------
 
-interface JobsState {
-  progress: Record<string, ProgressPayload>;
-  attach: () => Promise<() => void>;
-}
-
-export const useJobs = create<JobsState>((set, get) => ({
-  progress: {},
-  attach: async () => {
-    const unlisten = await onProgress((payload) => {
-      set({ progress: { ...get().progress, [payload.jobId]: payload } });
-    });
-    return unlisten;
-  },
-}));
-
-/** Progress of a single job (reading mode search). */
-export function useJobProgress(jobId: string): ProgressPayload | null {
-  return useJobs((state) => (jobId ? (state.progress[jobId] ?? null) : null));
-}
+export { useJobProgress, useJobs } from "./jobs";
 
 // ---------------------------------------------------------------------------
 // Recent files (paths + timestamps only)

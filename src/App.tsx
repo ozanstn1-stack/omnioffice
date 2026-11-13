@@ -10,7 +10,7 @@ import { useT } from "./lib/i18n";
 import { NAV_ICONS } from "./lib/nav-icons";
 import { GlobalOverlays } from "./components/global-overlays";
 import type { RecentEntry } from "./lib/types";
-import { useDev, useDrop, useIsDarkTheme, useJobs, useRecent, useSettings, useToasts } from "./lib/store";
+import { useDev, useDrop, useIsDarkTheme, useRecent, useSettings, useToasts } from "./lib/store";
 import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
 import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
@@ -20,7 +20,7 @@ import { enabledRoutes, routeEnabled, routeFor } from "./lib/routes";
 import type { TaskPackId } from "./lib/ai-task-packs";
 import * as Screens from "./screens/registry";
 import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
-import { resumeJobs, useJobs as useBackgroundJobs } from "./lib/jobs";
+import { resumeJobs, useJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
 import { useDeskTaskCommands } from "./lib/use-desk-task-commands";
 import { usePresend } from "./lib/presend-gate";
@@ -89,7 +89,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const narrow = useNarrowLayout();
-  const backgroundJobs = useBackgroundJobs((state) => state.jobs.filter((job) => job.status === "running").length);
+  const backgroundJobs = useJobs((state) => state.jobs.filter((job) => job.status === "running").length);
   // WebView history bridge for the Android back button (see lib/nav-history).
   const navSnapshotRef = useRef<NavigationSnapshot>({ screen: "home", files: [] });
   const overlayGuardRef = useRef(false);

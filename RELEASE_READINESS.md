@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.44.0
+# Release Readiness — OmniOffice 7.45.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,19 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.45.0) - Architecture, job store unification & Writer modularization
+
+- **Unified `useJobs` store and bounded progress eviction:** merged `store.ts`
+  and `jobs.ts` via `jobs-persist.ts`, settled tool jobs via `useTool.ts`,
+  eliminated duplicate listener attachment in `App.tsx`, and evicted progress
+  entries on `finish`, `cancel`, `settle`, `clearFinished`, restart, and prune.
+  `test:src/lib/jobs.test.ts#evicts finished, cancelled, settled, and pruned progress payloads`
+  `test:src/lib/jobs.test.ts#routes job:progress events through the unified attach() bridge once`
+- **Modular Writer Ribbon (`WriterRibbon` & `WriterRibbonTabs`):** extracted the
+  five Writer Ribbon tabs and action contract from `WriterEditor.tsx` into
+  dedicated panel components under `src/office/writer/panels/`.
+  `test:src/office/writer/panels/panels.test.tsx#switches tabs, enforces disabled state, and dispatches editor callbacks`
 
 ## Implemented (this cycle, 7.44.0) - Isolation, fuzzing & cross-platform tooling
 

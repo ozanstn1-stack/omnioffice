@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Both Tauri APIs are mocked with configurable spies. The default behaviour is
@@ -19,6 +19,7 @@ import {
   registerJobRetryHandler,
   resetJobSyncThrottle,
   resumeJobs,
+  useJobProgress,
   useJobs,
   type JobRecord,
 } from "./jobs";
@@ -45,7 +46,7 @@ beforeEach(() => {
   listenMock.mockReset();
   listenMock.mockRejectedValue(new Error("tauri unavailable"));
   resetJobSyncThrottle();
-  useJobs.setState({ jobs: [] });
+  useJobs.setState({ jobs: [], progressById: {} });
 });
 
 describe("job store", () => {
@@ -182,6 +183,67 @@ describe("job store", () => {
     }
     expect(useJobs.getState().jobs).toHaveLength(MAX_JOBS);
     expect(useJobs.getState().running()).toBe(MAX_JOBS);
+    expect(Object.keys(useJobs.getState().progressById)).toHaveLength(0);
+  });
+
+  it("evicts finished, cancelled, settled, and pruned progress payloads", () => {
+    function ProgressProbe({ jobId }: { jobId: string }) {
+      const progress = useJobProgress(jobId);
+      return createElement("span", { "data-testid": "probe" }, progress ? `${progress.stage}:${progress.current}` : "");
+    }
+
+    render(createElement(ProgressProbe, { jobId: "live-1" }));
+    expect(screen.getByTestId("probe").textContent).toBe("");
+
+    act(() => {
+      useJobs.getState().start({ id: "live-1", kind: "pdf", title: "Compress" });
+      useJobs.getState().progress("live-1", { stage: "encode", current: 3, total: 10 });
+    });
+    expect(screen.getByTestId("probe").textContent).toBe("encode:3");
+    expect(useJobs.getState().progressById["live-1"]).toMatchObject({ jobId: "live-1", stage: "encode", current: 3 });
+
+    act(() => {
+      useJobs.getState().finish("live-1", "succeeded");
+    });
+    expect(screen.getByTestId("probe").textContent).toBe("");
+    expect(useJobs.getState().progressById["live-1"]).toBeUndefined();
+
+    // Late progress for an already-finished job must not leak back into progressById.
+    act(() => {
+      useJobs.getState().progress("live-1", { stage: "late", current: 10, total: 10 });
+    });
+    expect(useJobs.getState().progressById["live-1"]).toBeUndefined();
+
+    // Cancelling and restarting a job both drop its old progress entry.
+    act(() => {
+      useJobs.getState().start({ id: "live-2", kind: "pdf", title: "Split" });
+      useJobs.getState().progress("live-2", { stage: "pages", current: 1, total: 2 });
+    });
+    expect(useJobs.getState().progressById["live-2"]).toBeDefined();
+    act(() => {
+      useJobs.getState().cancel("live-2");
+    });
+    expect(useJobs.getState().progressById["live-2"]).toBeUndefined();
+
+    // settle() marks tracked jobs finished without leaking progress, and is a no-op when untracked.
+    act(() => {
+      useJobs.getState().progress("tracked-rust", { stage: "ocr", current: 1, total: 3 });
+      useJobs.getState().settle("tracked-rust", "succeeded");
+      useJobs.getState().settle("never-tracked", "succeeded");
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("jobs_finish", expect.objectContaining({ id: "never-tracked" }));
+    expect(useJobs.getState().jobs.find((entry) => entry.id === "tracked-rust")?.status).toBe("succeeded");
+    expect(useJobs.getState().progressById["tracked-rust"]).toBeUndefined();
+
+    // Progress map stays bounded to MAX_JOBS when many Rust jobs stream events.
+    act(() => {
+      for (let index = 0; index < MAX_JOBS + 5; index += 1) {
+        useJobs.getState().progress(`stream-${index}`, { stage: "work", current: index, total: 100 });
+      }
+    });
+    expect(Object.keys(useJobs.getState().progressById).length).toBeLessThanOrEqual(MAX_JOBS);
+    expect(useJobs.getState().progressById["stream-0"]).toBeUndefined();
+    expect(useJobs.getState().progressById[`stream-${MAX_JOBS + 4}`]).toBeDefined();
   });
 });
 
@@ -361,5 +423,32 @@ describe("attachJobEvents", () => {
   it("swallows listener failures outside Tauri", async () => {
     await expect(attachJobEvents()).resolves.toBeUndefined();
     await expect(attachJobEvents()).resolves.toBeUndefined();
+  });
+
+  it("routes job:progress events through the unified attach() bridge once", async () => {
+    const handlers = new Map<string, (event: { payload: unknown }) => void>();
+    listenMock.mockImplementation(async (event: string, cb: (payload: { payload: unknown }) => void) => {
+      handlers.set(event, cb);
+      return vi.fn();
+    });
+
+    const detach = await useJobs.getState().attach();
+    await useJobs.getState().attach();
+    expect(listenMock).toHaveBeenCalledTimes(3);
+
+    act(() => {
+      handlers.get("job:progress")?.({
+        payload: { jobId: "evt-1", stage: "ocr", current: 4, total: 8, message: "p4" },
+      });
+    });
+
+    expect(useJobs.getState().progressById["evt-1"]).toMatchObject({
+      jobId: "evt-1",
+      stage: "ocr",
+      current: 4,
+      total: 8,
+    });
+    expect(useJobs.getState().jobs.find((entry) => entry.id === "evt-1")?.message).toBe("p4");
+    detach();
   });
 });
