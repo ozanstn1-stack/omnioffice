@@ -7,7 +7,7 @@
 
 use officecore::cleaner::{self, CleanOptions, CleanResult};
 use officecore::csvio::{self, CsvOptions};
-use officecore::error::{OfficeError, OfficeResult};
+use officecore::error::OfficeError;
 use officecore::model::*;
 use officecore::{docx, layout, odf, pptx, rtf, textio, ubl, udf, xlsx};
 use serde::{Deserialize, Serialize};

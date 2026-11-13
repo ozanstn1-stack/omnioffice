@@ -1,8 +1,8 @@
 //! Local document version history ring (25 versions per document) with
 //! atomic index updates and unchanged-save deduplication.
 
+use super::timestamp;
 use officecore::error::{OfficeError, OfficeResult};
-use officecore::model::timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;

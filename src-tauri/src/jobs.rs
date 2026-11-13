@@ -460,11 +460,7 @@ impl<'a> JobFinishGuard<'a> {
 
 impl Drop for JobFinishGuard<'_> {
     fn drop(&mut self) {
-        if self.succeeded {
-            self.registry.finish(&self.job_id);
-        } else {
-            self.registry.fail_active(&self.job_id);
-        }
+        self.registry.complete(&self.job_id, self.succeeded);
     }
 }
 
@@ -629,17 +625,10 @@ impl JobRegistry {
     /// Result-aware end of a worker: `Done` on success, `Failed` otherwise.
     /// Terminal states set by the frontend (cancel) stay sticky.
     pub fn complete(&self, job_id: &str, succeeded: bool) {
-        if let Ok(mut jobs) = self.jobs.lock() {
-            jobs.remove(job_id);
-        }
-        if let Ok(mut jobs) = self.ai_jobs.lock() {
-            jobs.remove(job_id);
-        }
-        self.sync_activity();
         if succeeded {
-            self.store.finish(job_id);
+            self.finish(job_id);
         } else {
-            self.store.fail_if_active(job_id);
+            self.fail_active(job_id);
         }
     }
 

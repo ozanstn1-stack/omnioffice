@@ -222,7 +222,7 @@
     "src-tauri/src/files.rs": 248,
     "src-tauri/src/ipc.rs": 442,
     "src-tauri/src/jobs_tests.rs": 411,
-    "src-tauri/src/jobs.rs": 776,
+    "src-tauri/src/jobs.rs": 765,
     "src-tauri/src/lan_sync.rs": 948,
     "src-tauri/src/lan_sync/store.rs": 239,
     "src-tauri/src/lan_sync/trash.rs": 249,
