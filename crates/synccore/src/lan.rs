@@ -1250,3 +1250,30 @@ fn non_empty(value: &str, fallback: &str) -> String {
         value.to_string()
     }
 }
+
+/// Parses a raw LAN sync wire frame (4-byte length prefix + JSON header + body).
+/// Used by fuzz targets to exercise the frame decoder without a TLS socket.
+pub fn parse_frame_bytes(bytes: &[u8]) -> Result<(), SyncError> {
+    let mut cursor = std::io::Cursor::new(bytes);
+    let _: (Request, Vec<u8>) = transport::read_frame(&mut cursor)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod frame_fuzz_tests {
+    use super::parse_frame_bytes;
+
+    #[test]
+    fn parse_frame_bytes_rejects_truncated_and_oversized_frames() {
+        assert!(parse_frame_bytes(&[]).is_err());
+        assert!(parse_frame_bytes(&[0, 0, 0, 0]).is_err());
+        assert!(parse_frame_bytes(&[0xff, 0xff, 0xff, 0xff]).is_err());
+        let header = br#"{"op":"ping","body_len":5}"#;
+        let mut frame = (header.len() as u32).to_be_bytes().to_vec();
+        frame.extend_from_slice(header);
+        frame.extend_from_slice(b"hello");
+        assert!(parse_frame_bytes(&frame).is_ok());
+        // Truncated body must error cleanly instead of allocating or panicking.
+        assert!(parse_frame_bytes(&frame[..frame.len() - 1]).is_err());
+    }
+}

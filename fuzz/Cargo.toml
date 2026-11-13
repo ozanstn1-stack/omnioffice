@@ -11,6 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 officecore = { path = "../crates/officecore" }
 pdfcore = { path = "../crates/pdfcore" }
+synccore = { path = "../crates/synccore" }
 lopdf = "0.46.0"
 
 [[bin]]
@@ -82,6 +83,27 @@ calamine = { path = "../vendor/calamine" }
 [[bin]]
 name = "cmap"
 path = "fuzz_targets/cmap.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "eml_parse"
+path = "fuzz_targets/eml_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "odf_read"
+path = "fuzz_targets/odf_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lan_frame"
+path = "fuzz_targets/lan_frame.rs"
 test = false
 doc = false
 bench = false

@@ -5,11 +5,11 @@ use crate::error::{PdfError, PdfResult};
 use crate::metadata::{read_metadata, PdfMetadata};
 use crate::render::{self, PageGeometry};
 use lopdf::Document;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PdfInfo {
     pub path: String,

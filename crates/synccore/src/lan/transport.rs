@@ -293,9 +293,9 @@ where
     stream.flush().map_err(net)
 }
 
-fn read_frame<R, T>(stream: &mut T) -> Result<(R, Vec<u8>), SyncError>
+pub(super) fn read_frame<R, T>(stream: &mut T) -> Result<(R, Vec<u8>), SyncError>
 where
-    T: Read + Write,
+    T: Read,
     R: DeserializeOwned + HasBodyLen,
 {
     let payload = read_header(stream)?;
@@ -306,8 +306,11 @@ where
     }
     let mut body = Vec::new();
     if body_len > 0 {
-        body.resize(body_len as usize, 0);
-        stream.read_exact(&mut body).map_err(net)?;
+        let mut limited = stream.take(body_len);
+        limited.read_to_end(&mut body).map_err(net)?;
+        if body.len() as u64 != body_len {
+            return Err(SyncError::Network("unexpected end of frame body".into()));
+        }
     }
     Ok((header, body))
 }

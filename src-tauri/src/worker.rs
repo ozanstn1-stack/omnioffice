@@ -80,6 +80,8 @@ pub enum Job {
     InvoicePackage { path: PathBuf },
     /// Parse an `.eml` message.
     EmlOpen { path: PathBuf },
+    /// Inspect PDF metadata, page count, and encryption status.
+    PdfInfo { path: PathBuf },
     /// Repair a damaged PDF (qpdf when available, built-in rebuild otherwise).
     Repair { input: PathBuf, output: PathBuf },
 }
@@ -93,6 +95,7 @@ impl Job {
             Job::InvoiceOpen { path: file } => vec!["invoice-open".into(), path(file)],
             Job::InvoicePackage { path: file } => vec!["invoice-package".into(), path(file)],
             Job::EmlOpen { path: file } => vec!["eml-open".into(), path(file)],
+            Job::PdfInfo { path: file } => vec!["pdf-info".into(), path(file)],
             Job::Repair { input, output } => vec!["repair".into(), path(input), path(output)],
         }
     }
@@ -108,6 +111,7 @@ impl Job {
             "invoice-open" => Ok(Job::InvoiceOpen { path: path(1)? }),
             "invoice-package" => Ok(Job::InvoicePackage { path: path(1)? }),
             "eml-open" => Ok(Job::EmlOpen { path: path(1)? }),
+            "pdf-info" => Ok(Job::PdfInfo { path: path(1)? }),
             "repair" => Ok(Job::Repair { input: path(1)?, output: path(2)? }),
             other => Err(format!("unknown worker operation: {other}")),
         }
@@ -119,6 +123,7 @@ impl Job {
             Job::InvoiceOpen { .. } => "invoice-open",
             Job::InvoicePackage { .. } => "invoice-package",
             Job::EmlOpen { .. } => "eml-open",
+            Job::PdfInfo { .. } => "pdf-info",
             Job::Repair { .. } => "repair",
         }
     }
@@ -143,6 +148,10 @@ pub fn execute(job: &Job) -> Result<String, String> {
         Job::EmlOpen { path } => {
             let message = crate::office::eml_message(path).map_err(|error| error.to_string())?;
             to_json(&message)
+        }
+        Job::PdfInfo { path } => {
+            let info = pdfcore::info::pdf_info(path, None).map_err(|error| error.to_string())?;
+            to_json(&info)
         }
         Job::Repair { input, output } => {
             let cancel = pdfcore::progress::CancelToken::new();

@@ -231,18 +231,13 @@ pub fn sandbox_file(root: &Path, id: &str, name: &str) -> PluginResult<PathBuf> 
 /// links, so creating a fresh sandbox file is unaffected.
 fn is_reparse_point(path: &Path) -> bool {
     let Ok(meta) = std::fs::symlink_metadata(path) else { return false };
-    if meta.file_type().is_symlink() {
-        return true;
-    }
+    #[cfg(not(windows))]
+    return meta.file_type().is_symlink();
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-            return true;
-        }
+        meta.file_type().is_symlink() || (meta.file_attributes() & 0x400) != 0
     }
-    false
 }
 
 fn read_capped(path: &Path, max: usize, label: &str) -> PluginResult<Vec<u8>> {

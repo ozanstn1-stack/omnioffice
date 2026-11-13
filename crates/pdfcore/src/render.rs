@@ -64,7 +64,7 @@ impl Default for RenderOptions {
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PageGeometry {
     pub page: u32,
     #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]

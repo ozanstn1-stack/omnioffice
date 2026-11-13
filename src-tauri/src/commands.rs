@@ -143,7 +143,32 @@ pub fn cancel_job(registry: State<'_, JobRegistry>, job_id: String) {
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_info(path: String, password: Option<String>) -> Result<pdfcore::info::PdfInfo, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
-    run_blocking(move || pdfcore::info::pdf_info(&path, password.as_deref())).await
+    run_blocking(move || {
+        if password.is_none() {
+            let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfInfo { path }).map_err(|msg| {
+                if msg == "document is password protected" {
+                    PdfError::PasswordRequired
+                } else if let Some(rest) = msg.strip_prefix("invalid PDF: ") {
+                    PdfError::InvalidPdf(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("corrupt PDF: ") {
+                    PdfError::CorruptPdf(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("file not found: ") {
+                    PdfError::NotFound(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("permission denied: ") {
+                    PdfError::PermissionDenied(rest.to_string())
+                } else if let Some(rest) = msg.strip_prefix("unsupported input: ") {
+                    PdfError::Unsupported(rest.to_string())
+                } else {
+                    PdfError::ProcessingFailed(msg)
+                }
+            })?;
+            serde_json::from_str(&json)
+                .map_err(|error| PdfError::Internal(format!("the pdf-info result is not valid: {error}")))
+        } else {
+            pdfcore::info::pdf_info(&path, password.as_deref())
+        }
+    })
+    .await
 }
 
 #[tauri::command]
