@@ -1393,7 +1393,7 @@ pub async fn pdf_list_annotations(
         if password.is_some() {
             return pdfcore::annotate::list_annotations_in_file(&path, password.as_deref());
         }
-        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfListAnnotations { path }, None)
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfListAnnotations { path })
             .map_err(crate::worker::decode_pdf_error)?;
         serde_json::from_str(&json).map_err(|error| PdfError::Internal(error.to_string()))
     })
@@ -1966,7 +1966,7 @@ pub async fn inspect_document(
         if password.is_some() {
             return pdfcore::inspect::inspect_document(&path, password.as_deref());
         }
-        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfInspect { path }, None)
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfInspect { path })
             .map_err(crate::worker::decode_pdf_error)?;
         serde_json::from_str(&json).map_err(|error| PdfError::Internal(error.to_string()))
     })
