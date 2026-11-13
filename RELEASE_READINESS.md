@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.45.0
+# Release Readiness — OmniOffice 7.46.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,24 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.46.0) - XLSX shared-formula export & CI engine lock parity
+
+- **XLSX `t="shared"` shared-formula export grouping (`xlsx::shared_write`):**
+  exports consecutive vertical and horizontal formula runs (2+ cells) with
+  `t="shared"`, `ref`, and sequential `si` on anchors and `<f t="shared" si="..."/>`
+  on followers while keeping mixed/absolute references, `_xlfn.` prefixes,
+  `t="str"` cached text outputs, and dynamic-array `spill` cells lossless across
+  export/import round trips.
+  `test:crates/officecore/tests/xlsx_shared_write_test.rs#vertical_shared_formula_group_exports_and_round_trips`
+  `test:crates/officecore/tests/xlsx_shared_write_test.rs#horizontal_and_mixed_absolute_references_group_correctly`
+  `test:crates/officecore/tests/xlsx_shared_write_test.rs#future_functions_coalesce_and_dynamic_array_spills_stay_isolated`
+- **Cross-platform CI engine lock coverage (`fetch-engines.mjs --verify-lock`):**
+  wired `node scripts/fetch-engines.mjs --verify-lock` into `.github/workflows/desktop.yml`
+  (`lint` job) and added automated Vitest coverage verifying all 20 pinned artifacts
+  in `scripts/engines.lock.json`.
+  `test:src/lib/reproducibility.test.ts#verifies scripts/engines.lock.json across all pinned artifacts via fetch-engines.mjs`
+  `test:src/lib/reproducibility.test.ts#runs fetch-engines.mjs --verify-lock in desktop workflow lint job`
 
 ## Implemented (this cycle, 7.45.0) - Architecture, job store unification & Writer modularization
 

@@ -26,7 +26,7 @@ const METADATA_XML: &str = concat!(
 );
 
 /// The spill range of a formula cell when it is a valid `A1:B2` range.
-fn spill_range(cell: &Cell) -> Option<&str> {
+pub(super) fn spill_range(cell: &Cell) -> Option<&str> {
     cell.formula.as_ref()?;
     let range = cell.spill.as_deref()?.trim();
     let (start, end) = range.split_once(':')?;

@@ -55,6 +55,7 @@
     "crates/officecore/src/xlsx/import.rs": 396,
     "crates/officecore/src/xlsx/reader.rs": 331,
     "crates/officecore/src/xlsx/shared_formulas.rs": 280,
+    "crates/officecore/src/xlsx/shared_write.rs": 210,
     "crates/officecore/src/xlsx/sheet_read.rs": 657,
     "crates/officecore/src/xlsx/sheet_write.rs": 597,
     "crates/officecore/src/xlsx/styles_read.rs": 262,

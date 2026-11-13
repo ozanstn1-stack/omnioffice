@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.43.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.46.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,28 +23,33 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new in 7.43.0
+## What's new in 7.46.0
 
-- **Flatten burns markup that has no appearance stream:** highlights, ink, shapes, lines and free
-  text saved by tools that leave drawing to the viewer are drawn from their geometry and burned in.
-- **Annotation deletes fixed:** a delete no longer shifts the target of later edits in the same
-  save, and a deleted comment takes its popup and replies with it.
+- **XLSX `t="shared"` formula export grouping:** consecutive filled-down and filled-right Calc
+  formulas now export as compact OOXML `t="shared"` groups (`ref` + `si` on anchors and bare `si`
+  followers), keeping mixed/absolute references, `_xlfn.` prefixes, and dynamic-array `spill`
+  formulas isolated and round-tripping losslessly.
+- **Cross-platform CI engine lock coverage:** the desktop workflow `lint` job now executes
+  `node scripts/fetch-engines.mjs --verify-lock` across all 20 pinned binaries and fonts on every
+  run alongside the PowerShell verifiers.
 
-Earlier in the 7.4x series: Turkish religious holidays to 2050 and the criminal-case judicial
-recess (7.41), batched AI embeddings and a remembered AI data notice (7.42), ODP slide masters
-(7.40), Excel dynamic arrays (7.39) and editable Calc charts (7.38). Every release, with its
-details, is in [CHANGELOG.md](CHANGELOG.md).
+Earlier in the 7.4x series: unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info`
+worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and
+annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42),
+Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40),
+Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 
-**Downloads (v7.43.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v7.43.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.43.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Setup-7.43.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Portable-7.43.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Linux-7.43.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Linux-7.43.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Android-7.43.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.43.0/OmniOffice-Android-7.43.0-armeabi-v7a.apk)
+**Downloads (v7.46.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v7.46.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.46.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.46.0/OmniOffice-Setup-7.46.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.46.0/OmniOffice-Portable-7.46.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.46.0/OmniOffice-Linux-7.46.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.46.0/OmniOffice-Linux-7.46.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.46.0/OmniOffice-Android-7.46.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.46.0/OmniOffice-Android-7.46.0-armeabi-v7a.apk)
 
 ## Release history
 
@@ -775,9 +780,9 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 56 |
 | Tauri commands | 253 |
-| Rust tests | 1916 |
+| Rust tests | 1921 |
 | TypeScript test files | 259 |
-| TypeScript test cases (approx.) | 2746 |
+| TypeScript test cases (approx.) | 2748 |
 <!-- stats:end -->
 
 ## License

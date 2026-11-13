@@ -92,9 +92,11 @@ formulas (XLSX), shared formulas and transition metadata (PPTX).
   its anchor formula (the cached spill cells are dropped so it spills again).
   On save the spill range is written as Excel's dynamic array (`cm="1"`,
   `t="array" ref`, `xl/metadata.xml`), so Excel spills it as well.
-- XLSX structured tables and shared formulas are read and expanded, but the
-  writer still writes plain formulas (no `t="shared"` output); Excel accepts
-  the result, the file is just larger.
+- XLSX shared formulas are imported by expanding relative offsets and exported
+  with `t="shared"` (`crates/officecore/src/xlsx/shared_write.rs`) across
+  consecutive vertical/horizontal runs (`si` + `ref` on anchors); XLSX
+  structured tables are read and exported, while plain ungrouped formulas stay
+  ordinary `<f>` elements.
 - The corpus is programmatic, not a fuzz target. A random-mutation fuzz
   harness is still open; the deterministic corpus is what CI runs today.
 
@@ -102,12 +104,13 @@ formulas (XLSX), shared formulas and transition metadata (PPTX).
 
 - D6'da DOCX değişiklik izleri düzenleyicide **yazar + tarih** ile görünüyor ve
   kaydetmeyi atlatıyor; XLSX'te paylaşılan formüller içe aktarımda satır
-  ofsetiyle **açılıyor** (`B2 → =A2*2`); PPTX geçiş süresi (`advTm`) artık
-  yazılıp okunuyor (fade + 800 ms korunuyor).
+  ofsetiyle **açılıyor** (`B2 → =A2*2`) ve artık dışa aktarımda da ardışık
+  aynı formüller `t="shared"` olarak gruplanıyor; PPTX geçiş süresi (`advTm`)
+  artık yazılıp okunuyor (fade + 800 ms korunuyor).
 - Programatik round-trip korpusu (`crates/officecore/tests/office_fidelity.rs`)
   her biçim için sayaçları yazdırıyor: **ölçülen delta sıfır** (DOCX 2/2 blok,
   8/8 run, 2/2 revizyon; ODT 6/6 run, 4/4 hücre; XLSX 3/3 hücre, 1/1 formül;
   PPTX geçiş + süre).
 - Henüz ölçülmeyenler dürüstçe listelendi: resim/grafik/yorum/üst bilgi,
-  ODT değişiklik izleri, dinamik diziler, XLSX yazıcısının paylaşılan formül
-  üretmemesi ve fuzz hedefinin hâlâ açık olması.
+  ODT değişiklik izleri, dinamik diziler, XLSX paylaşılan formüllerin çoklu
+  dikdörtgen aralıklara genelleştirilmesi ve fuzz hedefinin hâlâ açık olması.
