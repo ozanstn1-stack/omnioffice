@@ -1,0 +1,2 @@
+- Arka plan iş deposu birleştirildi (`jobs.ts`, `jobs-persist.ts`, `store.ts`) ve biten/iptal edilen işlerin bellek sızıntısı önlendi.
+- Writer düzenleyici şerit çubuğu (`WriterRibbon` ve `WriterRibbonTabs`) ayrı modüllere ayrıldı ve `WriterEditor.tsx` yaklaşık 500 satır sadeleştirildi.

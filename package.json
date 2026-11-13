@@ -1,7 +1,7 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "7.44.0",
+  "version": "7.45.0",
   "engines": {
     "node": ">=20"
   },

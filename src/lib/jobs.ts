@@ -23,58 +23,26 @@
  * the process. A job that died that way shows up as `interrupted` on the next
  * start with a Retry action, and no UI text here claims liveness.
  */
-import { asJson, call, callPlain } from "./typed-call";
+import { call, callPlain } from "./typed-call";
 import { create } from "zustand";
 import type { ProgressPayload } from "./types";
+import {
+  fromRecord,
+  persistCancel,
+  persistClearFinished,
+  persistFinish,
+  persistProgress,
+  persistRegister,
+  resetJobSyncThrottle,
+  type BackgroundJob,
+  type JobProgressUpdate,
+  type JobRecord,
+  type JobStatus,
+  type PersistedJobStatus,
+} from "./jobs-persist";
 
-/** UI lifecycle. `succeeded` is the persisted `done` mapped at the boundary. */
-export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
-
-/** Lifecycle as stored by the Rust JobStore (`done`, not `succeeded`). */
-export type PersistedJobStatus = "queued" | "running" | "done" | "failed" | "cancelled" | "interrupted";
-
-/** Persisted record returned by `jobs_list` / `jobs_retry` (camelCase serde). */
-export interface JobRecord {
-  id: string;
-  kind: string;
-  title: string;
-  status: PersistedJobStatus;
-  /** Normalized 0..1. */
-  progress: number;
-  detail: string | null;
-  /** Serialized operation inputs captured at start; handed to Retry handlers. */
-  payload: unknown;
-  error: string | null;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface BackgroundJob {
-  id: string;
-  kind: string;
-  title: string;
-  status: JobStatus;
-  stage: string;
-  current: number;
-  total: number;
-  message?: string;
-  startedAt: number;
-  finishedAt?: number;
-  error?: string;
-  /** Serialized inputs forwarded to `jobs_register` so a restart can retry. */
-  payload?: unknown;
-  /** True when the row was restored from Rust and has no live callbacks. */
-  persisted?: boolean;
-  cancel?: () => void;
-  retry?: () => void;
-}
-
-export interface JobProgressUpdate {
-  stage?: string;
-  current?: number;
-  total?: number;
-  message?: string;
-}
+export type { BackgroundJob, JobProgressUpdate, JobRecord, JobStatus, PersistedJobStatus };
+export { resetJobSyncThrottle };
 
 export type JobInput = Pick<BackgroundJob, "id" | "kind" | "title"> &
   Partial<Omit<BackgroundJob, "id" | "kind" | "title">>;
@@ -87,9 +55,14 @@ export type JobRetryHandler = (record: JobRecord) => void | Promise<void>;
 
 export interface JobsState {
   jobs: BackgroundJob[];
+  /** Live raw progress payloads keyed by `jobId`; bounded and evicted on finish/cancel/clear/prune. */
+  progressById: Record<string, ProgressPayload>;
+  attach: () => Promise<() => void>;
   start: (job: JobInput) => string;
   progress: (id: string, update: JobProgressUpdate) => void;
   finish: (id: string, status: Exclude<JobStatus, "running" | "queued">, error?: string) => void;
+  /** Finishes a job or drops transient progress when a tool session completes without registering a row. */
+  settle: (id: string, status: Exclude<JobStatus, "running" | "queued">, error?: string) => void;
   cancel: (id: string) => void;
   retry: (id: string) => Promise<RetryOutcome>;
   /** Merges persisted records (newest survives live entries with the same id). */
@@ -101,10 +74,6 @@ export interface JobsState {
 export const MAX_JOBS = 50;
 
 const MAX_STREAM_CHARS = 4000;
-
-/** Mirror at most one progress update per job per this interval (Rust also
- * throttles its disk writes at 500 ms; this keeps the IPC traffic small). */
-const PROGRESS_SYNC_MS = 500;
 
 interface AiProgressPayload {
   jobId: string;
@@ -138,14 +107,6 @@ export function hasJobRetryHandler(kind: string): boolean {
   return retryHandlers.has(kind);
 }
 
-/** Per-job timestamps of the last progress mirror; exported for tests. */
-const progressSyncedAt = new Map<string, number>();
-
-/** Clears the progress mirror throttle (used by tests). */
-export function resetJobSyncThrottle(): void {
-  progressSyncedAt.clear();
-}
-
 function prune(jobs: BackgroundJob[]): BackgroundJob[] {
   if (jobs.length <= MAX_JOBS) return jobs;
   const result = [...jobs];
@@ -156,6 +117,32 @@ function prune(jobs: BackgroundJob[]): BackgroundJob[] {
     result.splice(index, 1);
   }
   return result;
+}
+
+function omitProgressKey(
+  progressById: Record<string, ProgressPayload> | undefined,
+  id: string,
+): Record<string, ProgressPayload> {
+  const map = progressById ?? {};
+  if (!(id in map)) return map;
+  const next = { ...map };
+  delete next[id];
+  return next;
+}
+
+function pruneProgressMap(
+  jobs: BackgroundJob[],
+  progressById: Record<string, ProgressPayload> | undefined,
+): Record<string, ProgressPayload> {
+  const map = progressById ?? {};
+  const activeIds = new Set(
+    jobs.filter((job) => job.status === "running" || job.status === "queued").map((job) => job.id),
+  );
+  const next: Record<string, ProgressPayload> = {};
+  for (const [id, payload] of Object.entries(map)) {
+    if (activeIds.has(id)) next[id] = payload;
+  }
+  return next;
 }
 
 function appendStreamDelta(jobId: string, delta: string): void {
@@ -172,91 +159,13 @@ function appendStreamDelta(jobId: string, delta: string): void {
   }));
 }
 
-/** Persisted record -> UI row. `done` becomes `succeeded`, the fraction becomes
- * a 0..100 pair so the existing progress bar needs no special case. */
-function fromRecord(record: JobRecord): BackgroundJob {
-  const status: JobStatus = record.status === "done" ? "succeeded" : record.status;
-  const fraction = Number.isFinite(record.progress) ? Math.min(1, Math.max(0, record.progress)) : 0;
-  const active = status === "running" || status === "queued";
-  return {
-    id: record.id,
-    kind: record.kind,
-    title: record.title,
-    status,
-    stage: record.detail ?? "",
-    current: Math.round(fraction * 100),
-    total: 100,
-    message: record.detail ?? undefined,
-    startedAt: record.createdAt,
-    finishedAt: active ? undefined : record.updatedAt,
-    error: record.error ?? undefined,
-    payload: record.payload ?? undefined,
-    persisted: true,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Rust store bridge (fire-and-forget; the app must work without Tauri in tests
-// and in a plain web preview, where every call is swallowed)
-// ---------------------------------------------------------------------------
-
-async function persistRegister(job: BackgroundJob): Promise<void> {
-  try {
-    await call((c) => c.jobsRegister(job.id, job.kind, job.title, asJson(job.payload ?? null)));
-  } catch {
-    // No Tauri (tests/web preview): keep the job in memory only.
-  }
-}
-
-async function persistProgress(id: string, update: JobProgressUpdate): Promise<void> {
-  const now = Date.now();
-  const last = progressSyncedAt.get(id) ?? 0;
-  if (now - last < PROGRESS_SYNC_MS) return;
-  progressSyncedAt.set(id, now);
-  try {
-    await callPlain((c) =>
-      c.jobsProgress(id, update.stage ?? "", update.current ?? 0, update.total ?? 0, update.message ?? null),
-    );
-  } catch {
-    // Best effort: the backend is absent in browser tests, and a job that
-    // cannot be persisted must still run.
-  }
-}
-
-async function persistFinish(
-  id: string,
-  status: "succeeded" | "failed" | "cancelled" | "interrupted",
-  error?: string,
-): Promise<void> {
-  try {
-    await call((c) => c.jobsFinish(id, status, error ?? null));
-  } catch {
-    // Best effort: the backend is absent in browser tests, and a job that
-    // cannot be persisted must still run.
-  }
-}
-
-async function persistCancel(id: string): Promise<void> {
-  try {
-    await callPlain((c) => c.cancelJob(id));
-    await call((c) => c.jobsFinish(id, "cancelled", null));
-  } catch {
-    // Best effort: the backend is absent in browser tests, and a job that
-    // cannot be persisted must still run.
-  }
-}
-
-async function persistClearFinished(): Promise<void> {
-  try {
-    await callPlain((c) => c.jobsClearFinished());
-  } catch {
-    // Best effort: the backend is absent in browser tests, and a job that
-    // cannot be persisted must still run.
-  }
-}
-
 export const useJobs = create<JobsState>((set, get) => ({
   jobs: [],
+  progressById: {},
+  attach: async () => {
+    await attachJobEvents();
+    return () => undefined;
+  },
   start: (input) => {
     const job: BackgroundJob = {
       ...input,
@@ -268,15 +177,28 @@ export const useJobs = create<JobsState>((set, get) => ({
       finishedAt: undefined,
       error: undefined,
     };
-    set((state) => ({
-      jobs: prune([job, ...state.jobs.filter((entry) => entry.id !== job.id)]),
-    }));
+    set((state) => {
+      const jobs = prune([job, ...state.jobs.filter((entry) => entry.id !== job.id)]);
+      return {
+        jobs,
+        progressById: pruneProgressMap(jobs, omitProgressKey(state.progressById, job.id)),
+      };
+    });
     void persistRegister(job);
     return job.id;
   },
   progress: (id, update) => {
     set((state) => {
       const existing = state.jobs.find((job) => job.id === id);
+      const active = !existing || existing.status === "running" || existing.status === "queued";
+      const prevPayload = state.progressById?.[id];
+      const nextPayload: ProgressPayload = {
+        jobId: id,
+        stage: update.stage ?? prevPayload?.stage ?? existing?.stage ?? "",
+        current: update.current ?? prevPayload?.current ?? existing?.current ?? 0,
+        total: update.total ?? prevPayload?.total ?? existing?.total ?? 0,
+        message: update.message ?? prevPayload?.message ?? existing?.message,
+      };
       if (!existing) {
         // The Rust side tracks jobs a screen never registered through `start`
         // (every PDF tool does; before this, live rows were invisible until an
@@ -292,7 +214,9 @@ export const useJobs = create<JobsState>((set, get) => ({
           message: update.message,
           startedAt: Date.now(),
         };
-        return { jobs: prune([created, ...state.jobs]) };
+        const jobs = prune([created, ...state.jobs]);
+        const progressById = pruneProgressMap(jobs, { ...(state.progressById ?? {}), [id]: nextPayload });
+        return { jobs, progressById };
       }
       const jobs = state.jobs.map((job) => {
         if (job.id !== id) return job;
@@ -303,7 +227,10 @@ export const useJobs = create<JobsState>((set, get) => ({
         if (update.message !== undefined) next.message = update.message;
         return next;
       });
-      return { jobs };
+      const progressById = active
+        ? pruneProgressMap(jobs, { ...(state.progressById ?? {}), [id]: nextPayload })
+        : omitProgressKey(state.progressById, id);
+      return { jobs, progressById };
     });
     // Mirror AI progress (Rust emits `ai:progress` itself, not job:progress).
     const job = get().jobs.find((entry) => entry.id === id);
@@ -316,8 +243,20 @@ export const useJobs = create<JobsState>((set, get) => ({
           ? { ...job, status, finishedAt: Date.now(), error: status === "failed" ? (error ?? job.error) : undefined }
           : job,
       ),
+      progressById: omitProgressKey(state.progressById, id),
     }));
     void persistFinish(id, status, error);
+  },
+  settle: (id, status, error) => {
+    const state = get();
+    const tracked = state.jobs.some((entry) => entry.id === id);
+    if (tracked) {
+      state.finish(id, status, error);
+      return;
+    }
+    if (state.progressById?.[id]) {
+      set((current) => ({ progressById: omitProgressKey(current.progressById, id) }));
+    }
   },
   cancel: (id) => {
     const job = get().jobs.find((entry) => entry.id === id);
@@ -336,6 +275,7 @@ export const useJobs = create<JobsState>((set, get) => ({
           ? { ...entry, status: "cancelled", finishedAt: Date.now() }
           : entry,
       ),
+      progressById: omitProgressKey(state.progressById, id),
     }));
   },
   retry: async (id) => {
@@ -354,6 +294,7 @@ export const useJobs = create<JobsState>((set, get) => ({
             ? { ...entry, status: "running", current: 0, message: undefined, finishedAt: undefined, error: undefined }
             : entry,
         ),
+        progressById: omitProgressKey(state.progressById, id),
       }));
       return "started";
     }
@@ -373,18 +314,30 @@ export const useJobs = create<JobsState>((set, get) => ({
     set((state) => {
       const live = new Map(state.jobs.map((job) => [job.id, job]));
       const restored = records.filter((record) => !live.has(record.id)).map(fromRecord);
-      const merged = [...live.values(), ...restored].sort((a, b) => b.startedAt - a.startedAt);
-      return { jobs: prune(merged) };
+      const merged = prune([...live.values(), ...restored].sort((a, b) => b.startedAt - a.startedAt));
+      return {
+        jobs: merged,
+        progressById: pruneProgressMap(merged, state.progressById),
+      };
     });
   },
   clearFinished: () => {
-    set((state) => ({
-      jobs: state.jobs.filter((job) => job.status === "running" || job.status === "queued"),
-    }));
+    set((state) => {
+      const jobs = state.jobs.filter((job) => job.status === "running" || job.status === "queued");
+      return {
+        jobs,
+        progressById: pruneProgressMap(jobs, state.progressById),
+      };
+    });
     void persistClearFinished();
   },
   running: () => get().jobs.filter((job) => job.status === "running").length,
 }));
+
+/** Progress of a single running/queued job (evicted once finished or pruned). */
+export function useJobProgress(jobId: string): ProgressPayload | null {
+  return useJobs((state) => (jobId ? ((state.progressById ?? {})[jobId] ?? null) : null));
+}
 
 // ---------------------------------------------------------------------------
 // Event wiring / bootstrap
@@ -426,8 +379,7 @@ export function attachJobEvents(): Promise<void> {
  * persisted history from the Rust store, so interrupted jobs show up after an
  * activity recreation or a restart. Safe to call more than once.
  *
- * Integration (App.tsx is owned elsewhere): call `void resumeJobs();` once in
- * the existing bootstrap effect, right next to `attachJobs()`.
+ * Integration: call `void resumeJobs();` once in the existing bootstrap effect.
  */
 export async function resumeJobs(): Promise<void> {
   await attachJobEvents();

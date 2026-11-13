@@ -5,16 +5,8 @@ import { acceptsFile, pathEntries, pickDesktopFiles, tokenEntries } from "./tool
 import { useOutputTarget } from "./use-output-target";
 import { fileBaseName, isPdf, uid } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
-import {
-  reportError,
-  useDev,
-  useDrop,
-  useJobs,
-  useOverwritePrompt,
-  usePasswordPrompt,
-  useRecent,
-  useSettings,
-} from "./store";
+import { reportError, useDev, useDrop, useOverwritePrompt, usePasswordPrompt, useRecent, useSettings } from "./store";
+import { useJobProgress, useJobs } from "./jobs";
 import { useT } from "./i18n";
 import type { OpResult, OutputSpec, OverwriteMode, PdfInfo, ProgressPayload, SelectedFile } from "./types";
 
@@ -100,7 +92,6 @@ export function useTool(options: ToolOptions): ToolSession {
   const t = useT();
   const settings = useSettings((s) => s.settings);
   const addRecentEntry = useRecent((s) => s.add);
-  const progressMap = useJobs((s) => s.progress);
   const setDropHandler = useDrop((s) => s.setHandler);
   const askPassword = usePasswordPrompt((s) => s.ask);
 
@@ -122,7 +113,6 @@ export function useTool(options: ToolOptions): ToolSession {
   const [isMultiOutput, setIsMultiOutput] = useState(multiOutput);
   const [androidTarget, setAndroidTarget] = useState<PublishTarget | null>(null);
   const androidTargetRef = useRef<PublishTarget | null>(null);
-  const taskRef = useRef<((jobId: string, overwrite: OverwriteMode) => Promise<OpResult | void>) | null>(null);
 
   // Keep the refs in sync in an effect (writing refs during render is unsafe
   // under concurrent rendering) instead of assigning them in the render body.
@@ -131,7 +121,7 @@ export function useTool(options: ToolOptions): ToolSession {
   }, [androidTarget]);
 
   const primary = files.length ? files[0] : null;
-  const progress = progressMap[jobId] ?? null;
+  const progress = useJobProgress(jobId);
 
   useEffect(() => {
     filesRef.current = files;
@@ -324,9 +314,7 @@ export function useTool(options: ToolOptions): ToolSession {
 
   const run = useCallback(
     async (task: (jobId: string, overwrite: OverwriteMode) => Promise<OpResult | void>) => {
-      taskRef.current = task;
-
-      const execute = async (mode: OverwriteMode): Promise<void> => {
+      const execute = async (mode: OverwriteMode): Promise<["succeeded" | "failed" | "cancelled", string?]> => {
         setRunning(true);
         setError(null);
         setResult(null);
@@ -362,6 +350,7 @@ export function useTool(options: ToolOptions): ToolSession {
               });
             }
           }
+          return ["succeeded"];
         } catch (err) {
           const appError = toAppError(err);
           if (appError.code === "output_exists") {
@@ -376,12 +365,14 @@ export function useTool(options: ToolOptions): ToolSession {
             setError(appError);
             reportError(err, t);
           }
+          return appError.code === "cancelled" ? ["cancelled"] : ["failed", appError.message];
         } finally {
           setRunning(false);
         }
       };
 
-      await execute(overwrite);
+      const [status, message] = await execute(overwrite);
+      useJobs.getState().settle(jobId, status, message);
     },
     [addRecentEntry, jobId, output.outputPath, overwrite, publish, suffix, t],
   );

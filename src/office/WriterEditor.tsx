@@ -9,49 +9,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { pickFileBytes } from "../lib/mobile";
-import { fitWidthZoom, initialWriterZoom } from "./writer/zoom";
+import { initialWriterZoom } from "./writer/zoom";
 import { documentLocationLabel } from "./location-label";
 import { pickDocumentToken } from "../lib/file-tokens";
-import {
-  AlignCenter,
-  AlignJustify,
-  AlignLeft,
-  AlignRight,
-  Bold,
-  Eraser,
-  FileDown,
-  FolderOpen,
-  FileText,
-  Highlighter,
-  Image as ImageIcon,
-  Indent,
-  Italic,
-  Languages,
-  Link2,
-  List,
-  ListOrdered,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Outdent,
-  Paintbrush,
-  Printer,
-  Redo2,
-  Save,
-  Search,
-  SeparatorHorizontal,
-  Sparkles,
-  SpellCheck,
-  Stamp,
-  Strikethrough,
-  Table as TableIcon,
-  Underline,
-  Undo2,
-  MessageSquare,
-  Columns2,
-  Wand2,
-  X,
-} from "lucide-react";
+import { X } from "lucide-react";
 import type { OfficeTab, TextDocument } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useToasts, reportError, useSettings } from "../lib/store";
@@ -81,17 +42,8 @@ import {
   newTextDocument,
   sectionForBlock,
 } from "../lib/office-types";
-import {
-  Dialog,
-  Ribbon,
-  RibbonGroup,
-  ToolButton,
-  ToolColor,
-  ToolNumber,
-  ToolSelect,
-  useTablePicker,
-} from "./office-ui";
-import { openIntoWorkspace, useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
+import { Dialog, useTablePicker } from "./office-ui";
+import { useEditorShortcuts, useOfficeSession } from "./useOfficeSession";
 import {
   acceptAll,
   acceptRevision,
@@ -132,7 +84,6 @@ import {
   type MatchLocation,
 } from "./writer/find-replace";
 import { canProbeRegex, probeRegex, type ProbeStatus, type RegexProbe } from "./writer/regex-probe";
-import { StyleGallery } from "./writer/StyleGallery";
 import { applyAiText } from "./writer/ai-edit";
 import { WriterAiDialog, type WriterAiTask } from "./writer/WriterAiDialog";
 import { AI_EDIT_MAX_CHARS, useAiStatus } from "./ai/editor-ai";
@@ -148,9 +99,9 @@ import { SpellPane } from "./writer/panels/SpellPane";
 import { RegulationPane } from "./writer/panels/RegulationPane";
 import { CrossReferenceDialog } from "./writer/panels/CrossReferenceDialog";
 import { SectionsDialog, sizeDimensions } from "./writer/panels/SectionsDialog";
+import { WriterRibbon } from "./writer/panels/WriterRibbon";
 import { BlockView, PageFragmentView, StaticBlocks } from "./writer/views";
 import type { StructureAction } from "./writer/views";
-import { LayoutList, ListTree, ListOrdered as TocIcon, RefreshCw, FileDiff, Scale } from "lucide-react";
 import { openDocument } from "../lib/office-api";
 import { diffDocuments } from "./writer/compare";
 import { checkDocumentSpelling, replaceMisspelledWord, type WordSpellError } from "./writer/spell";
@@ -176,8 +127,6 @@ interface SelectionInfo {
   paragraph: ParaProps;
   run: Run;
 }
-
-const HIGHLIGHT_COLORS = ["#FEF08A", "#BBF7D0", "#BFDBFE", "#FBCFE8", "#FED7AA", "#E9D5FF", "#FECACA", "#A7F3D0"];
 
 /**
  * Footnote area reservation: notes are rendered at 8.5pt with a 1.0 line
@@ -209,15 +158,6 @@ function noteNumber(document: TextDocument, id: string): number {
   }
   return order.indexOf(id) + 1;
 }
-
-const AI_RIBBON: Array<{ task: WriterAiTask; icon: typeof Wand2 }> = [
-  { task: "rewrite", icon: Wand2 },
-  { task: "shorten", icon: Minimize2 },
-  { task: "expand", icon: Maximize2 },
-  { task: "fix", icon: SpellCheck },
-  { task: "translate", icon: Languages },
-  { task: "tone", icon: Sparkles },
-];
 
 export function WriterEditor({ tab }: { tab: WriterTab }) {
   const t = useT();
@@ -1895,497 +1835,103 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
   return (
     <div className="editor writer-editor">
-      <Ribbon
-        tabs={[
-          { id: "home", label: t("writer.tabHome") },
-          { id: "insert", label: t("writer.tabInsert") },
-          { id: "layout", label: t("writer.tabLayout") },
-          { id: "review", label: t("writer.tabReview") },
-          { id: "view", label: t("writer.tabView") },
-        ]}
+      <WriterRibbon
         active={ribbon}
         onSelect={setRibbon}
-      >
-        {ribbon === "home" ? (
-          <>
-            <RibbonGroup label={t("writer.clipboard")}>
-              <ToolButton
-                icon={<Undo2 size={16} />}
-                label={t("common.undo")}
-                onClick={undoEdit}
-                disabled={session.busy || historyDepth.undo === 0}
-              />
-              <ToolButton
-                icon={<Redo2 size={16} />}
-                label={t("common.redo")}
-                onClick={redoEdit}
-                disabled={session.busy || historyDepth.redo === 0}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.font")}>
-              <ToolSelect
-                value={activeStyle}
-                onChange={setParagraphStyle}
-                options={styleOptions}
-                title={t("writer.style")}
-                width={132}
-              />
-              <ToolSelect
-                value={String(
-                  activeRun?.sizePt ?? document.styles.find((style) => style.id === activeStyle)?.sizePt ?? 11,
-                )}
-                onChange={(value) => applyRunChange({ sizePt: Number(value) })}
-                options={[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48].map((size) => ({
-                  value: String(size),
-                  label: `${size}`,
-                }))}
-                title={t("writer.fontSize")}
-                width={64}
-              />
-              <ToolButton
-                icon={<Bold size={16} />}
-                onClick={() => toggleInline("bold")}
-                active={Boolean(activeRun?.bold)}
-                title={t("writer.bold")}
-              />
-              <ToolButton
-                icon={<Italic size={16} />}
-                onClick={() => toggleInline("italic")}
-                active={Boolean(activeRun?.italic)}
-                title={t("writer.italic")}
-              />
-              <ToolButton
-                icon={<Underline size={16} />}
-                onClick={() => toggleInline("underline")}
-                active={Boolean(activeRun?.underline)}
-                title={t("writer.underline")}
-              />
-              <ToolButton
-                icon={<Strikethrough size={16} />}
-                onClick={() => toggleInline("strike")}
-                active={Boolean(activeRun?.strike)}
-                title={t("writer.strike")}
-              />
-              <ToolColor
-                value={activeRun?.color ?? "#1f2328"}
-                onChange={(color) => applyRunColor(color, false)}
-                title={t("writer.textColor")}
-              />
-              <ToolButton
-                icon={<Highlighter size={16} />}
-                onClick={() => applyRunColor(activeRun?.highlight ?? HIGHLIGHT_COLORS[0], true)}
-                active={Boolean(activeRun?.highlight)}
-                title={t("writer.highlight")}
-              />
-              <ToolButton icon={<Eraser size={16} />} onClick={clearFormatting} title={t("writer.clearFormatting")} />
-              <ToolButton
-                icon={<Paintbrush size={16} />}
-                onClick={toggleFormatPainter}
-                active={formatPainter !== null}
-                title={t("writer.formatPainter")}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.paragraph")}>
-              <ToolButton
-                icon={<AlignLeft size={16} />}
-                onClick={() => setAlign("left")}
-                active={selection?.paragraph.align === "left"}
-                title={t("writer.alignLeft")}
-              />
-              <ToolButton
-                icon={<AlignCenter size={16} />}
-                onClick={() => setAlign("center")}
-                active={selection?.paragraph.align === "center"}
-                title={t("writer.alignCenter")}
-              />
-              <ToolButton
-                icon={<AlignRight size={16} />}
-                onClick={() => setAlign("right")}
-                active={selection?.paragraph.align === "right"}
-                title={t("writer.alignRight")}
-              />
-              <ToolButton
-                icon={<AlignJustify size={16} />}
-                onClick={() => setAlign("justify")}
-                active={selection?.paragraph.align === "justify"}
-                title={t("writer.alignJustify")}
-              />
-              <ToolButton
-                icon={<List size={16} />}
-                onClick={() => toggleList("bullet")}
-                active={selection?.paragraph.list?.kind === "bullet"}
-                title={t("writer.bullets")}
-              />
-              <ToolButton
-                icon={<ListOrdered size={16} />}
-                onClick={() => toggleList("number")}
-                active={selection?.paragraph.list?.kind === "number"}
-                title={t("writer.numbering")}
-              />
-              <ToolButton
-                icon={<Indent size={16} />}
-                onClick={() => (selection?.paragraph.list ? changeListLevel(1) : setIndent(24))}
-                title={t("writer.increaseIndent")}
-              />
-              <ToolButton
-                icon={<Outdent size={16} />}
-                onClick={() => (selection?.paragraph.list ? changeListLevel(-1) : setIndent(-24))}
-                title={t("writer.decreaseIndent")}
-              />
-              <ToolSelect
-                value={String(selection?.paragraph.lineSpacing ?? 1.15)}
-                onChange={(value) => setLineSpacing(Number(value))}
-                options={[1, 1.15, 1.5, 2].map((value) => ({ value: String(value), label: `${value}` }))}
-                title={t("writer.lineSpacing")}
-                width={70}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.styles")}>
-              <StyleGallery document={document} active={activeStyle} onApply={setParagraphStyle} />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.find")}>
-              <ToolButton icon={<Search size={16} />} label={t("common.find")} onClick={() => setFindOpen(true)} />
-            </RibbonGroup>
-            <RibbonGroup label={t("ai.edit.group")}>
-              {AI_RIBBON.map(({ task, icon: Icon }) => (
-                <ToolButton
-                  key={task}
-                  icon={<Icon size={16} />}
-                  keepFocus
-                  disabled={!aiStatus.configured || session.busy}
-                  title={
-                    aiStatus.configured
-                      ? t(`ai.edit.btn.${task}`)
-                      : `${t(`ai.edit.btn.${task}`)} - ${t("ai.edit.notConfigured")}`
-                  }
-                  onClick={() => startAi(task)}
-                />
-              ))}
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "insert" ? (
-          <>
-            <RibbonGroup label={t("writer.insert")}>
-              <ToolButton icon={<ImageIcon size={16} />} label={t("writer.image")} onClick={insertImageBlock} />
-              <ToolButton
-                icon={<TableIcon size={16} />}
-                label={t("writer.table")}
-                onClick={() => setInsertTable(true)}
-              />
-              <ToolButton icon={<Link2 size={16} />} label={t("writer.link")} onClick={insertLink} />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.pages")}>
-              <ToolButton
-                icon={<SeparatorHorizontal size={16} />}
-                label={t("writer.pageBreak")}
-                onClick={insertPageBreak}
-              />
-              <ToolButton icon={<Minus size={16} />} label={t("writer.horizontalRule")} onClick={insertRule} />
-              <ToolButton
-                label={t("writer.sectionBreak")}
-                onClick={() => insertSectionBreak("newPage")}
-                title={t("writer.sectionBreak")}
-              />
-              <ToolButton
-                label={t("writer.sectionContinuous")}
-                onClick={() => insertSectionBreak("continuous")}
-                title={t("writer.sectionContinuous")}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.notes")}>
-              <ToolButton label={t("writer.insertFootnote")} onClick={() => insertFootnote(false)} />
-              <ToolButton label={t("writer.insertEndnote")} onClick={() => insertFootnote(true)} />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.fields")}>
-              <ToolButton label={t("writer.fieldPage")} onClick={() => insertField("page")} />
-              <ToolButton label={t("writer.fieldPages")} onClick={() => insertField("pages")} />
-              <ToolButton label={t("writer.fieldDate")} onClick={() => insertField("date")} />
-              <ToolButton label={t("writer.crossReference")} onClick={() => setFieldOpen(true)} />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.tableOfContents")}>
-              <ToolButton icon={<TocIcon size={16} />} label={t("writer.insertToc")} onClick={insertToc} />
-              <ToolButton icon={<RefreshCw size={16} />} label={t("writer.updateToc")} onClick={updateToc} />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.review")}>
-              <ToolButton
-                icon={<FileDiff size={16} />}
-                label={t("writer.compare")}
-                onClick={() => void compareWithFile()}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.headerFooter")}>
-              <ToolButton
-                icon={<FileText size={16} />}
-                label={t("writer.header")}
-                onClick={() => setEditingHeader(editingHeader === "header" ? null : "header")}
-                active={editingHeader === "header"}
-              />
-              <ToolButton
-                icon={<FileText size={16} />}
-                label={t("writer.footer")}
-                onClick={() => setEditingHeader(editingHeader === "footer" ? null : "footer")}
-                active={editingHeader === "footer"}
-              />
-              <ToolButton
-                label={t("writer.pageNumbers")}
-                onClick={() =>
-                  update((doc) => ({
-                    ...doc,
-                    footer: [
-                      {
-                        type: "paragraph",
-                        props: { ...defaultParaProps(), align: "center", spaceAfterPt: 0 },
-                        runs: [{ ...emptyRun("Page {{page}} / {{pages}}") }],
-                      },
-                    ],
-                  }))
-                }
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.comments")}>
-              <ToolButton icon={<MessageSquare size={16} />} label={t("writer.addComment")} onClick={addComment} />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "layout" ? (
-          <>
-            <RibbonGroup label={t("writer.pageSetup")}>
-              <ToolSelect
-                value={document.page.size}
-                onChange={setPageSize}
-                options={[
-                  { value: "a4", label: "A4" },
-                  { value: "a5", label: "A5" },
-                  { value: "letter", label: "Letter" },
-                  { value: "legal", label: "Legal" },
-                  { value: "a3", label: "A3" },
-                ]}
-                title={t("writer.pageSize")}
-                width={90}
-              />
-              <ToolSelect
-                value={document.page.orientation}
-                onChange={setOrientation}
-                options={[
-                  { value: "portrait", label: t("writer.portrait") },
-                  { value: "landscape", label: t("writer.landscape") },
-                ]}
-                title={t("writer.orientation")}
-                width={110}
-              />
-              <ToolSelect
-                value=""
-                onChange={(value) => {
-                  if (value) applyMarginPreset(value as "normal" | "narrow" | "wide");
-                }}
-                options={[
-                  { value: "", label: t("writer.margins") },
-                  { value: "normal", label: t("writer.marginNormal") },
-                  { value: "narrow", label: t("writer.marginNarrow") },
-                  { value: "wide", label: t("writer.marginWide") },
-                ]}
-                title={t("writer.margins")}
-                width={110}
-              />
-              <ToolButton
-                icon={<Columns2 size={16} />}
-                onClick={() => setColumns(document.page.columns > 1 ? 1 : 2)}
-                active={document.page.columns > 1}
-                title={t("writer.columns")}
-              />
-              <ToolButton
-                label={t("writer.sections")}
-                onClick={() => setSectionsOpen(true)}
-                title={t("writer.sections")}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.watermark")}>
-              <ToolButton
-                icon={<Stamp size={16} />}
-                label={t("writer.watermark")}
-                onClick={() => setWatermarkOpen(true)}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.spacing")}>
-              <ToolNumber
-                value={selection?.paragraph.spaceBeforePt ?? 0}
-                onChange={(value) => setSpace(value, selection?.paragraph.spaceAfterPt ?? 0)}
-                min={0}
-                max={144}
-                title={t("writer.spaceBefore")}
-              />
-              <ToolNumber
-                value={selection?.paragraph.spaceAfterPt ?? 0}
-                onChange={(value) => setSpace(selection?.paragraph.spaceBeforePt ?? 0, value)}
-                min={0}
-                max={144}
-                title={t("writer.spaceAfter")}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.margins")}>
-              <ToolNumber
-                value={document.page.marginTopPt}
-                onChange={(value) => setMargin("marginTopPt", value)}
-                min={0}
-                max={288}
-                title={t("writer.marginTop")}
-              />
-              <ToolNumber
-                value={document.page.marginBottomPt}
-                onChange={(value) => setMargin("marginBottomPt", value)}
-                min={0}
-                max={288}
-                title={t("writer.marginBottom")}
-              />
-              <ToolNumber
-                value={document.page.marginLeftPt}
-                onChange={(value) => setMargin("marginLeftPt", value)}
-                min={0}
-                max={288}
-                title={t("writer.marginLeft")}
-              />
-              <ToolNumber
-                value={document.page.marginRightPt}
-                onChange={(value) => setMargin("marginRightPt", value)}
-                min={0}
-                max={288}
-                title={t("writer.marginRight")}
-              />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "review" ? (
-          <>
-            <RibbonGroup label={t("writer.trackChanges")}>
-              <ToolButton
-                label={t("writer.suggesting")}
-                onClick={toggleTrackChanges}
-                active={document.trackChanges === true}
-                title={t("writer.suggestingHint")}
-              />
-              <ToolButton
-                label={t("writer.showRevisions")}
-                onClick={toggleShowRevisions}
-                active={document.showRevisions !== false}
-              />
-              <ToolButton
-                label={t("writer.reviewPane")}
-                onClick={() => setReviewOpen((open) => !open)}
-                active={reviewOpen}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.revisions")}>
-              <ToolButton label={t("writer.previousChange")} onClick={() => jumpToRevision(false)} />
-              <ToolButton label={t("writer.nextChange")} onClick={() => jumpToRevision(true)} />
-              <ToolButton
-                label={t("writer.acceptAll")}
-                onClick={() => {
-                  update((doc) => acceptAll(doc));
-                  setActiveRevision(null);
-                  setLayoutVersion((version) => version + 1);
-                }}
-              />
-              <ToolButton
-                label={t("writer.rejectAll")}
-                onClick={() => {
-                  update((doc) => rejectAll(doc));
-                  setActiveRevision(null);
-                  setLayoutVersion((version) => version + 1);
-                }}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.comments")}>
-              <ToolButton icon={<MessageSquare size={16} />} label={t("writer.addComment")} onClick={addComment} />
-              <ToolButton
-                icon={<MessageSquare size={16} />}
-                label={t("writer.comments")}
-                onClick={() => setCommentsOpen(!commentsOpen)}
-                active={commentsOpen}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.find")}>
-              <ToolButton
-                icon={<Search size={16} />}
-                label={t("writer.findReplace")}
-                onClick={() => setFindOpen(true)}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.proofing")}>
-              <ToolButton
-                icon={<SpellCheck size={16} />}
-                label={t("writer.spellCheck")}
-                onClick={() => void runSpellCheck()}
-                active={spellOpen}
-              />
-              <ToolButton
-                icon={<Scale size={16} />}
-                label={t("writer.officialLetterCheck")}
-                onClick={runRegulationCheck}
-                active={regulationOpen}
-              />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        {ribbon === "view" ? (
-          <>
-            <RibbonGroup label={t("writer.view")}>
-              <ToolButton
-                icon={<LayoutList size={16} />}
-                label={t("writer.paginated")}
-                onClick={() => setView("paginated")}
-                active={view === "paginated"}
-              />
-              <ToolButton
-                label={t("writer.continuous")}
-                onClick={() => setView("continuous")}
-                active={view === "continuous"}
-              />
-              <ToolButton
-                icon={<ListTree size={16} />}
-                label={t("writer.navigation")}
-                onClick={() => setNavOpen((open) => !open)}
-                active={navOpen}
-              />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.zoom")}>
-              <ToolButton
-                label={t("reader.fitWidth")}
-                onClick={() => setZoom(fitWidthZoom(document.page.widthPt, window.innerWidth))}
-              />
-              <ToolButton label="75%" onClick={() => setZoom(0.75)} active={zoom === 0.75} />
-              <ToolButton label="100%" onClick={() => setZoom(1)} active={zoom === 1} />
-              <ToolButton label="125%" onClick={() => setZoom(1.25)} active={zoom === 1.25} />
-              <ToolButton label="150%" onClick={() => setZoom(1.5)} active={zoom === 1.5} />
-            </RibbonGroup>
-            <RibbonGroup label={t("writer.print")}>
-              <ToolButton icon={<Printer size={16} />} label={t("common.print")} onClick={handlePrint} />
-              <ToolButton icon={<FileDown size={16} />} label={t("writer.exportPdf")} onClick={handleExportPdf} />
-            </RibbonGroup>
-          </>
-        ) : null}
-
-        <div className="ribbon-spacer" />
-        <RibbonGroup>
-          <ToolButton
-            icon={<FolderOpen size={16} />}
-            label={t("common.open")}
-            onClick={() => void openIntoWorkspace()}
-          />
-          <ToolButton
-            icon={<Save size={16} />}
-            label={t("common.save")}
-            onClick={() => void session.save()}
-            disabled={session.busy}
-          />
-          <ToolButton label={t("common.saveAs")} onClick={() => void session.saveAs()} disabled={session.busy} />
-          <ToolButton icon={<FileDown size={16} />} label={t("writer.exportPdf")} onClick={handleExportPdf} />
-        </RibbonGroup>
-      </Ribbon>
+        state={{
+          document,
+          selection,
+          activeStyle,
+          activeRun,
+          styleOptions,
+          historyDepth,
+          busy: session.busy,
+          aiConfigured: aiStatus.configured,
+          formatPainterActive: formatPainter !== null,
+          editingHeader,
+          reviewOpen,
+          commentsOpen,
+          spellOpen,
+          regulationOpen,
+          view,
+          navOpen,
+          zoom,
+        }}
+        actions={{
+          undo: undoEdit,
+          redo: redoEdit,
+          setParagraphStyle,
+          applyRunChange,
+          toggleInline,
+          applyRunColor,
+          clearFormatting,
+          toggleFormatPainter,
+          setAlign,
+          toggleList,
+          changeListLevel,
+          setIndent,
+          setLineSpacing,
+          openFind: () => setFindOpen(true),
+          startAi,
+          insertImageBlock,
+          openTableDialog: () => setInsertTable(true),
+          insertLink,
+          insertPageBreak,
+          insertRule,
+          insertSectionBreak,
+          insertFootnote,
+          insertField,
+          openCrossReference: () => setFieldOpen(true),
+          insertToc,
+          updateToc,
+          compareWithFile: () => void compareWithFile(),
+          toggleHeaderFooter: (target) => setEditingHeader(editingHeader === target ? null : target),
+          insertPageNumbers: () =>
+            update((doc) => ({
+              ...doc,
+              footer: [
+                {
+                  type: "paragraph",
+                  props: { ...defaultParaProps(), align: "center", spaceAfterPt: 0 },
+                  runs: [{ ...emptyRun("Page {{page}} / {{pages}}") }],
+                },
+              ],
+            })),
+          addComment,
+          setPageSize,
+          setOrientation,
+          applyMarginPreset,
+          setColumns,
+          openSections: () => setSectionsOpen(true),
+          openWatermark: () => setWatermarkOpen(true),
+          setSpace,
+          setMargin,
+          toggleTrackChanges,
+          toggleShowRevisions,
+          toggleReviewPane: () => setReviewOpen((open) => !open),
+          jumpToRevision,
+          acceptAllRevisions: () => {
+            update((doc) => acceptAll(doc));
+            setActiveRevision(null);
+            setLayoutVersion((version) => version + 1);
+          },
+          rejectAllRevisions: () => {
+            update((doc) => rejectAll(doc));
+            setActiveRevision(null);
+            setLayoutVersion((version) => version + 1);
+          },
+          toggleComments: () => setCommentsOpen(!commentsOpen),
+          runSpellCheck: () => void runSpellCheck(),
+          runRegulationCheck,
+          setView,
+          toggleNav: () => setNavOpen((open) => !open),
+          setZoom,
+          print: handlePrint,
+          exportPdf: handleExportPdf,
+          save: () => void session.save(),
+          saveAs: () => void session.saveAs(),
+        }}
+      />
 
       <div className="editor-toolbar">
         <span className="muted">{editingHeader ? t(`writer.${editingHeader}`) : tab.title}</span>

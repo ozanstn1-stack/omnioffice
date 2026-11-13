@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.45.0] - 2026-11-13
+
+### Fixed
+
+- **Unified background job store and bounded progress memory:** consolidated the duplicate `useJobs` stores (`src/lib/store.ts` and `src/lib/jobs.ts`) into a single store backed by extracted persistence helpers (`src/lib/jobs-persist.ts`), eliminating duplicate `job:progress` event subscriptions in `App.tsx`, settling completed tool jobs cleanly in `useTool.ts`, and evicting finished, cancelled, restarted, and pruned job progress payloads from memory.
+
+### Changed
+
+- **Modularized Writer Ribbon:** extracted the Writer editor's Ribbon (`src/office/writer/panels/WriterRibbon.tsx` and `src/office/writer/panels/WriterRibbonTabs.tsx`) from `src/office/WriterEditor.tsx`, reducing `WriterEditor.tsx` by roughly 500 lines without changing editor behavior.
+
 ## [7.44.0] - 2026-11-13
 
 ### Changed
