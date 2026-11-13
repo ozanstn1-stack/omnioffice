@@ -19,8 +19,10 @@ use crate::textimg::{self, TextRenderRequest};
 use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFormat};
 use serde::{Deserialize, Serialize};
 
+mod cleanup;
 mod delete;
 mod geometry_util;
+pub use cleanup::prune_orphan_annotations;
 use geometry_util::{
     inherited_box, normalize_rect, page_mediabox_or_inherited, page_rotation_or_inherited, real, to_page_space,
     visible_box,
@@ -1403,9 +1405,7 @@ fn remap_quad_points(geo: &PageGeometry, dict: &mut Dictionary, old: (f64, f64, 
         if pair.len() < 2 {
             return;
         }
-        let (Some(x), Some(y)) = (object_to_f64(&pair[0]), object_to_f64(&pair[1])) else {
-            return;
-        };
+        let (Some(x), Some(y)) = (object_to_f64(&pair[0]), object_to_f64(&pair[1])) else { return };
         let moved = remap_display_point(page_point_to_display(geo, x, y), old, new);
         let (nx, ny) = display_point_to_page(geo, moved.0, moved.1);
         remapped.push(real(nx));
@@ -1428,9 +1428,7 @@ fn remap_ink_list(geo: &PageGeometry, dict: &mut Dictionary, old: (f64, f64, f64
             if pair.len() < 2 {
                 return;
             }
-            let (Some(x), Some(y)) = (object_to_f64(&pair[0]), object_to_f64(&pair[1])) else {
-                return;
-            };
+            let (Some(x), Some(y)) = (object_to_f64(&pair[0]), object_to_f64(&pair[1])) else { return };
             let moved = remap_display_point(page_point_to_display(geo, x, y), old, new);
             let (nx, ny) = display_point_to_page(geo, moved.0, moved.1);
             remapped.push(real(nx));

@@ -15,20 +15,14 @@ static PDFIUM: OnceLock<Result<Pdfium, String>> = OnceLock::new();
 fn pdfium() -> PdfResult<&'static Pdfium> {
     let result = PDFIUM.get_or_init(|| {
         let bindings = match engines::pdfium_path() {
-            Some(dll) => {
-                let dir = dll.parent().unwrap_or_else(|| Path::new("."));
-                let name = Pdfium::pdfium_platform_library_name_at_path(dir);
-                Pdfium::bind_to_library(name)
-            }
+            Some(dll) => Pdfium::bind_to_library(Pdfium::pdfium_platform_library_name_at_path(
+                dll.parent().unwrap_or_else(|| Path::new(".")),
+            )),
             None => Pdfium::bind_to_system_library(),
         };
-        let bindings = bindings.map_err(|e| format!("pdfium could not be loaded: {e}"))?;
-        Ok(Pdfium::new(bindings))
+        bindings.map(Pdfium::new).map_err(|e| format!("pdfium could not be loaded: {e}"))
     });
-    match result {
-        Ok(pdfium) => Ok(pdfium),
-        Err(msg) => Err(PdfError::EngineMissing(msg.clone())),
-    }
+    result.as_ref().map_err(|msg| PdfError::EngineMissing(msg.clone()))
 }
 
 pub fn is_available() -> bool {
@@ -98,27 +92,39 @@ impl RenderedPage {
 fn render_config(options: &RenderOptions, page_w: f32, page_h: f32) -> PdfRenderConfig {
     let mut target_w = (page_w * options.dpi / 72.0).round().max(1.0);
     let mut target_h = (page_h * options.dpi / 72.0).round().max(1.0);
-    if let Some(max_w) = options.max_width {
-        if target_w > max_w as f32 {
-            let scale = max_w as f32 / target_w;
-            target_w = max_w as f32;
-            target_h = (target_h * scale).round().max(1.0);
-        }
+    if let Some(max_w) = options.max_width.filter(|&w| target_w > w as f32) {
+        target_h = (target_h * (max_w as f32 / target_w)).round().max(1.0);
+        target_w = max_w as f32;
     }
-    if let Some(max_h) = options.max_height {
-        if target_h > max_h as f32 {
-            let scale = max_h as f32 / target_h;
-            target_h = max_h as f32;
-            target_w = (target_w * scale).round().max(1.0);
-        }
+    if let Some(max_h) = options.max_height.filter(|&h| target_h > h as f32) {
+        target_w = (target_w * (max_h as f32 / target_h)).round().max(1.0);
+        target_h = max_h as f32;
     }
     PdfRenderConfig::new().set_target_width(target_w as i32).set_target_height(target_h as i32).render_form_data(true)
 }
 
+/// Opens a PDF through pdfium, mapping missing files and password errors cleanly.
+fn open_pdfium_document(path: &Path, password: Option<&str>) -> PdfResult<PdfDocument<'static>> {
+    if !path.exists() {
+        return Err(PdfError::NotFound(path.display().to_string()));
+    }
+    pdfium()?.load_pdf_from_file(path, password).map_err(|e| {
+        let lower = e.to_string().to_lowercase();
+        if password.is_none()
+            && (crate::docutil::looks_encrypted(path) || lower.contains("password") || lower.contains("encrypt"))
+        {
+            PdfError::PasswordRequired
+        } else if password.is_some() && lower.contains("password") {
+            PdfError::WrongPassword
+        } else {
+            PdfError::InvalidPdf(format!("{e}"))
+        }
+    })
+}
+
 /// Reads page geometry (sizes in points, rotation) for every page.
 pub fn page_geometries(path: &Path, password: Option<&str>) -> PdfResult<Vec<PageGeometry>> {
-    let pdfium = pdfium()?;
-    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = open_pdfium_document(path, password)?;
     let mut out = Vec::with_capacity(doc.pages().len() as usize);
     for (index, page) in doc.pages().iter().enumerate() {
         let (w, h) = (page.width().value as f64, page.height().value as f64);
@@ -150,8 +156,7 @@ pub fn render_page(
     page_number: u32,
     options: &RenderOptions,
 ) -> PdfResult<RenderedPage> {
-    let pdfium = pdfium()?;
-    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = open_pdfium_document(path, password)?;
     let index = page_number.checked_sub(1).ok_or(PdfError::RangeOutOfBounds)? as PdfPageIndex;
     if index as usize >= doc.pages().len() as usize {
         return Err(PdfError::RangeOutOfBounds);
@@ -276,8 +281,7 @@ fn with_cached_document<T>(
         None => {
             // An older version of the same file is never needed again.
             cache.retain(|entry| entry.key.path != key.path || entry.key.file == key.file);
-            let document =
-                pdfium()?.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+            let document = open_pdfium_document(path, password)?;
             CachedDocument { key, document }
         }
     };
@@ -347,8 +351,7 @@ pub fn render_page_region(
 /// Extracts the text layer of a page via pdfium (empty when the page is a
 /// scanned image without OCR).
 pub fn extract_page_text(path: &Path, password: Option<&str>, page_number: u32) -> PdfResult<String> {
-    let pdfium = pdfium()?;
-    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = open_pdfium_document(path, password)?;
     let index = page_number.checked_sub(1).ok_or(PdfError::RangeOutOfBounds)? as PdfPageIndex;
     let page = doc.pages().get(index).map_err(|_| PdfError::RangeOutOfBounds)?;
     let text = page.text().map_err(|e| PdfError::ProcessingFailed(format!("{e}")))?.all();
@@ -358,8 +361,7 @@ pub fn extract_page_text(path: &Path, password: Option<&str>, page_number: u32) 
 /// Heuristic: does the document already contain a usable text layer?
 /// Samples up to `sample` pages spread through the document.
 pub fn document_has_text(path: &Path, password: Option<&str>, sample: u32) -> PdfResult<bool> {
-    let pdfium = pdfium()?;
-    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = open_pdfium_document(path, password)?;
     let total = doc.pages().len().max(0) as u32;
     if total == 0 {
         return Ok(false);
@@ -444,8 +446,7 @@ pub fn search_document(
     if query.is_empty() {
         return Err(PdfError::InvalidInput("search text is empty".into()));
     }
-    let pdfium = pdfium()?;
-    let doc = pdfium.load_pdf_from_file(path, password).map_err(|e| PdfError::InvalidPdf(format!("{e}")))?;
+    let doc = open_pdfium_document(path, password)?;
     let total = doc.pages().len().max(0) as u32;
     let mut matches: Vec<TextMatch> = Vec::new();
     let mut pages_with_matches = 0u32;
@@ -462,23 +463,10 @@ pub fn search_document(
         let Ok(text) = page.text() else { continue };
         // Use pdfium's matcher for correctness, then build snippets from the
         // extracted text so the UI can show context.
-        let found = match text.search(query, &options) {
-            Ok(search) => {
-                let mut count = 0u32;
-                let cursor = search;
-                while let Some(segments) = cursor.find_next() {
-                    if !segments.is_empty() {
-                        count += 1;
-                    }
-                    if count >= 64 {
-                        break;
-                    }
-                }
-                count
-            }
-            Err(_) => 0,
-        };
-        if found == 0 {
+        let found = text.search(query, &options).is_ok_and(|cursor| {
+            std::iter::from_fn(|| cursor.find_next()).take(64).any(|segments| !segments.is_empty())
+        });
+        if !found {
             continue;
         }
         let collapsed = collapse_whitespace(&text.all());

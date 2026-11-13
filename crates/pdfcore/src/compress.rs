@@ -120,6 +120,7 @@ pub fn estimate_compression(
         }
         let mut buffer = Vec::new();
         doc.compress();
+        crate::annotate::prune_orphan_annotations(&mut doc);
         doc.prune_objects();
         doc.renumber_objects();
         doc.save_to(&mut buffer).map_err(PdfError::from_io)?;
@@ -292,10 +293,6 @@ pub fn render_for_analysis(
     dpi: u32,
     password: Option<&str>,
 ) -> PdfResult<crate::render::RenderedPage> {
-    render::render_page(
-        input,
-        password,
-        page,
-        &RenderOptions { dpi: dpi as f32, max_width: Some(8000), max_height: Some(8000) },
-    )
+    let options = RenderOptions { dpi: dpi as f32, max_width: Some(8000), max_height: Some(8000) };
+    render::render_page(input, password, page, &options)
 }

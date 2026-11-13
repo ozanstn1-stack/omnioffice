@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.48.0] - 2026-11-13
+
+### Changed
+
+- **Worker isolation for `page_text` (`worker::Job::PdfPageText` & `worker/jobs.rs`):** moves unauthenticated `page_text` extraction into the contained `--worker` subprocess while preserving `PasswordRequired` prompts and keeping passwords out of `argv`, extracts `src-tauri/src/worker/jobs.rs` for job dispatch and `decode_pdf_error`, and consolidates `open_pdfium_document` in `pdfcore::render`.
+- **Orphan annotation cleanup on full-rewrite saves (`pdfcore::annotate::prune_orphan_annotations`):** sweeps orphaned `/Popup` entries, `/IRT` reply chains, unreferenced `/Type /Annot` objects, and stale `/Popup` pointers before `Document::prune_objects()`, leaving AcroForm field widgets intact and skipping append-only incremental signing revisions.
+
+### Added
+
+- **Expanded PDF fuzz targets (`E2.5`):** adds `pdf_forms`, `pdf_redact`, `pdf_rebuild`, and `pdf_verify` fuzz harnesses in `fuzz/fuzz_targets/` and runs them in both PR fuzzing (`.github/workflows/fuzz-pr.yml`) and CI (`.github/workflows/desktop.yml`).
+- **Frontend PDF & Petition interaction test suites (`E4.2`):** adds 19 interaction tests across `PetitionWizard`, `PageTools`, `Annotate`, and `PdfStudio` covering form/petition exports, pointer drawing/cropping, annotation edits, PFX signing, DSS validation archiving, and text-run editing.
+
 ## [7.47.0] - 2026-11-13
 
 ### Fixed

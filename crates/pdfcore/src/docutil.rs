@@ -81,6 +81,7 @@ pub fn save_document(doc: &mut Document, output: &Path, compress_streams: bool) 
     if compress_streams {
         doc.compress();
     }
+    crate::annotate::prune_orphan_annotations(doc);
     doc.prune_objects();
     doc.renumber_objects();
 
@@ -125,7 +126,6 @@ pub fn write_bytes_atomic(output: &Path, bytes: &[u8]) -> PdfResult<()> {
 
 /// Writes `bytes` and flushes them to stable storage before returning.
 fn write_bytes_durable(path: &Path, bytes: &[u8]) -> PdfResult<()> {
-    use std::io::Write;
     let mut file = fs::File::create(path).map_err(PdfError::from_io)?;
     file.write_all(bytes).map_err(PdfError::from_io)?;
     file.sync_all().map_err(PdfError::from_io)?;

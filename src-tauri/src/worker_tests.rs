@@ -120,3 +120,24 @@ fn a_panicking_parse_is_caught_by_the_fallback() {
     let caught = std::panic::catch_unwind(|| panic!("boom"));
     assert!(caught.is_err());
 }
+
+#[test]
+fn parses_pdf_page_text_and_decodes_pdf_errors() {
+    use pdfcore::error::{ErrorCode, PdfError};
+
+    let job = Job::PdfPageText { path: PathBuf::from("a.pdf"), page: 3 };
+    assert_eq!(job.name(), "pdf-page-text");
+    assert_eq!(job.args(), vec!["pdf-page-text", "a.pdf", "3"]);
+    assert_eq!(Job::parse(&job.args()).unwrap(), job);
+    assert!(Job::parse(&["pdf-page-text".into(), "a.pdf".into()]).is_err());
+    assert!(Job::parse(&["pdf-page-text".into(), "a.pdf".into(), "abc".into()]).is_err());
+
+    assert_eq!(decode_pdf_error(PdfError::PasswordRequired.to_string()).code(), ErrorCode::PasswordRequired);
+    assert_eq!(decode_pdf_error(PdfError::WrongPassword.to_string()).code(), ErrorCode::WrongPassword);
+    assert_eq!(decode_pdf_error(PdfError::RangeOutOfBounds.to_string()).code(), ErrorCode::RangeOutOfBounds);
+    assert_eq!(decode_pdf_error(PdfError::NotFound("x.pdf".into()).to_string()).code(), ErrorCode::NotFound);
+    assert_eq!(decode_pdf_error(PdfError::InvalidPdf("bad".into()).to_string()).code(), ErrorCode::InvalidPdf);
+    assert_eq!(decode_pdf_error(PdfError::CorruptPdf("broken".into()).to_string()).code(), ErrorCode::CorruptPdf);
+    assert_eq!(decode_pdf_error(PdfError::EngineMissing("pdfium".into()).to_string()).code(), ErrorCode::EngineMissing);
+    assert_eq!(decode_pdf_error("unexpected worker failure".into()).code(), ErrorCode::ProcessingFailed);
+}

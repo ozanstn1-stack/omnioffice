@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.47.0
+# Release Readiness — OmniOffice 7.48.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,37 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.48.0) - Worker page_text isolation, orphan annotation cleanup, PDF fuzzing & E4.2 UI tests
+
+- **Worker isolation for `page_text` (`worker::Job::PdfPageText` + `worker/jobs.rs`):**
+  executes passwordless `page_text` extraction in the contained `--worker`
+  subprocess, extracts `src-tauri/src/worker/jobs.rs` for job dispatch and
+  `decode_pdf_error`, consolidates `open_pdfium_document` in `pdfcore::render`,
+  and keeps passworded calls out of process arguments while preserving
+  `PasswordRequired` prompts.
+  `test:src-tauri/src/worker_tests.rs#parses_pdf_page_text_and_decodes_pdf_errors`
+- **Orphan annotation cleanup on full-rewrite saves (`pdfcore::annotate::prune_orphan_annotations`):**
+  removes dangling `/Popup` annotations, `/IRT` reply chains, unreferenced
+  `/Type /Annot` objects, and stale `/Popup` references prior to
+  `Document::prune_objects()`, while skipping append-only incremental signing
+  revisions and preserving AcroForm widgets.
+  `test:crates/pdfcore/tests/annotation_orphan_cleanup_test.rs#prunes_orphan_popups_replies_and_unreferenced_annots_on_save`
+  `test:crates/pdfcore/tests/annotation_orphan_cleanup_test.rs#signed_document_with_incremental_update_stays_byte_valid`
+- **Expanded PDF libFuzzer harnesses (`pdf_forms`, `pdf_redact`, `pdf_rebuild`, `pdf_verify`):**
+  adds four engine-free fuzz targets in `fuzz/fuzz_targets/` and runs them in
+  `.github/workflows/fuzz-pr.yml` and `.github/workflows/desktop.yml`.
+  (no test: libFuzzer targets build and run under nightly `cargo-fuzz` in the CI fuzz job.)
+- **Frontend PDF & Petition interaction test suites (`E4.2`):** adds interaction
+  coverage for `PetitionWizard`, `PageTools`, `Annotate`, and `PdfStudio` across
+  petition exports and UYAP UDF gating, crop/stamp/numbering/N-up actions,
+  drawing/signature/annotation editing, offline/online signature fallback, PFX
+  signing password cleanup, forms fill/flatten, object edits, and text runs.
+  `test:src/screens/petition-wizard.test.tsx#exports DOCX and PDF petitions via save tokens`
+  `test:src/screens/petition-wizard.test.tsx#reveals Save as UYAP UDF only when the experimentalUdf flag is enabled`
+  `test:src/screens/page-tools-interactions.test.tsx#draws a crop rectangle, applies All pages and clears selection`
+  `test:src/screens/annotate-interactions.test.tsx#edits text, resizes and deletes existing annotations via pdf_edit_annotations`
+  `test:src/screens/pdf-studio-interactions.test.tsx#verifies signatures offline, falls back on online failure, and archives DSS`
 
 ## Implemented (this cycle, 7.47.0) - Desktop pre-send dialog, Tagged PDF hierarchy & extended Office fidelity
 
