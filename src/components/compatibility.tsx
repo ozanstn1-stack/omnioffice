@@ -299,19 +299,21 @@ export function CompatibilityCenterDialog({
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the async fetch owns loading/error
-    setLoading(true);
-    setError(null);
-    compatibilityReport(kind, modelRef.current, effectiveTarget)
-      .then((value) => {
-        if (alive) setReport(value);
-      })
-      .catch((err) => {
-        if (alive) setError(errorMessage(err, t));
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
+    void Promise.resolve().then(() => {
+      if (!alive) return;
+      setLoading(true);
+      setError(null);
+      return compatibilityReport(kind, modelRef.current, effectiveTarget)
+        .then((value) => {
+          if (alive) setReport(value);
+        })
+        .catch((err) => {
+          if (alive) setError(errorMessage(err, t));
+        })
+        .finally(() => {
+          if (alive) setLoading(false);
+        });
+    });
     return () => {
       alive = false;
     };

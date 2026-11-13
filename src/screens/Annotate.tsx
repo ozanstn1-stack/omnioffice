@@ -212,8 +212,13 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
   }, [primaryPath, primaryPassword]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the async loader owns the annotation state
-    void reloadExisting();
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void reloadExisting();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [reloadExisting]);
 
   const addAtPoint = (nx: number, ny: number) => {

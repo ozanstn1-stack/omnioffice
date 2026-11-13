@@ -1,0 +1,1 @@
+7.51.0: PDF açıklamalarını listeleme ve yapısal belge denetimi için işçi süreci yalıtımı (PdfListAnnotations, PdfInspect), ortak clamp yardımcısı ve 6 ekranda React hook iyileştirmeleri.

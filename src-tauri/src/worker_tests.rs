@@ -166,3 +166,18 @@ fn parses_pdf_page_image_and_round_trips_cli_args() {
     ])
     .is_err());
 }
+
+#[test]
+fn parses_pdf_list_annotations_and_pdf_inspect() {
+    let ann_job = Job::PdfListAnnotations { path: PathBuf::from("annotated.pdf") };
+    assert_eq!(ann_job.name(), "pdf-list-annotations");
+    assert_eq!(ann_job.args(), vec!["pdf-list-annotations", "annotated.pdf"]);
+    assert_eq!(Job::parse(&ann_job.args()).unwrap(), ann_job);
+    assert!(Job::parse(&["pdf-list-annotations".into()]).is_err());
+
+    let inspect_job = Job::PdfInspect { path: PathBuf::from("report.pdf") };
+    assert_eq!(inspect_job.name(), "pdf-inspect");
+    assert_eq!(inspect_job.args(), vec!["pdf-inspect", "report.pdf"]);
+    assert_eq!(Job::parse(&inspect_job.args()).unwrap(), inspect_job);
+    assert!(Job::parse(&["pdf-inspect".into()]).is_err());
+}

@@ -1389,7 +1389,15 @@ pub async fn pdf_list_annotations(
     password: Option<String>,
 ) -> Result<Vec<pdfcore::annotate::EditableAnnotation>, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
-    run_blocking(move || pdfcore::annotate::list_annotations_in_file(&path, password.as_deref())).await
+    run_blocking(move || {
+        if password.is_some() {
+            return pdfcore::annotate::list_annotations_in_file(&path, password.as_deref());
+        }
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfListAnnotations { path }, None)
+            .map_err(crate::worker::decode_pdf_error)?;
+        serde_json::from_str(&json).map_err(|error| PdfError::Internal(error.to_string()))
+    })
+    .await
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -1953,9 +1961,14 @@ pub async fn inspect_document(
     path: String,
     password: Option<String>,
 ) -> Result<pdfcore::inspect::DocumentInspection, PdfError> {
+    let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
-        let path = crate::paths::input_file(&path)?;
-        pdfcore::inspect::inspect_document(path.as_path(), password.as_deref())
+        if password.is_some() {
+            return pdfcore::inspect::inspect_document(&path, password.as_deref());
+        }
+        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfInspect { path }, None)
+            .map_err(crate::worker::decode_pdf_error)?;
+        serde_json::from_str(&json).map_err(|error| PdfError::Internal(error.to_string()))
     })
     .await
 }

@@ -145,9 +145,13 @@ export function Vault({ initialFiles }: { initialFiles?: string[] } = {}) {
   }, [t]);
 
   useEffect(() => {
-    // Initial status load; the loader owns the state it sets.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refreshStatus();
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void refreshStatus();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [refreshStatus]);
 
   useEffect(() => {

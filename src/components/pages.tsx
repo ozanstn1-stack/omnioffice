@@ -15,7 +15,7 @@ export interface PageItem {
   rotationDelta: number;
 }
 
-function Thumb({
+export function Thumb({
   path,
   page,
   size,
