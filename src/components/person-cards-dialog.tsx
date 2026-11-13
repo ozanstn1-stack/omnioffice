@@ -93,9 +93,13 @@ export function PersonCardsDialog({ onClose }: { onClose: () => void }) {
   }, [t]);
 
   useEffect(() => {
-    // The loader owns the list state; the dialog starts with a fresh read.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader owns the list state
-    void load();
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void load();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
   const save = async () => {

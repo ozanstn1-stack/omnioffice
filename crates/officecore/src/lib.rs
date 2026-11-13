@@ -28,6 +28,8 @@ pub mod eml;
 pub mod encoding;
 pub mod error;
 pub mod formula;
+mod fuzz;
+pub use fuzz::fuzz_office_roundtrip;
 pub mod hyphen_tr;
 pub mod io;
 pub mod layout;

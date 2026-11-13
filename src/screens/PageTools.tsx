@@ -6,7 +6,7 @@ import { PageCanvas, Pager } from "../components/pages";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { parsePageList } from "../lib/format";
+import { fileBaseName, parsePageList } from "../lib/format";
 import {
   addPageNumbers,
   cropPages,
@@ -174,7 +174,7 @@ function Extract({ initialFiles, dragging }: { initialFiles?: string[]; dragging
           <OptionCard title={t("pageTools.extractTitle")}>
             <SelectionField value={selection} onChange={setSelection} pageCount={session.info?.pageCount ?? 0} />
             <p className="text-xs muted flex items-center gap-1.5">
-              <FileOutput size={12} /> {t("common.output")}: {session.outputPath.split(/[\\/]/).pop()}
+              <FileOutput size={12} /> {t("common.output")}: {fileBaseName(session.outputPath)}
             </p>
           </OptionCard>
           {session.result ? <ResultCard result={session.result} onReset={session.resetResult} /> : null}

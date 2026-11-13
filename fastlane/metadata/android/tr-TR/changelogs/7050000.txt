@@ -1,0 +1,1 @@
+7.50.0: PDF sayfa küçük resmi ve önizleme rasterizasyonu için işçi süreci yalıtımı (PdfPageImage), ofis belgeleri için office_roundtrip fuzz testi, ortak dosya adı yardımcısı ve React hook iyileştirmeleri.

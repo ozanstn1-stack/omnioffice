@@ -791,6 +791,9 @@ jobs:
       - name: AI provider responses
         working-directory: fuzz
         run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ai_response -- -max_total_time=30
+      - name: Office roundtrip
+        working-directory: fuzz
+        run: cargo +nightly fuzz run --target x86_64-unknown-linux-gnu office_roundtrip -- -max_total_time=30
 
       # A crash must not disappear with the runner: the artifact is the input
       # that will become the regression test.

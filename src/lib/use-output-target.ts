@@ -40,11 +40,6 @@ export function useOutputTarget(options: {
 
   useEffect(() => {
     if (!input) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing the suggestion for an empty selection
-      setOutputPath("");
-      setOutputToken("");
-      setOutputDir("");
-      setOutputDirToken("");
       return;
     }
     let cancelled = false;
@@ -70,10 +65,16 @@ export function useOutputTarget(options: {
     // Multi-output tools write into a folder named after the document.
     if (isMultiOutput) {
       const folder = joinPath(dirName(input), `${fileStem(input)}${suffix}`);
-      void call((c) => c.ensureDir(folder)).catch(() => undefined);
-      setOutputPath(joinPath(folder, fileBaseName(suggestedName)));
-      setOutputDir(folder);
-      return;
+      void call((c) => c.ensureDir(folder))
+        .catch(() => undefined)
+        .then(() => {
+          if (cancelled) return;
+          setOutputPath(joinPath(folder, fileBaseName(suggestedName)));
+          setOutputDir(folder);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     // Rust issues the write token for the suggested target; the display path
     // comes back with it (a configured output folder is validated there too).
@@ -82,23 +83,24 @@ export function useOutputTarget(options: {
         if (cancelled) return;
         setOutputPath(suggestion.path);
         setOutputToken(suggestion.token);
+        setOutputDir(defaultOutputDir || dirName(input));
       })
       .catch(() => {
         if (cancelled) return;
         setOutputPath(suggestedName);
         setOutputToken("");
+        setOutputDir(defaultOutputDir || dirName(input));
       });
-    setOutputDir(defaultOutputDir || dirName(input));
     return () => {
       cancelled = true;
     };
   }, [input, suffix, accept, defaultOutputDir, isMultiOutput]);
 
   return {
-    outputPath,
-    outputToken,
-    outputDir,
-    outputDirToken,
+    outputPath: input ? outputPath : "",
+    outputToken: input ? outputToken : "",
+    outputDir: input ? outputDir : "",
+    outputDirToken: input ? outputDirToken : "",
     setOutputPath,
     setOutputDir: (value: string) => {
       setOutputDirToken("");

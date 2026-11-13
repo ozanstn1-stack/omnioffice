@@ -39,7 +39,8 @@ export function ProvenanceCard({ path }: { path: string }) {
   const [sources, setSources] = useState<FileToken[]>([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
-  const [savedTo, setSavedTo] = useState<string | null>(null);
+  const [savedState, setSavedState] = useState<{ path: string; target: string } | null>(null);
+  const savedTo = savedState?.path === path ? savedState.target : null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,10 +56,13 @@ export function ProvenanceCard({ path }: { path: string }) {
   }, [path]);
 
   useEffect(() => {
-    // The loader owns the chain state; a new document starts a new read.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader owns the chain state
-    setSavedTo(null);
-    void load();
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void load();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
   const pickSources = async () => {
@@ -88,7 +92,7 @@ export function ProvenanceCard({ path }: { path: string }) {
         sources: sources.map((source) => ({ path: source.token, name: source.name, role: "source" })),
         ai: null,
       });
-      setSavedTo(result.result.path);
+      setSavedState({ path, target: result.result.path });
       setOpen(false);
       setSources([]);
       setNote("");

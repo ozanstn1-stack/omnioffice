@@ -7,7 +7,7 @@ import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { imagesToPdf, pdfToImages } from "../lib/api";
-import { formatBytes } from "../lib/format";
+import { fileBaseName, formatBytes } from "../lib/format";
 import { useSettings } from "../lib/store";
 import type { ImageToPdfOptions } from "../lib/types";
 
@@ -133,7 +133,7 @@ function PdfToImages({ initialFiles, dragging }: { initialFiles?: string[]; drag
                       className="flex items-center justify-between px-2 py-1 rounded hover:bg-[var(--surface-2)]"
                     >
                       <span className="truncate" title={file.path}>
-                        {file.path.split(/[\\/]/).pop()}
+                        {fileBaseName(file.path)}
                       </span>
                       <span className="muted shrink-0 ml-3">
                         {file.width}×{file.height} · {formatBytes(file.bytes)}

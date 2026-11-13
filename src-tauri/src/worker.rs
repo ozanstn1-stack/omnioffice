@@ -87,6 +87,8 @@ pub enum Job {
     PdfInfo { path: PathBuf },
     /// Extract the text layer of one page (unauthenticated).
     PdfPageText { path: PathBuf, page: u32 },
+    /// Rasterize a single unauthenticated PDF page as a PNG or JPEG data URL.
+    PdfPageImage { path: PathBuf, page: u32, max_width: u32, dpi: u32, jpeg_quality: Option<u8> },
     /// Repair a damaged PDF (qpdf when available, built-in rebuild otherwise).
     Repair { input: PathBuf, output: PathBuf },
 }
@@ -102,6 +104,14 @@ impl Job {
             Job::EmlOpen { path: file } => vec!["eml-open".into(), path(file)],
             Job::PdfInfo { path: file } => vec!["pdf-info".into(), path(file)],
             Job::PdfPageText { path: file, page } => vec!["pdf-page-text".into(), path(file), page.to_string()],
+            Job::PdfPageImage { path: file, page, max_width, dpi, jpeg_quality } => vec![
+                "pdf-page-image".into(),
+                path(file),
+                page.to_string(),
+                max_width.to_string(),
+                dpi.to_string(),
+                jpeg_quality.map(|q| q.to_string()).unwrap_or_else(|| "png".into()),
+            ],
             Job::Repair { input, output } => vec!["repair".into(), path(input), path(output)],
         }
     }
@@ -112,19 +122,31 @@ impl Job {
         let path = |index: usize| -> Result<PathBuf, String> {
             rest.get(index).map(PathBuf::from).ok_or_else(|| format!("{operation} needs a path"))
         };
+        let num = |index: usize, label: &str| -> Result<u32, String> {
+            rest.get(index)
+                .ok_or_else(|| format!("{operation} needs {label}"))?
+                .parse::<u32>()
+                .map_err(|_| format!("{operation}: invalid {label}"))
+        };
         match operation.as_str() {
             "office-open" => Ok(Job::OfficeOpen { path: path(1)? }),
             "invoice-open" => Ok(Job::InvoiceOpen { path: path(1)? }),
             "invoice-package" => Ok(Job::InvoicePackage { path: path(1)? }),
             "eml-open" => Ok(Job::EmlOpen { path: path(1)? }),
             "pdf-info" => Ok(Job::PdfInfo { path: path(1)? }),
-            "pdf-page-text" => {
-                let page = rest
-                    .get(2)
-                    .ok_or_else(|| format!("{operation} needs a page number"))?
-                    .parse::<u32>()
-                    .map_err(|_| format!("{operation}: invalid page number"))?;
-                Ok(Job::PdfPageText { path: path(1)?, page })
+            "pdf-page-text" => Ok(Job::PdfPageText { path: path(1)?, page: num(2, "a page number")? }),
+            "pdf-page-image" => {
+                let quality = match rest.get(5).map(String::as_str) {
+                    None | Some("png") => None,
+                    Some(raw) => Some(raw.parse::<u8>().map_err(|_| format!("{operation}: invalid jpeg quality"))?),
+                };
+                Ok(Job::PdfPageImage {
+                    path: path(1)?,
+                    page: num(2, "a page number")?,
+                    max_width: num(3, "max_width")?,
+                    dpi: num(4, "dpi")?,
+                    jpeg_quality: quality,
+                })
             }
             "repair" => Ok(Job::Repair { input: path(1)?, output: path(2)? }),
             other => Err(format!("unknown worker operation: {other}")),
@@ -139,6 +161,7 @@ impl Job {
             Job::EmlOpen { .. } => "eml-open",
             Job::PdfInfo { .. } => "pdf-info",
             Job::PdfPageText { .. } => "pdf-page-text",
+            Job::PdfPageImage { .. } => "pdf-page-image",
             Job::Repair { .. } => "repair",
         }
     }

@@ -571,7 +571,7 @@ export async function openOfficePath(path: string): Promise<OpenPathResult> {
     rememberOfficePath(result.path);
     const id = useOfficeTabs.getState().open({
       kind: result.kind,
-      title: result.title || path.split(/[\\/]/).pop() || "Document",
+      title: result.title || fileBaseName(path) || "Document",
       // A legacy binary document is imported, never edited in place: an empty
       // path makes the first Ctrl+S ask for a modern (DOCX/PPTX/OSWK) target.
       path: result.legacy ? "" : result.path,
