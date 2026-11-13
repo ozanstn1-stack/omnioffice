@@ -788,7 +788,7 @@ export function Sync() {
                     const row = rows[path] ?? { kind: "idle" as const };
                     const view = row.kind === "ready" ? row.view : null;
                     const state: SyncStateId | null = view?.state ?? null;
-                    const fileName = recentNames.get(path) ?? path.split(/[\\/]/).pop() ?? path;
+                    const fileName = recentNames.get(path) ?? fileBaseName(path);
                     const isSelected = selected === path;
                     return (
                       <div
@@ -983,9 +983,7 @@ export function Sync() {
             </>
           }
         >
-          <p className="text-[13.5px] mb-2">
-            {t("sync.deleteRemoteConfirm", { file: deleteTarget.split(/[\\/]/).pop() ?? deleteTarget })}
-          </p>
+          <p className="text-[13.5px] mb-2">{t("sync.deleteRemoteConfirm", { file: fileBaseName(deleteTarget) })}</p>
           <p className="text-xs muted">{t("sync.deleteRemoteHint")}</p>
         </Modal>
       ) : null}

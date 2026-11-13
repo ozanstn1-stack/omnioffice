@@ -11,6 +11,7 @@ import { useScreenReady } from "../lib/screen-ready";
 import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
 import { scanDetectBatch, scanPages, type ScanBatchPage, type ScanFilter } from "../lib/scan-detect";
 import type { ScreenId } from "../lib/nav";
+import { fileBaseName } from "../lib/format";
 import { CornerPicker } from "./scanner-corners";
 import { ScannerPageList, type ScannerPage } from "./scanner-page-list";
 import { mergeScanDetection, pendingScanPages } from "./scanner-batch";
@@ -192,7 +193,7 @@ export function Scanner({ onNavigate, initialFiles }: ScannerProps = {}) {
   const editingPage = editing ? pages.find((page) => page.id === editing) : undefined;
   const editingName = editingPage
     ? [
-        editingPage.path.split(/[\\/]/).pop() || editingPage.path,
+        fileBaseName(editingPage.path),
         editingPage.half === 0 ? t("scanner.spreadLeft") : editingPage.half === 1 ? t("scanner.spreadRight") : null,
       ]
         .filter(Boolean)

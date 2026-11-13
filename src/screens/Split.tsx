@@ -7,7 +7,7 @@ import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { splitPdf } from "../lib/api";
-import { parsePageList } from "../lib/format";
+import { fileBaseName, parsePageList } from "../lib/format";
 import type { SplitMode } from "../lib/types";
 
 type Mode = "ranges" | "every_n" | "individual" | "at_pages";
@@ -191,7 +191,7 @@ export function Split({ initialFiles, dragging }: { initialFiles?: string[]; dra
                       onClick={() => void openAnyFile(part.path).catch(() => undefined)}
                       title={part.path}
                     >
-                      {part.path.split(/[\\/]/).pop()}{" "}
+                      {fileBaseName(part.path)}{" "}
                       <span className="muted">
                         ({part.first_page}-{part.last_page})
                       </span>

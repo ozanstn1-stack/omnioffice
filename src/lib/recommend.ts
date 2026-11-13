@@ -7,6 +7,7 @@
  * so it is easy to keep honest and to test.
  */
 import type { ScreenId } from "./nav";
+import { fileBaseName } from "./format";
 
 /** One extension family and the tools it suggests, in priority order. */
 const RULES: { matches: (extension: string) => boolean; tools: ScreenId[] }[] = [
@@ -37,7 +38,7 @@ const RULES: { matches: (extension: string) => boolean; tools: ScreenId[] }[] = 
 
 /** Lowercase extension without the dot, or "". */
 export function extensionOf(path: string): string {
-  const name = path.split(/[\\/]/).pop() ?? "";
+  const name = fileBaseName(path);
   const dot = name.lastIndexOf(".");
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
 }

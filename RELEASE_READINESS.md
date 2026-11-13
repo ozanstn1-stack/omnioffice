@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.49.0
+# Release Readiness — OmniOffice 7.50.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,29 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.50.0) - Worker page-image isolation, office_roundtrip fuzzer, fileBaseName consolidation & hook lint cleanup
+
+- **Worker isolation for `page_thumbnail` & `page_preview` (`E2.1`):**
+  isolates passwordless PDF page rasterization into `worker::Job::PdfPageImage`
+  so untrusted PDF rendering runs in the contained `--worker` subprocess while
+  passworded documents remain in-process and never expose passwords on `argv`.
+  `test:src-tauri/src/worker_tests.rs#parses_pdf_page_image_and_round_trips_cli_args`
+- **Office round-trip libFuzzer target (`E2.5`):** adds
+  `officecore::fuzz_office_roundtrip` and the `office_roundtrip` fuzz binary
+  exercising DOCX, XLSX, PPTX, ODT, ODS, ODP, and RTF read→write→read round
+  trips in `.github/workflows/fuzz-pr.yml` and `.github/workflows/desktop.yml`.
+  `test:crates/officecore/src/fuzz.rs#fuzz_office_roundtrip_handles_valid_and_mutated_packages`
+  `test:src/lib/ci-workflow.test.ts#uploads fuzz crash artifacts after the last fuzz target`
+- **Path formatting consolidation (`E3.6`):** replaces remaining inline
+  `.split(/[\\/]/).pop()` path parsing across 12 frontend modules with
+  `fileBaseName` from `src/lib/format.ts` and verifies POSIX, Windows, and
+  registered SAF token paths.
+  `test:src/lib/format.test.ts#extracts base names across POSIX, Windows, bare names, and registered tokens`
+- **`react-hooks/set-state-in-effect` suppression removal (`E3.8`):** refactors
+  `useOutputTarget`, `ProvenanceCard`, and `PersonCardsDialog` to eliminate
+  synchronous `setState` inside `useEffect` bodies.
+  (no test: ESLint rule `react-hooks/set-state-in-effect` verified across all source files by `npm run lint`)
 
 ## Implemented (this cycle, 7.49.0) - Guarded job liveness, version history deduplication, Writer-selection desk tasks & WebDAV/AI fuzzing
 

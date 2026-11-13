@@ -150,3 +150,10 @@ path = "fuzz_targets/ai_response.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "office_roundtrip"
+path = "fuzz_targets/office_roundtrip.rs"
+test = false
+doc = false
+bench = false

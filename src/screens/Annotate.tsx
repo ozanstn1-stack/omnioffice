@@ -43,7 +43,7 @@ import {
   toAppError,
 } from "../lib/api";
 import { useToasts } from "../lib/store";
-import { fileStem, joinPath, uid } from "../lib/format";
+import { fileBaseName, fileStem, joinPath, uid } from "../lib/format";
 import type { Annotation, AnnotationEditItem, AnnotationKind, EditableAnnotation } from "../lib/types";
 import { pointToDisplay, strokesToPaths } from "./annotate/geometry";
 import { SignaturePad, dataUrlForBase64 } from "./annotate/signature-pad";
@@ -958,7 +958,7 @@ export function Annotate({ initialFiles, dragging }: { initialFiles?: string[]; 
               ) : null}
               {kind === "image" ? (
                 <Button size="sm" variant="ghost" icon={<ImageIcon size={14} />} onClick={() => void pickImage()}>
-                  {imagePath ? imagePath.split(/[\\/]/).pop() : t("annotate.imageFile")}
+                  {imagePath ? fileBaseName(imagePath) : t("annotate.imageFile")}
                 </Button>
               ) : null}
               {kind === "signature" ? (

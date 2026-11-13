@@ -80,7 +80,7 @@ impl OutputSpec {
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Thumbnail {
     pub data_url: String,
@@ -156,6 +156,42 @@ pub async fn pdf_info(path: String, password: Option<String>) -> Result<pdfcore:
     .await
 }
 
+pub(crate) fn render_page_image_sync(
+    path: &std::path::Path,
+    password: Option<&str>,
+    page: u32,
+    max_width: u32,
+    dpi: f32,
+    jpeg_quality: Option<u8>,
+) -> Result<Thumbnail, PdfError> {
+    let options = pdfcore::render::RenderOptions { dpi, max_width: Some(max_width), max_height: None };
+    let rendered = pdfcore::render::render_page(path, password, page, &options)?;
+    let format = jpeg_quality.map(|_| "jpeg");
+    preview_data_url(&rendered, format, jpeg_quality)
+}
+
+fn run_worker_page_image(
+    path: PathBuf,
+    password: Option<String>,
+    page: u32,
+    max_width: u32,
+    dpi: u32,
+    jpeg_quality: Option<u8>,
+) -> Result<Thumbnail, PdfError> {
+    if let Some(pw) = password {
+        return render_page_image_sync(&path, Some(&pw), page, max_width, dpi as f32, jpeg_quality);
+    }
+    let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfPageImage {
+        path,
+        page,
+        max_width,
+        dpi,
+        jpeg_quality,
+    })
+    .map_err(crate::worker::decode_pdf_error)?;
+    serde_json::from_str(&json).map_err(|error| PdfError::Internal(error.to_string()))
+}
+
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn page_thumbnail(
@@ -167,11 +203,7 @@ pub async fn page_thumbnail(
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
         let max_width = max_width.unwrap_or(220).clamp(60, 3000);
-        let options = pdfcore::render::RenderOptions { dpi: 96.0, max_width: Some(max_width), max_height: None };
-        let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
-        let bytes = pdfcore::images::encode_image(&rendered, pdfcore::images::ImageFormat::Jpeg, 82, false)?;
-        let data_url = format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes));
-        Ok(Thumbnail { data_url, width: rendered.width, height: rendered.height })
+        run_worker_page_image(path, password, page, max_width, 96, Some(82))
     })
     .await
 }
@@ -189,14 +221,13 @@ pub async fn page_preview(
     let path = crate::paths::input_file(&path)?.into_path_buf();
     run_blocking(move || {
         let max_width = max_width.unwrap_or(1100).clamp(200, 4000);
-        // Render at a high dpi and let `max_width` cap the result: pdfium's
-        // target width is the min of the two, so the bitmap actually reaches
-        // the requested raster width. The old fixed 96 dpi could only ever
-        // downscale, so a reader zoom returned the same small bitmap and the
-        // webview upscaled it (the blurry zoom on Android).
-        let options = pdfcore::render::RenderOptions { dpi: 600.0, max_width: Some(max_width), max_height: None };
-        let rendered = pdfcore::render::render_page(&path, password.as_deref(), page, &options)?;
-        preview_data_url(&rendered, format.as_deref(), quality)
+        // Render at 600 dpi and let `max_width` cap the raster width (prevents
+        // blurry zoom on Android where 96 dpi downscaled before webview zoom).
+        let jpeg_quality = match format.as_deref() {
+            Some("jpeg") | Some("jpg") => Some(quality.unwrap_or(86)),
+            _ => None,
+        };
+        run_worker_page_image(path, password, page, max_width, 600, jpeg_quality)
     })
     .await
 }

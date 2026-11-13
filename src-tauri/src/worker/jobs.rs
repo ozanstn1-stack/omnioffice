@@ -36,6 +36,12 @@ pub fn execute(job: &Job) -> Result<String, String> {
             let text = pdfcore::render::extract_page_text(path, None, *page).map_err(|error| error.to_string())?;
             to_json(&text)
         }
+        Job::PdfPageImage { path, page, max_width, dpi, jpeg_quality } => {
+            let thumb =
+                crate::commands::render_page_image_sync(path, None, *page, *max_width, *dpi as f32, *jpeg_quality)
+                    .map_err(|error| error.to_string())?;
+            to_json(&thumb)
+        }
         Job::Repair { input, output } => {
             let cancel = pdfcore::progress::CancelToken::new();
             let silent = |_| ();

@@ -9,6 +9,7 @@ import { openAnyFile } from "../lib/mobile";
 import { openEml } from "../lib/office-api";
 import type { EmlMessage } from "../lib/office-api";
 import type { Navigate } from "../lib/nav";
+import { fileBaseName } from "../lib/format";
 
 /** Extensions that must never be launched from an e-mail attachment. */
 const RISKY = /\.(exe|com|scr|bat|cmd|ps1|vbs|js|jse|jar|msi|reg|hta|lnk|pif|dll)$/i;
@@ -140,7 +141,7 @@ export function Eml({ initialFiles = [], onNavigate }: { initialFiles?: string[]
             <Card key={entry.path} className="p-5 flex flex-col gap-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <FileText size={16} style={{ color: "var(--accent)" }} />
-                <strong>{message.subject || entry.path.split(/[\\/]/).pop()}</strong>
+                <strong>{message.subject || fileBaseName(entry.path)}</strong>
                 <Button
                   size="sm"
                   variant="ghost"

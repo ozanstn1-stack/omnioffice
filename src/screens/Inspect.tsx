@@ -6,7 +6,7 @@ import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { inspectDocument, toAppError } from "../lib/api";
-import { formatBytes } from "../lib/format";
+import { fileBaseName, formatBytes } from "../lib/format";
 import type { DocumentInspection, InspectionFinding, Severity } from "../lib/types";
 
 type Tab = "overview" | "fonts" | "images" | "structure" | "findings";
@@ -201,7 +201,7 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
 
                 {tab === "overview" ? (
                   <div>
-                    <Row label={t("inspect.file")} value={report.path.split(/[\\/]/).pop() ?? report.path} />
+                    <Row label={t("inspect.file")} value={fileBaseName(report.path)} />
                     <Row label={t("inspect.size")} value={formatBytes(report.fileSizeBytes)} />
                     <Row label={t("inspect.pages")} value={report.pageCount} />
                     <Row label={t("inspect.objects")} value={report.objectCount} />

@@ -9,7 +9,7 @@ import { useT } from "../lib/i18n";
 import { reportError, useRecent, useToasts } from "../lib/store";
 import { clearOperations, loadOperations } from "../lib/api";
 import type { OperationEntry } from "../lib/types";
-import { formatBytes, formatDate, isOfficeDocument, isPdf } from "../lib/format";
+import { fileBaseName, formatBytes, formatDate, isOfficeDocument, isPdf } from "../lib/format";
 import type { Navigate } from "../lib/nav";
 
 /** RFC 4180 field: commas, quotes and line breaks force double quotes. */
@@ -189,10 +189,10 @@ export function History({ onNavigate }: { onNavigate: Navigate }) {
                           <Badge tone="accent">{entry.operation}</Badge>
                         </td>
                         <td className="truncate max-w-[220px]" title={entry.inputPath}>
-                          <span className="text-xs">{entry.inputPath.split(/[\\/]/).pop()}</span>
+                          <span className="text-xs">{fileBaseName(entry.inputPath)}</span>
                         </td>
                         <td className="truncate max-w-[220px]" title={entry.outputPath}>
-                          <span className="text-xs">{entry.outputPath.split(/[\\/]/).pop()}</span>
+                          <span className="text-xs">{fileBaseName(entry.outputPath)}</span>
                         </td>
                         <td className="text-xs tabular-nums">{delta}</td>
                         <td>

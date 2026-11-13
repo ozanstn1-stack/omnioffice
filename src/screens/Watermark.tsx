@@ -9,7 +9,7 @@ import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { watermarkPdf } from "../lib/api";
-import { parsePageList } from "../lib/format";
+import { fileBaseName, parsePageList } from "../lib/format";
 import type { WatermarkOptions, WatermarkPosition } from "../lib/types";
 
 const POSITIONS: WatermarkPosition[] = [
@@ -221,7 +221,7 @@ export function Watermark({ initialFiles, dragging }: { initialFiles?: string[];
                 <>
                   <button className="btn btn-sm self-start" type="button" onClick={() => void pickImage()}>
                     <ImageIcon size={14} />{" "}
-                    {options.image_path ? options.image_path.split(/[\\/]/).pop() : t("annotate.imageFile")}
+                    {options.image_path ? fileBaseName(options.image_path) : t("annotate.imageFile")}
                   </button>
                   <Field label={t("annotate.fontSize")}>
                     <Slider

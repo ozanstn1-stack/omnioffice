@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.50.0] - 2026-11-13
+
+### Changed
+
+- **Worker isolation for `page_thumbnail` & `page_preview` (`E2.1`):** isolates passwordless PDF page rasterization into `worker::Job::PdfPageImage` (`src-tauri/src/worker.rs`, `src-tauri/src/worker/jobs.rs`, `src-tauri/src/commands.rs`), keeping passworded documents in-process so passwords never enter `argv`.
+- **Consolidated `fileBaseName` helper across 12 frontend modules (`E3.6`):** replaces remaining inline `.split(/[\\/]/).pop()` path splitting across `office-store`, `recommend`, and 10 screen components with `fileBaseName` from `src/lib/format.ts`, and adds `src/lib/format.test.ts`.
+- **Removed `react-hooks/set-state-in-effect` suppressions (`E3.8`):** refactors `useOutputTarget`, `ProvenanceCard`, and `PersonCardsDialog` to avoid synchronous `setState` inside `useEffect` bodies without disabling the ESLint rule.
+
+### Added
+
+- **Office round-trip libFuzzer target (`E2.5`):** adds `officecore::fuzz_office_roundtrip` (`crates/officecore/src/fuzz.rs`) and `fuzz/fuzz_targets/office_roundtrip.rs` covering DOCX, XLSX, PPTX, ODT, ODS, ODP, and RTF read→write→read cycles in `.github/workflows/fuzz-pr.yml` and `.github/workflows/desktop.yml`.
+
 ## [7.49.0] - 2026-11-13
 
 ### Fixed

@@ -141,3 +141,28 @@ fn parses_pdf_page_text_and_decodes_pdf_errors() {
     assert_eq!(decode_pdf_error(PdfError::EngineMissing("pdfium".into()).to_string()).code(), ErrorCode::EngineMissing);
     assert_eq!(decode_pdf_error("unexpected worker failure".into()).code(), ErrorCode::ProcessingFailed);
 }
+
+#[test]
+fn parses_pdf_page_image_and_round_trips_cli_args() {
+    let jpeg_job =
+        Job::PdfPageImage { path: PathBuf::from("a.pdf"), page: 1, max_width: 220, dpi: 96, jpeg_quality: Some(82) };
+    assert_eq!(jpeg_job.name(), "pdf-page-image");
+    assert_eq!(jpeg_job.args(), vec!["pdf-page-image", "a.pdf", "1", "220", "96", "82"]);
+    assert_eq!(Job::parse(&jpeg_job.args()).unwrap(), jpeg_job);
+
+    let png_job =
+        Job::PdfPageImage { path: PathBuf::from("b.pdf"), page: 2, max_width: 1100, dpi: 600, jpeg_quality: None };
+    assert_eq!(png_job.args(), vec!["pdf-page-image", "b.pdf", "2", "1100", "600", "png"]);
+    assert_eq!(Job::parse(&png_job.args()).unwrap(), png_job);
+
+    assert!(Job::parse(&["pdf-page-image".into(), "a.pdf".into(), "1".into()]).is_err());
+    assert!(Job::parse(&[
+        "pdf-page-image".into(),
+        "a.pdf".into(),
+        "1".into(),
+        "220".into(),
+        "96".into(),
+        "bad".into(),
+    ])
+    .is_err());
+}
