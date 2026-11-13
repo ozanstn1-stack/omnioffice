@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.47.0] - 2026-11-13
+
+### Fixed
+
+- **Desktop pre-send metadata check dialog:** renders `<PresendDialog>` inside `GlobalOverlays` rather than only the compact mobile navigation slot, ensuring `shareWithCheck` prompts display properly on desktop.
+
+### Changed
+
+- **Hierarchical Tagged PDF & pagination artifacts (`officecore`):** emits nested `/Table` → `/TR` → `/TH`/`/TD` → `/P` PDF structure elements with bidirectional `/P` links and valid `/ParentTree` entries across Writer, Calc, and Impress exports, wraps running headers/footers and Slide Master footers/dates/slide numbers in pagination `/Artifact` BDC blocks, and reopens `/Table` structure cleanly across split pages.
+
+### Added
+
+- **Extended Office fidelity corpus (`office_fidelity_extended_test.rs`):** verifies zero-delta round trips for images, cached-data charts, threaded/resolved/anchored comments, headers/footers, bullet/numbered lists, section breaks, freeze panes, links/tooltips, structured tables, print settings/breaks, sheet protection, slide masters/layouts, nested groups, image crops, animations, notes, transitions, and hidden slides across DOCX, ODT, XLSX, PPTX, and ODP.
+
 ## [7.46.0] - 2026-11-13
 
 ### Added

@@ -677,6 +677,11 @@ export default function App() {
     onNavigate: (next: string) => setScreen(next as ScreenId),
     onOpenPath: openAnyPath,
     onOpenRecent: (entry: RecentEntry) => openDocumentRef({ token: entry.token, name: entry.fileName }),
+    presend: presendOpen ? (
+      <React.Suspense fallback={null}>
+        <Screens.PresendDialog onNavigate={navigate} />
+      </React.Suspense>
+    ) : null,
   };
 
   // Phones (and narrow desktop windows): drawer navigation with a top bar.
@@ -732,16 +737,7 @@ export default function App() {
           <Screens.BottomNav screen={screen} onNavigate={navigate} onMore={() => setNavOpen(true)} />
         </React.Suspense>
 
-        <GlobalOverlays
-          {...overlayProps}
-          presend={
-            presendOpen ? (
-              <React.Suspense fallback={null}>
-                <Screens.PresendDialog onNavigate={navigate} />
-              </React.Suspense>
-            ) : null
-          }
-        />
+        <GlobalOverlays {...overlayProps} />
       </div>
     );
   }

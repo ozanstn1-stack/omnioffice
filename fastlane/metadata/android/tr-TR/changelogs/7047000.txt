@@ -1,0 +1,1 @@
+7.47.0: Masaüstünde gönderim öncesi meta veri kontrol iletişim kutusu (PresendDialog) düzeltildi; Writer, Calc ve Impress PDF dışa aktarımlarına hiyerarşik etiketli tablo yapısı ve üst/altbilgi sayfalama Artifact işaretleri eklendi; DOCX, ODT, XLSX, PPTX ve ODP için genişletilmiş sadakat test korpusu eklendi.

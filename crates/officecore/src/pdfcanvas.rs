@@ -297,6 +297,18 @@ pub struct LinkAnnot {
     pub url: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StructChild {
+    Container(usize),
+    Item(u32),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StructContainer {
+    pub tag: String,
+    pub children: Vec<StructChild>,
+}
+
 #[derive(Default, Clone)]
 pub struct BuiltPage {
     pub width: f64,
@@ -307,6 +319,8 @@ pub struct BuiltPage {
     /// Tagged-PDF structure items, in the order their marked content appears.
     /// The MCID of an item is its index in this list.
     pub struct_items: Vec<StructItem>,
+    pub struct_containers: Vec<StructContainer>,
+    pub struct_roots: Vec<StructChild>,
 }
 
 /// One tagged-PDF structure element (PDF/UA). `tag` is the structure type
@@ -323,15 +337,44 @@ pub struct Canvas<'a> {
     pub page: BuiltPage,
     fonts: &'a FontSet,
     image_counter: usize,
+    struct_stack: Vec<usize>,
 }
 
 impl<'a> Canvas<'a> {
     pub fn new(width: f64, height: f64, fonts: &'a FontSet) -> Self {
-        Self { page: BuiltPage { width, height, ..Default::default() }, fonts, image_counter: 0 }
+        Self {
+            page: BuiltPage { width, height, ..Default::default() },
+            fonts,
+            image_counter: 0,
+            struct_stack: Vec::new(),
+        }
     }
 
     pub fn finish(self) -> BuiltPage {
         self.page
+    }
+
+    fn push_struct_child(&mut self, child: StructChild) {
+        if let Some(&parent) = self.struct_stack.last() {
+            if let Some(container) = self.page.struct_containers.get_mut(parent) {
+                container.children.push(child);
+                return;
+            }
+        }
+        self.page.struct_roots.push(child);
+    }
+
+    /// Opens a hierarchical structure container (`Table`, `TR`, `TH`, `TD`).
+    pub fn begin_struct(&mut self, tag: &str) {
+        let index = self.page.struct_containers.len();
+        self.page.struct_containers.push(StructContainer { tag: tag.to_string(), children: Vec::new() });
+        self.push_struct_child(StructChild::Container(index));
+        self.struct_stack.push(index);
+    }
+
+    /// Closes the current hierarchical structure container.
+    pub fn end_struct(&mut self) {
+        self.struct_stack.pop();
     }
 
     /// Opens a marked-content sequence and records the structure element.
@@ -341,10 +384,21 @@ impl<'a> Canvas<'a> {
         let mcid = self.page.struct_items.len() as u32;
         self.page.ops.push_str(&format!("/{tag} <</MCID {mcid}>> BDC\n"));
         self.page.struct_items.push(StructItem { tag: tag.to_string(), alt: alt.map(|value| value.to_string()) });
+        self.push_struct_child(StructChild::Item(mcid));
         mcid
     }
 
     pub fn end_marked(&mut self) {
+        self.page.ops.push_str("EMC\n");
+    }
+
+    /// Opens a pagination artifact (`Header` or `Footer`) excluded from the
+    /// logical structure tree.
+    pub fn begin_pagination_artifact(&mut self, subtype: &str) {
+        self.page.ops.push_str(&format!("/Artifact <</Type /Pagination /Subtype /{subtype}>> BDC\n"));
+    }
+
+    pub fn end_artifact(&mut self) {
         self.page.ops.push_str("EMC\n");
     }
 
@@ -822,61 +876,7 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet, title: &str, lang: &str) 
         }),
     );
 
-    // Tagged-PDF structure: one StructElem per marked item, all children of a
-    // Document root, linked to their pages through the ParentTree.
-    let struct_root_id = doc.new_object_id();
-    let document_elem_id = doc.new_object_id();
-    let mut document_kids: Vec<Object> = Vec::new();
-    let mut parent_tree_nums: Vec<Object> = Vec::new();
-    for (page_index, page) in pages.iter().enumerate() {
-        if page.struct_items.is_empty() {
-            continue;
-        }
-        let mut page_elems: Vec<Object> = Vec::new();
-        for (mcid, item) in page.struct_items.iter().enumerate() {
-            let elem_id = doc.new_object_id();
-            let mut elem = dictionary! {
-                "Type" => "StructElem",
-                "S" => Object::Name(item.tag.clone().into_bytes()),
-                "P" => Object::Reference(document_elem_id),
-                "Pg" => Object::Reference(page_ids[page_index]),
-                "K" => Object::Dictionary(dictionary! {
-                    "Type" => "MCR",
-                    "Pg" => Object::Reference(page_ids[page_index]),
-                    "MCID" => mcid as i64,
-                }),
-            };
-            if let Some(alt) = &item.alt {
-                if !alt.trim().is_empty() {
-                    elem.set("Alt", pdf_text_object(alt));
-                }
-            }
-            doc.objects.insert(elem_id, Object::Dictionary(elem));
-            page_elems.push(Object::Reference(elem_id));
-            document_kids.push(Object::Reference(elem_id));
-        }
-        parent_tree_nums.push((page_index as i64).into());
-        parent_tree_nums.push(Object::Array(page_elems));
-    }
-    let parent_tree_id = doc.add_object(dictionary! { "Nums" => Object::Array(parent_tree_nums) });
-    doc.objects.insert(
-        document_elem_id,
-        Object::Dictionary(dictionary! {
-            "Type" => "StructElem",
-            "S" => "Document",
-            "P" => Object::Reference(struct_root_id),
-            "K" => Object::Array(document_kids),
-        }),
-    );
-    doc.objects.insert(
-        struct_root_id,
-        Object::Dictionary(dictionary! {
-            "Type" => "StructTreeRoot",
-            "K" => vec![Object::Reference(document_elem_id)],
-            "ParentTree" => Object::Reference(parent_tree_id),
-            "ParentTreeNextKey" => pages.len() as i64,
-        }),
-    );
+    let struct_root_id = crate::pdfstruct::write_structure_tree(&mut doc, pages, &page_ids);
 
     let catalog_id = doc.add_object(dictionary! {
         "Type" => "Catalog",
@@ -888,25 +888,13 @@ pub fn write_pdf(pages: &[BuiltPage], fonts: &FontSet, title: &str, lang: &str) 
     });
     doc.trailer.set("Root", Object::Reference(catalog_id));
     let info_id = doc.add_object(dictionary! {
-        "Title" => pdf_text_object(title),
+        "Title" => crate::pdfstruct::pdf_text_object(title),
         "Producer" => Object::string_literal("OmniOffice".to_string()),
     });
     doc.trailer.set("Info", Object::Reference(info_id));
     let mut bytes = Vec::new();
     let _ = doc.save_to(&mut bytes);
     bytes
-}
-
-fn pdf_text_object(value: &str) -> Object {
-    if value.is_ascii() {
-        Object::string_literal(value.to_string())
-    } else {
-        let mut bytes = vec![0xFE, 0xFF];
-        for unit in value.encode_utf16() {
-            bytes.extend_from_slice(&unit.to_be_bytes());
-        }
-        Object::string_literal(bytes)
-    }
 }
 
 #[cfg(test)]

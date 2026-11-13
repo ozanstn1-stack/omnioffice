@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.46.0
+# Release Readiness — OmniOffice 7.47.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,35 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.47.0) - Desktop pre-send dialog, Tagged PDF hierarchy & extended Office fidelity
+
+- **Desktop `<PresendDialog>` mounting (`GlobalOverlays`):** moved the `presend`
+  slot into the shared `GlobalOverlays` tree in `App.tsx` so desktop shells
+  display `PresendDialog` whenever `shareWithCheck` requests pre-send
+  confirmation instead of suppressing it behind `compactNav`.
+  `test:src/components/app-presend-desktop.test.tsx#renders PresendDialog on the desktop shell when shareWithCheck opens a request`
+  `test:src/components/global-overlays.test.tsx#renders the presend slot when provided`
+- **Hierarchical Tagged PDF (`pdfstruct` + Writer/Calc/Impress layout):** emits
+  nested `/Table` -> `/TR` -> `/TH`/`/TD` -> `/P` structure trees with validated
+  `/P` back-pointers, per-page `/ParentTree` arrays, split-page `/Table`
+  reopening, and pagination `/Artifact` marking for headers, footers, and
+  Slide Master footer/date/slide-number placeholders.
+  `test:crates/officecore/tests/pdf_tagged_structure_test.rs#writer_table_emits_nested_structure_and_parent_tree`
+  `test:crates/officecore/tests/pdf_tagged_structure_test.rs#writer_headers_and_footers_are_pagination_artifacts`
+  `test:crates/officecore/tests/pdf_tagged_structure_test.rs#calc_workbook_pdf_emits_table_structure_and_artifacts`
+  `test:crates/officecore/tests/pdf_tagged_structure_test.rs#impress_deck_pdf_emits_slide_table_hierarchy_and_footer_artifacts`
+- **Extended Office fidelity corpus (`office_fidelity_extended_test`):**
+  verifies zero-loss round trips for embedded images, cached-data charts,
+  threaded/anchored comments, headers/footers, lists/numbering, section breaks,
+  freeze panes, hyperlinks/tooltips, structured tables, print settings, sheet
+  protection, slide masters/layouts, nested groups, image crops, animations,
+  notes, transitions, and hidden slides across DOCX, ODT, XLSX, PPTX, and ODP.
+  `test:crates/officecore/tests/office_fidelity_extended_test.rs#docx_extended_fidelity_preserves_images_comments_headers_numbering_and_sections`
+  `test:crates/officecore/tests/office_fidelity_extended_test.rs#odt_extended_fidelity_preserves_images_comments_headers_and_lists`
+  `test:crates/officecore/tests/office_fidelity_extended_test.rs#xlsx_extended_fidelity_preserves_images_charts_tables_links_print_and_panes`
+  `test:crates/officecore/tests/office_fidelity_extended_test.rs#pptx_extended_fidelity_preserves_masters_groups_crops_charts_and_animations`
+  `test:crates/officecore/tests/office_fidelity_extended_test.rs#odp_extended_fidelity_preserves_masters_groups_crops_charts_and_animations`
 
 ## Implemented (this cycle, 7.46.0) - XLSX shared-formula export & CI engine lock parity
 

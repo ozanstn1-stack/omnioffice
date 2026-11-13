@@ -81,36 +81,66 @@ names its constructs, prints a one-line fidelity table and fails on a silent
 loss. It currently covers text styles, tables, revisions (DOCX), values and
 formulas (XLSX), shared formulas and transition metadata (PPTX).
 
+## Extended corpus (7.47.0)
+
+`crates/officecore/tests/office_fidelity_extended_test.rs` extends the
+baseline corpus across higher-risk document structures: embedded PNG images,
+charts with cached category/value data, threaded comments and replies (with
+resolved state and anchored runs), first/even/default headers and footers,
+lists and numbering, multi-section page setup, freeze panes, hyperlinks with
+tooltips, structured tables with column formulas/filters, print areas/titles/breaks,
+sheet protection, slide masters and layouts, nested object groups, image crops,
+SMIL/OOXML animations, speaker notes, slide transitions, and hidden slides.
+
+Run it with:
+
+```bash
+cargo test -p officecore --test office_fidelity_extended_test -- --nocapture
+```
+
+| Format | Measured constructs (after / before) |
+|---|---|
+| DOCX | images `1/1`, bytes `67/67`, comments `1/1`, replies `1/1`, anchors `1/1`, headers `4/4`, footers `2/2`, bullets `1/1`, numbered `1/1`, sections `2/2` |
+| ODT | images `1/1`, bytes `67/67`, comments `1/1`, replies `1/1`, resolved `1/1`, anchors `1/1`, headers `1/1`, footers `1/1`, lists `2/2` |
+| XLSX | images `1/1`, charts `1/1`, cache points `2/2`, tables `1/1`, links `1/1`, tooltips `1/1`, comments `1/1`, freeze `1x2/1x2`, breaks `2/2`, names `1/1`, print settings `3/3`, protection `1/1` |
+| PPTX | masters `1/1`, layouts `1/1`, groups `2/2`, crops `1/1`, charts `1/1`, cache points `6/6`, animations `3/3`, notes `1/1`, transitions `1/1`, hidden slides `1/1` |
+| ODP | masters `1/1`, groups `2/2`, crops `1/1`, charts `1/1`, cache points `6/6`, animations `3/3`, hidden slides `1/1` |
+
 ## Not measured yet (honest list)
 
-- Images, charts, comments, headers/footers, numbering and section breaks are
-  covered by their own format tests but are **not** part of this corpus yet;
-  the next D6 round should add them with the same counter style.
 - ODT tracked changes are read by a separate importer and are not part of the
-  ODT corpus row; the row measures text, styles and tables.
+  ODT corpus rows; ODT list import maps `<text:list>` items into list
+  paragraphs (`lists 2/2`) rather than separating numbered vs. bulleted kinds
+  the way DOCX does, and multi-section DOCX breaks are measured on DOCX.
+- ODP layout definitions, slide notes, and slide transitions are measured in
+  their dedicated ODP unit/integration tests; the extended corpus compares the
+  seven ODP counters listed above (`masters`, `groups`, `crops`, `charts`,
+  `cache_pts`, `anims`, `hidden`).
 - Dynamic arrays: Calc calculates spill ranges, and an Excel spill imports as
   its anchor formula (the cached spill cells are dropped so it spills again).
   On save the spill range is written as Excel's dynamic array (`cm="1"`,
   `t="array" ref`, `xl/metadata.xml`), so Excel spills it as well.
 - XLSX shared formulas are imported by expanding relative offsets and exported
   with `t="shared"` (`crates/officecore/src/xlsx/shared_write.rs`) across
-  consecutive vertical/horizontal runs (`si` + `ref` on anchors); XLSX
-  structured tables are read and exported, while plain ungrouped formulas stay
-  ordinary `<f>` elements.
-- The corpus is programmatic, not a fuzz target. A random-mutation fuzz
-  harness is still open; the deterministic corpus is what CI runs today.
+  consecutive vertical/horizontal runs (`si` + `ref` on anchors); arbitrary
+  disconnected/overlapping 2D rectangles stay separate or ordinary `<f>`
+  elements.
+- Both `office_fidelity.rs` and `office_fidelity_extended_test.rs` are
+  deterministic corpora, complementing the byte-level fuzz targets under
+  `fuzz/fuzz_targets/`.
 
 ## Türkçe özet
 
 - D6'da DOCX değişiklik izleri düzenleyicide **yazar + tarih** ile görünüyor ve
   kaydetmeyi atlatıyor; XLSX'te paylaşılan formüller içe aktarımda satır
-  ofsetiyle **açılıyor** (`B2 → =A2*2`) ve artık dışa aktarımda da ardışık
-  aynı formüller `t="shared"` olarak gruplanıyor; PPTX geçiş süresi (`advTm`)
-  artık yazılıp okunuyor (fade + 800 ms korunuyor).
-- Programatik round-trip korpusu (`crates/officecore/tests/office_fidelity.rs`)
-  her biçim için sayaçları yazdırıyor: **ölçülen delta sıfır** (DOCX 2/2 blok,
-  8/8 run, 2/2 revizyon; ODT 6/6 run, 4/4 hücre; XLSX 3/3 hücre, 1/1 formül;
-  PPTX geçiş + süre).
-- Henüz ölçülmeyenler dürüstçe listelendi: resim/grafik/yorum/üst bilgi,
-  ODT değişiklik izleri, dinamik diziler, XLSX paylaşılan formüllerin çoklu
-  dikdörtgen aralıklara genelleştirilmesi ve fuzz hedefinin hâlâ açık olması.
+  ofsetiyle **açılıyor** (`B2 → =A2*2`) ve dışa aktarımda ardışık yatay/dikey
+  formüller `t="shared"` olarak gruplanıyor; PPTX geçiş süresi (`advTm`) yazılıp
+  okunuyor (fade + 800 ms korunuyor).
+- Programatik round-trip korpusları (`office_fidelity.rs` ve 7.47.0'da eklenen
+  `office_fidelity_extended_test.rs`) sıfır kayıp ölçüyor: DOCX, ODT, XLSX, PPTX
+  ve ODP'de gömülü görseller, önbellekli grafikler, yanıtlı/çapalı yorumlar,
+  üst/alt bilgiler, numaralı/madde listeler, bölüm sonları, dondurulmuş bölmeler,
+  yapılandırılmış tablolar, yazdırma ayarları, sayfa koruması, asıl slaytlar,
+  iç içe gruplar, kırpılmış görseller, animasyonlar ve gizli slaytlar doğrulanır.
+- Henüz kapsanmayanlar dürüstçe listelendi: ODT değişiklik izleri, dinamik
+  diziler, ODT liste türü ayrımı ile 2B çoklu paylaşım dikdörtgenleri.
