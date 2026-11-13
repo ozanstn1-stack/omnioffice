@@ -1,0 +1,3 @@
+- Parolasız PDF bilgi okuma (`pdf_info`) işlemleri izole `--worker` alt sürecine taşındı; bozuk dosyalar ana uygulamayı çökertmez.
+- LAN eşitleme çerçeve okuyucusu bellek taşmalarına karşı sınırlandırıldı ve `eml_parse`, `odf_read`, `lan_frame` fuzz hedefleri eklendi.
+- Linux, macOS ve Windows için platformlar arası `scripts/fetch-engines.mjs` motor doğrulama/indirme betiği eklendi.

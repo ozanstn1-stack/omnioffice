@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.43.0
+# Release Readiness — OmniOffice 7.44.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,22 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.44.0) - Isolation, fuzzing & cross-platform tooling
+
+- **Worker isolation for `pdf_info`:** unauthenticated `pdf_info` calls run via
+  `Job::PdfInfo` in the contained `--worker` subprocess while preserving
+  `PdfError::PasswordRequired` and keeping passworded calls off process `argv`.
+  `test:src-tauri/src/worker_tests.rs#parses_worker_arguments`
+- **LAN sync frame decoder hardening & fuzzing:** `synccore::lan::parse_frame_bytes`
+  and `transport::read_frame` decode frames with bounded body reads; added
+  `eml_parse`, `odf_read`, and `lan_frame` fuzz targets and removed `catch_unwind`
+  from `pdf_parse`.
+  `test:crates/synccore/src/lan.rs#parse_frame_bytes_rejects_truncated_and_oversized_frames`
+- **Cross-platform engine lock verifier:** `scripts/fetch-engines.mjs --verify-lock`
+  verifies `scripts/engines.lock.json` coverage across all 20 pinned artifacts on
+  Linux, macOS, and Windows without PowerShell.
+  (no test: verified by `node scripts/fetch-engines.mjs --verify-lock`.)
 
 ## Release trains and the freeze (v6.0.1)
 

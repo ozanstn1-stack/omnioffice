@@ -64,6 +64,10 @@ fn parses_worker_arguments() {
         Job::OfficeOpen { path: PathBuf::from("a.docx") }
     );
     assert_eq!(
+        Job::parse(&["pdf-info".into(), "a.pdf".into()]).unwrap(),
+        Job::PdfInfo { path: PathBuf::from("a.pdf") }
+    );
+    assert_eq!(
         Job::parse(&["repair".into(), "in.pdf".into(), "out.pdf".into()]).unwrap(),
         Job::Repair { input: PathBuf::from("in.pdf"), output: PathBuf::from("out.pdf") }
     );

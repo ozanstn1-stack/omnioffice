@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.44.0] - 2026-11-13
+
+### Changed
+
+- **Unauthenticated `pdf_info` runs in the isolated `--worker` subprocess:** opening a PDF
+  without a password now parses document metadata, page count, and encryption status out of
+  process under the worker's memory/CPU containment, returning a clean error if a malformed
+  file crashes the parser while preserving `PasswordRequired` prompts.
+- **Hardened LAN sync frame reader:** `synccore::lan` now reads frame bodies with a bounded
+  reader instead of pre-allocating from an unverified length header.
+
+### Added
+
+- **Cross-platform engine and font fetcher (`scripts/fetch-engines.mjs`):** mirrors
+  `scripts/fetch-engines.ps1` in pure Node.js with `--verify-lock`, `--update-lock`, and
+  SHA-256 verification against `scripts/engines.lock.json` on Linux, macOS, and Windows.
+- **Expanded fuzzing coverage:** added `eml_parse`, `odf_read`, and `lan_frame` fuzz targets
+  in `fuzz/fuzz_targets/` and removed `std::panic::catch_unwind` from `pdf_parse` so
+  libFuzzer catches parser panics directly.
+
 ## [7.43.0] - 2026-11-12
 
 ### Changed
