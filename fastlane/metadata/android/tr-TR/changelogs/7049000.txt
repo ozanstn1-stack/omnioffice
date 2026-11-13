@@ -1,0 +1,1 @@
+7.49.0: Korumalı arka plan iş yaşam döngüsü (JobRegistry::register_managed) ile vault-index Android ön plan servis sızıntısı giderildi; değişmeyen ardışık kayıtlarda sürüm geçmişi tekilleştirilerek eski sürümlerin silinmesi önlendi; Writer metin seçimleri masa görevlerini besliyor; webdav_xml ve ai_response fuzz hedefleri eklendi.

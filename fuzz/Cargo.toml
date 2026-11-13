@@ -9,6 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+aicore = { path = "../crates/aicore" }
 officecore = { path = "../crates/officecore" }
 pdfcore = { path = "../crates/pdfcore" }
 synccore = { path = "../crates/synccore" }
@@ -132,6 +133,20 @@ bench = false
 [[bin]]
 name = "pdf_verify"
 path = "fuzz_targets/pdf_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "webdav_xml"
+path = "fuzz_targets/webdav_xml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ai_response"
+path = "fuzz_targets/ai_response.rs"
 test = false
 doc = false
 bench = false

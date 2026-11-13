@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.48.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.49.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,11 +23,11 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new in 7.48.0
+## What's new in 7.49.0
 
-- **Worker isolation for `page_text`:** passwordless `page_text` extraction now runs inside the contained `--worker` subprocess with structured `PdfError` decoding (`worker/jobs.rs`) and shared `open_pdfium_document` initialization, while password-protected files continue prompting safely without secrets on process arguments.
-- **Orphan annotation cleanup on full-rewrite saves:** `prune_orphan_annotations` removes dangling `/Popup` and `/IRT` reply chains, unreferenced `/Type /Annot` dictionaries, and stale `/Popup` links before object pruning, leaving AcroForm widgets and append-only signed revisions untouched.
-- **Expanded PDF fuzzing & frontend interaction tests:** adds four libFuzzer harnesses (`pdf_forms`, `pdf_redact`, `pdf_rebuild`, `pdf_verify`) to PR and nightly CI workflows plus 19 Vitest interaction tests covering `PetitionWizard`, `PageTools`, `Annotate`, and `PdfStudio`.
+- **Guarded background job lifecycle & `vault-index` liveness fix:** `JobRegistry::register_managed` pairs every non-tracked job token (`merge_pdfs`, `operation_with_progress`, `vault_scan`, `vault_index_build`) with a `JobFinishGuard` that cancels on early return and cleanly releases the Android foreground service once `"vault-index"` finishes.
+- **Version history deduplication & Writer-selection desk tasks:** `office_history::push_version` reuses the latest version entry when a consecutive save has an unchanged `(kind, title, model)` so repeated `Ctrl+S` saves never evict older history, and Writer text selections now scope and enable the Petition, Official Letter, Deadline Calculator, and Document Health desk tasks from the Command Palette.
+- **WebDAV & AI response fuzzing:** adds `webdav_xml` and `ai_response` libFuzzer targets covering `synccore::webdav::parse_multistatus` and `aicore::fuzz_ai_responses` in PR and CI fuzzing workflows.
 
 Earlier in the 7.4x series: hierarchical Tagged PDF tables/artifacts, desktop `PresendDialog`, and extended Office fidelity corpus (7.47), XLSX `t="shared"` export grouping and CI engine lock checks (7.46), unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info` worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42), Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40), Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
 
@@ -771,9 +771,9 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 56 |
 | Tauri commands | 253 |
-| Rust tests | 1933 |
+| Rust tests | 1936 |
 | TypeScript test files | 264 |
-| TypeScript test cases (approx.) | 2769 |
+| TypeScript test cases (approx.) | 2771 |
 <!-- stats:end -->
 
 ## License

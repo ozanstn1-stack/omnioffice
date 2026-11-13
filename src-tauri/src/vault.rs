@@ -2252,7 +2252,7 @@ pub async fn vault_scan(
     request: VaultScanRequest,
 ) -> Result<VaultStatus, PdfError> {
     let job_id = "vault-scan".to_string();
-    let cancel = registry.register(&job_id);
+    let (cancel, mut job_guard) = registry.register_managed(&job_id);
     let app_for_work = app.clone();
     let job_for_work = job_id.clone();
     let result = run_blocking(move || {
@@ -2298,7 +2298,9 @@ pub async fn vault_scan(
         })
     })
     .await;
-    registry.complete(&job_id, result.is_ok());
+    if result.is_ok() {
+        job_guard.succeed();
+    }
     result
 }
 
@@ -2390,7 +2392,7 @@ pub async fn vault_index_build(
         return Err(PdfError::InvalidInput("Consent is required before embedding document text.".into()));
     }
     let job_id = "vault-index".to_string();
-    let cancel = registry.register(&job_id);
+    let (cancel, mut job_guard) = registry.register_managed(&job_id);
     let root = config_dir(&app)?;
     let (model, enabled, client) = hybrid_settings(&app);
     let started = Instant::now();
@@ -2432,6 +2434,10 @@ pub async fn vault_index_build(
     let root_for_save = root.clone();
     let chunk_count = index.chunks.len();
     run_blocking(move || index.save(&VaultSearchIndex::directory(&root_for_save)).map_err(PdfError::from_io)).await?;
+
+    if !cancelled {
+        job_guard.succeed();
+    }
 
     Ok(VaultIndexReport {
         documents,
@@ -3209,9 +3215,8 @@ mod tests {
     #[test]
     fn status_reports_platform_capabilities_and_counts_the_import_root() {
         let base = temp_root("capabilities");
-        let root = base.join("root");
-        let status = vault_status_at(&root);
-        assert!(status.can_import_files, "import works on every platform");
+        let status = vault_status_at(&base.join("root"));
+        assert!(status.can_import_files);
         assert_eq!(status.can_scan_folders, cfg!(not(target_os = "android")));
         assert_eq!(status.folders, usize::from(cfg!(target_os = "android")));
         let _ = std::fs::remove_dir_all(&base);
@@ -3226,44 +3231,34 @@ mod tests {
         status.last_scan = Some("2026-01-01T00:00:00Z".into());
         write_stored_status(&root, &status).expect("write");
         assert!(vault_status_at(&root).scanning);
-
         repair_stored_status(&root).expect("repair");
         let repaired = vault_status_at(&root);
-        assert!(!repaired.scanning, "a scan cannot survive a restart");
-        assert_eq!(repaired.last_scan.as_deref(), Some("2026-01-01T00:00:00Z"), "other fields are preserved");
+        assert!(!repaired.scanning && repaired.last_scan.as_deref() == Some("2026-01-01T00:00:00Z"));
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[cfg(unix)]
     #[test]
     fn import_never_follows_symlinks() {
-        use std::os::unix::fs::symlink;
         let base = temp_root("import-symlink");
-        let root = base.join("root");
-        let picks = base.join("picks");
+        let (root, picks) = (base.join("root"), base.join("picks"));
         std::fs::create_dir_all(&picks).expect("picks dir");
-        let target = picks.join("real.txt");
+        let (target, link) = (picks.join("real.txt"), picks.join("link.txt"));
         std::fs::write(&target, "real content").expect("write");
-        let link = picks.join("link.txt");
-        symlink(&target, &link).expect("symlink");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
         let report = import_files(&root, &[link.display().to_string()]);
-        assert!(report.imported.is_empty());
-        assert!(report.skipped[0].reason.contains("not a regular file"), "{:?}", report.skipped);
+        assert!(report.imported.is_empty() && report.skipped[0].reason.contains("not a regular file"));
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn chunk_snippet_survives_turkish_case_folding() {
-        // 'İ'.to_lowercase() expands to two chars; the snippet window used to
-        // slice the original text with the folded index and panic.
-        let text = format!("{}{}", "İ".repeat(100), "needle");
-        let snippet = chunk_snippet(&text, &["needle".to_string()]);
-        assert!(snippet.contains("needle"), "snippet was: {snippet}");
+        let text = format!("{}needle", "İ".repeat(100));
+        assert!(chunk_snippet(&text, &["needle".to_string()]).contains("needle"));
     }
 
     #[test]
     fn chunk_snippet_returns_the_start_when_no_term_matches() {
-        let snippet = chunk_snippet("kısa bir metin", &["yok".to_string()]);
-        assert!(snippet.starts_with("kısa"));
+        assert!(chunk_snippet("kısa bir metin", &["yok".to_string()]).starts_with("kısa"));
     }
 }

@@ -42,27 +42,24 @@ async function noticeDates(path: string): Promise<NotificationDateCandidate[]> {
   return findNotificationDates(texts.join("\n"));
 }
 
-export function DeadlineCalculatorScreen({
-  initialFiles = [],
-  dragging = false,
-}: {
-  initialFiles?: string[];
-  dragging?: boolean;
-}) {
+type DeadlineProps = { initialFiles?: string[]; initialText?: string; dragging?: boolean };
+
+export function DeadlineCalculatorScreen({ initialFiles = [], initialText = "", dragging = false }: DeadlineProps) {
   const t = useT();
   const push = useToasts((state) => state.push);
   const addTask = usePlanner((state) => state.add);
   const loadPlanner = usePlanner((state) => state.load);
   const plannerLoaded = usePlanner((state) => state.loaded);
-  const [received, setReceived] = useState(today);
-  const [electronic, setElectronic] = useState(true);
+  const initialDates = useMemo(() => (initialText.trim() ? findNotificationDates(initialText) : null), [initialText]);
+  const [received, setReceived] = useState(() => initialDates?.[0]?.date ?? today());
+  const [electronic, setElectronic] = useState(() => (initialDates?.[0] ? initialDates[0].kind !== "served" : true));
   const [preset, setPreset] = useState(PERIOD_PRESETS[0].key);
   const [amount, setAmount] = useState(2);
   const [unit, setUnit] = useState<PeriodUnit>("week");
   const [recess, setRecess] = useState(true);
   const [criminal, setCriminal] = useState(false);
   const [title, setTitle] = useState("");
-  const [candidates, setCandidates] = useState<NotificationDateCandidate[] | null>(null);
+  const [candidates, setCandidates] = useState<NotificationDateCandidate[] | null>(initialDates);
   const [reading, setReading] = useState(false);
 
   const result = useMemo(
@@ -101,7 +98,7 @@ export function DeadlineCalculatorScreen({
   // A PDF dropped on the window or opened with this screen is read once.
   const initialPath = initialFiles[0] ?? "";
   useEffect(() => {
-    if (!initialPath) return;
+    if (!initialPath || initialText.trim()) return;
     let live = true;
     void noticeDates(initialPath).then((found) => {
       if (live) applyDates(found);
@@ -109,7 +106,7 @@ export function DeadlineCalculatorScreen({
     return () => {
       live = false;
     };
-  }, [initialPath]);
+  }, [initialPath, initialText]);
 
   const label = title.trim() || t("deadline.defaultTitle");
   const summary = result

@@ -54,9 +54,16 @@ describe("desktop workflow structure (E0)", () => {
   it("uploads fuzz crash artifacts after the last fuzz target", () => {
     const upload = desktop.indexOf("Upload crash artifacts");
     const pdfParser = desktop.indexOf("name: PDF parser");
+    const webdavXml = desktop.indexOf("name: WebDAV multistatus XML");
+    const aiResponse = desktop.indexOf("name: AI provider responses");
     expect(upload).toBeGreaterThan(0);
     expect(pdfParser).toBeGreaterThan(0);
-    expect(upload).toBeGreaterThan(pdfParser);
+    expect(webdavXml).toBeGreaterThan(pdfParser);
+    expect(aiResponse).toBeGreaterThan(webdavXml);
+    expect(upload).toBeGreaterThan(aiResponse);
+
+    const fuzzPr = read("fuzz-pr.yml");
+    expect(fuzzPr.indexOf("Upload crash artifacts")).toBeGreaterThan(fuzzPr.indexOf("name: AI provider responses"));
   });
 });
 

@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.49.0] - 2026-11-13
+
+### Fixed
+
+- **Guarded job liveness & `vault-index` Android foreground service leak (`E2.6a`):** introduces `JobRegistry::register_managed` returning `(CancelToken, JobFinishGuard)` across `merge_pdfs`, `operation_with_progress`, `vault_scan`, and `vault_index_build` so every early `?` return or drop cancels the token and stops the Android foreground activity when no live jobs remain, and fixes `vault_index_build` leaving `"vault-index"` perpetually active in `JobRegistry::jobs`.
+
+### Changed
+
+- **Version history deduplication on unchanged saves (`E2.6b` / `M15`):** extracts `src-tauri/src/office_history.rs` and skips creating a duplicate `v{N}.json` entry when a consecutive save has the identical `(kind, title, model)` as the newest stored snapshot, preserving older versions in the 25-version ring.
+- **Writer-selection-scoped desk tasks (`E6.2` / `D13`):** tracks the active Writer text selection across `selectionchange` events (`currentWriterSelection` / `isWriterSelectionNode`), enables text-capable desk tasks (`petition`, `official-letter`, `deadline`, `health`) even when no file path is selected, and forwards `selectionText` into `PetitionWizard`, `OfficialLetterWizard`, `DeadlineCalculatorScreen`, and `DocumentHealthScreen`.
+
+### Added
+
+- **WebDAV multistatus XML & AI response fuzz targets (`E2.5`):** adds `webdav_xml` (`synccore::webdav::parse_multistatus`) and `ai_response` (`aicore::fuzz_ai_responses`) libFuzzer harnesses in `fuzz/fuzz_targets/` and runs them in `.github/workflows/fuzz-pr.yml` and `.github/workflows/desktop.yml`.
+
 ## [7.48.0] - 2026-11-13
 
 ### Changed

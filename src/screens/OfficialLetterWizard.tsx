@@ -48,9 +48,8 @@ const EMPTY_PROFILE: LetterProfile = {
 function loadProfile(): LetterProfile {
   try {
     const stored = JSON.parse(localStorage.getItem(PROFILE_KEY) ?? "null") as Partial<LetterProfile> | null;
-    return stored
-      ? { ...EMPTY_PROFILE, ...stored, contact: { ...EMPTY_PROFILE.contact, ...stored.contact } }
-      : EMPTY_PROFILE;
+    if (!stored) return EMPTY_PROFILE;
+    return { ...EMPTY_PROFILE, ...stored, contact: { ...EMPTY_PROFILE.contact, ...stored.contact } };
   } catch {
     return EMPTY_PROFILE;
   }
@@ -60,30 +59,28 @@ function saveProfile(profile: LetterProfile) {
   try {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   } catch {
-    // Storage can be unavailable (private mode); the form still works.
+    /* ignore */
   }
 }
 
 const lines = (value: string) => value.split("\n");
 const today = () => new Date().toISOString().slice(0, 10);
-/** YYYY-MM-DD (the date input) to GG.AA.YYYY (the letter). */
 const letterDate = (iso: string) => {
   const [year, month, day] = iso.split("-");
   return year && month && day ? `${day}.${month}.${year}` : iso;
 };
 
-function Labelled({ id, label, children }: { id: string; label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <label className="label" htmlFor={id}>
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
+const Labelled = ({ id, label, children }: { id: string; label: string; children: ReactNode }) => (
+  <div className="min-w-0">
+    <label className="label" htmlFor={id}>
+      {label}
+    </label>
+    {children}
+  </div>
+);
 
-export function OfficialLetterWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void }) {
+type OfficialLetterProps = { initialText?: string; onNavigate?: (view: ViewId) => void };
+export function OfficialLetterWizard({ initialText = "", onNavigate }: OfficialLetterProps) {
   const t = useT();
   const [profile, setProfileState] = useState<LetterProfile>(loadProfile);
   const [date, setDate] = useState(today);
@@ -91,7 +88,7 @@ export function OfficialLetterWizard({ onNavigate }: { onNavigate?: (view: ViewI
   const [addressee, setAddressee] = useState("");
   const [addresseePlace, setAddresseePlace] = useState("");
   const [references, setReferences] = useState("");
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(initialText);
   const [closing, setClosing] = useState("Bilgilerinizi ve gereğini rica ederim.");
   const [eSigned, setESigned] = useState(true);
   const [attachments, setAttachments] = useState("");
@@ -141,14 +138,11 @@ export function OfficialLetterWizard({ onNavigate }: { onNavigate?: (view: ViewI
 
   const toast = (kind: "success" | "error" | "info", title: string, detail?: string) =>
     useToasts.getState().push({ kind, title, ...(detail ? { detail } : {}) });
-
   const ready = () => {
     if (subject.trim() && addressee.trim() && body.trim() && profile.signerName.trim()) return true;
     toast("info", t("officialLetter.missing"));
     return false;
   };
-
-  /** The number is used up once the letter leaves the wizard. */
   const spendNumber = () => {
     const value = Number(sequence);
     if (Number.isFinite(value) && value > 0) commitSequence(key, value);

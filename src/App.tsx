@@ -78,6 +78,7 @@ export default function App() {
 
   const [screen, setScreen] = useState<ScreenId>("home");
   const [files, setFiles] = useState<string[]>([]);
+  const [selectionText, setSelectionText] = useState("");
   const [aiPack, setAiPack] = useState<TaskPackId | null>(null);
   const [readerPage, setReaderPage] = useState<number | undefined>(undefined);
   const [pageToolTab, setPageToolTab] = useState<PageToolTab>("extract");
@@ -105,6 +106,7 @@ export default function App() {
 
   const navigate = useCallback<Navigate>((next, options) => {
     setFiles(options?.files ?? []);
+    setSelectionText(options?.selectionText ?? "");
     setAiPack(options?.pack ?? null);
     if (options?.pageToolsTab) setPageToolTab(options.pageToolsTab);
     if (options?.targetPage) setReaderPage(options.targetPage);
@@ -127,17 +129,14 @@ export default function App() {
     setScreen(next);
   }, []);
 
-  // Record one webview history entry per screen so the system back button can
-  // walk the app's own stack. Same-screen file refreshes replace the entry
-  // instead of stacking. This effect must stay before the overlay guard below:
-  // a palette navigation has to push the new screen before the guard is popped.
+  // Record one webview history entry per screen so the system back button walks
+  // the app's own stack; must stay before the overlay guard below.
   useEffect(() => {
     recordScreenVisit(history, navSnapshotRef.current, { screen, files });
     navSnapshotRef.current = { screen, files };
   }, [screen, files]);
 
-  // Overlays push a guard entry, so back closes them first. When the user
-  // closes an overlay through the UI the guard is popped here to stay in sync.
+  // Overlays push a guard entry so back closes them first.
   const overlayOpen = navOpen || paletteOpen || searchOpen;
   useEffect(() => {
     if (overlayOpen && !overlayGuardRef.current) {
@@ -152,8 +151,6 @@ export default function App() {
   // Back button / Alt+Left: turn history states back into navigation.
   useEffect(() => {
     const onPopState = (event: PopStateEvent) => {
-      // While an overlay is open its guard entry sits on top of the current
-      // screen, so this back press just closes the overlay.
       if (overlayGuardRef.current) {
         overlayGuardRef.current = false;
         setNavOpen(false);
@@ -162,21 +159,13 @@ export default function App() {
         return;
       }
       const action = navigationActionFromState(event.state);
-      if (action.kind === "close-overlays") {
-        // Landing on a guard entry happens when the UI already closed an
-        // overlay and popped the guard itself; nothing left to do.
-        return;
-      }
+      if (action.kind === "close-overlays") return;
       if (action.kind === "navigate") {
-        // Update the snapshot first so the screen effect above replaces the
-        // entry instead of pushing a duplicate while the webview is moving.
         navSnapshotRef.current = { screen: action.screen, files: action.files };
         setFiles(action.files);
         setScreen(action.screen);
         return;
       }
-      // Walked past the first app entry: Home is the root, the next back press
-      // leaves the app.
       navSnapshotRef.current = { screen: "home", files: [] };
       setFiles([]);
       setScreen("home");
@@ -432,8 +421,8 @@ export default function App() {
     return () => ids.forEach((id) => unregisterCommand(id));
   }, [pickFiles]);
 
-  // Desk tasks (D13): the palette runs a task with the current file selection.
-  useDeskTaskCommands(files, navigate);
+  // Desk tasks (D13): the palette runs a task with the current file or Writer selection.
+  useDeskTaskCommands(files, navigate, screen);
 
   // One keyboard entry point: the command registry decides. Modified chords
   // run commands (palette, search, open, settings); unmodified keys are left
@@ -642,29 +631,28 @@ export default function App() {
       jobs: <Screens.JobsScreen />,
       sync: <Screens.Sync />,
       plugins: <Screens.Plugins />,
-      petition: <Screens.PetitionWizardScreen onNavigate={navigate} />,
-      officialLetter: <Screens.OfficialLetterScreen onNavigate={navigate} />,
-      deadline: <Screens.DeadlineCalculatorScreen initialFiles={files} dragging={dragging} />,
+      petition: <Screens.PetitionWizardScreen initialText={selectionText} onNavigate={navigate} />,
+      officialLetter: <Screens.OfficialLetterScreen initialText={selectionText} onNavigate={navigate} />,
+      deadline: (
+        <Screens.DeadlineCalculatorScreen initialFiles={files} initialText={selectionText} dragging={dragging} />
+      ),
       evidence: <Screens.EvidenceBundleScreen initialFiles={files} dragging={dragging} />,
       kvkk: <Screens.KvkkWizardScreen onNavigate={navigate} />,
-      documentHealth: <Screens.DocumentHealthScreen onNavigate={navigate} />,
+      documentHealth: <Screens.DocumentHealthScreen initialText={selectionText} onNavigate={navigate} />,
       verify: <Screens.VerifyScreen initialFiles={files} dragging={dragging} />,
       tools: <Screens.ToolsScreen onNavigate={navigate} />,
     }),
-    [aiPack, convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab],
+    [aiPack, convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab, selectionText],
   );
 
   // Flag-gated routes are closed, not just hidden: a deep link to a disabled
   // route renders Home instead of the unfinished screen.
   const effectiveScreen = routeEnabled(screen) ? screen : "home";
-
   const isDark = settings.theme === "dark" || (settings.theme === "system" && appliedDark);
-
   const pickNav = (id: ScreenId) => {
     navigate(id);
     setNavOpen(false);
   };
-
   const activeLabel = routeEnabled(screen) ? t(routeFor(screen).labelKey) : t("app.name");
 
   const overlayProps = {
@@ -727,7 +715,7 @@ export default function App() {
         ) : null}
 
         <main className="flex-1 min-w-0 relative overflow-hidden">
-          <div key={`${screen}-${files.join("|")}`} className="h-full">
+          <div key={`${screen}-${files.join("|")}-${selectionText ?? ""}`} className="h-full">
             <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
           </div>
         </main>
@@ -774,7 +762,7 @@ export default function App() {
             </p>
           </div>
         ) : null}
-        <div key={`${screen}-${files.join("|")}`} className="h-full">
+        <div key={`${screen}-${files.join("|")}-${selectionText ?? ""}`} className="h-full">
           <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
         </div>
       </main>
