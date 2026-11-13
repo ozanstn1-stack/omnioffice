@@ -6,8 +6,10 @@ const en = enJson as Record<string, string>;
 const tr = trJson as Record<string, string>;
 import {
   DESK_TASKS,
+  currentWriterSelection,
   deskTaskCommandId,
   deskTaskCommands,
+  isWriterSelectionNode,
   registerDeskTaskCommands,
   unregisterDeskTaskCommands,
 } from "./desk-tasks";
@@ -75,6 +77,59 @@ describe("desk task catalogue (D13)", () => {
     });
     commands.find((command) => command.id === "task.vat")?.execute();
     expect(navigate).toHaveBeenCalledWith("aiPacks", { files: ["/docs/fatura.pdf"], pack: "kdv-ozeti" });
+  });
+
+  it("enables text-aware desk tasks and forwards the active Writer text selection", () => {
+    let selection = "";
+    const navigate = vi.fn<Navigate>();
+    const commands = deskTaskCommands({
+      getFiles: () => [],
+      getSelectionText: () => selection,
+      navigate,
+      register: vi.fn(),
+      unregister: vi.fn(),
+    });
+    const deadline = commands.find((command) => command.id === "task.deadline");
+    const health = commands.find((command) => command.id === "task.health");
+    const petition = commands.find((command) => command.id === "task.petition");
+    const redact = commands.find((command) => command.id === "task.redact");
+
+    expect(deadline?.enabled()).toBe(false);
+    expect(health?.enabled()).toBe(false);
+
+    selection = "  Tebliğ tarihi: 14.05.2026  ";
+    expect(deadline?.enabled()).toBe(true);
+    expect(health?.enabled()).toBe(true);
+    // File-only PDF tasks still require an actual file.
+    expect(redact?.enabled()).toBe(false);
+
+    deadline?.execute();
+    expect(navigate).toHaveBeenCalledWith("deadline", {
+      files: [],
+      selectionText: "Tebliğ tarihi: 14.05.2026",
+    });
+
+    petition?.execute();
+    expect(navigate).toHaveBeenCalledWith("petition", {
+      files: [],
+      selectionText: "Tebliğ tarihi: 14.05.2026",
+    });
+  });
+
+  it("recognizes Writer editable DOM nodes and falls back to the remembered selection", () => {
+    const sheet = document.createElement("div");
+    sheet.className = "writer-sheet";
+    const paragraph = document.createElement("p");
+    const textNode = document.createTextNode("Selected clause");
+    paragraph.appendChild(textNode);
+    sheet.appendChild(paragraph);
+    document.body.appendChild(sheet);
+
+    expect(isWriterSelectionNode(textNode)).toBe(true);
+    expect(isWriterSelectionNode(document.body)).toBe(false);
+    expect(currentWriterSelection("Remembered paragraph")).toBe("Remembered paragraph");
+
+    sheet.remove();
   });
 });
 

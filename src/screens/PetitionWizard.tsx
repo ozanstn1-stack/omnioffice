@@ -15,16 +15,18 @@ import { reportError, useToasts } from "../lib/store";
 import { saveDocument, exportPdf } from "../lib/office-api";
 import { validateTCKN, createPetitionDocument, type PetitionData } from "../lib/petition";
 
+type PetitionWizardProps = { initialText?: string; onNavigate?: (view: ViewId) => void };
+
 /**
  * Petition Wizard (Dilekçe Sihirbazı): Guided petition creation with
  * TCKN mod-11 validation and export to UDF, DOCX, PDF, or Writer (v5.3 - Issue #247).
  */
-export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => void }) {
+export function PetitionWizard({ initialText = "", onNavigate }: PetitionWizardProps) {
   const t = useT();
   const [data, setData] = useState<PetitionData>({
     recipientAuthority: "",
     subject: "",
-    bodyText: "",
+    bodyText: initialText,
     demands: "Gereğini saygılarımla arz ederim.",
     attachments: "",
     fullName: "",
@@ -35,27 +37,17 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
   });
   const [busy, setBusy] = useState(false);
 
-  const update = (field: keyof PetitionData, value: string) => {
-    setData((prev) => ({ ...prev, [field]: value }));
-  };
+  const update = (field: keyof PetitionData, value: string) => setData((prev) => ({ ...prev, [field]: value }));
 
   const validateForm = (): boolean => {
     if (!data.recipientAuthority.trim() || !data.subject.trim() || !data.fullName.trim() || !data.bodyText.trim()) {
-      useToasts.getState().push({
-        kind: "info",
-        title: t("petition.toast.requiredFields"),
-      });
+      useToasts.getState().push({ kind: "info", title: t("petition.toast.requiredFields") });
       return false;
     }
-
     if (data.tckn.trim() && !validateTCKN(data.tckn)) {
-      useToasts.getState().push({
-        kind: "error",
-        title: t("petition.toast.invalidTckn"),
-      });
+      useToasts.getState().push({ kind: "error", title: t("petition.toast.invalidTckn") });
       return false;
     }
-
     return true;
   };
 
@@ -68,7 +60,6 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
 
   const handleExport = async (format: "udf" | "docx" | "pdf") => {
     if (!validateForm()) return;
-
     const doc = createPetitionDocument(data);
     const defaultName = `${data.subject.trim() || "dilekce"}.${format}`;
 
@@ -77,15 +68,11 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
       if (!target) return;
       setBusy(true);
       try {
-        const cache = await appCacheDir();
-        const dir = await join(cache, "petition-export");
+        const dir = await join(await appCacheDir(), "petition-export");
         await call((c) => c.ensureDir(dir));
         const tempPath = await join(dir, `${uid("petition")}.${format}`);
-        if (format === "pdf") {
-          await exportPdf("writer", doc, tempPath);
-        } else {
-          await saveDocument("writer", doc, tempPath);
-        }
+        if (format === "pdf") await exportPdf("writer", doc, tempPath);
+        else await saveDocument("writer", doc, tempPath);
         const failures = await publishOutputs([tempPath], { file: target });
         if (failures.length) {
           useToasts.getState().push({ kind: "error", title: t("errors.title"), detail: failures[0].error });
@@ -104,17 +91,12 @@ export function PetitionWizard({ onNavigate }: { onNavigate?: (view: ViewId) => 
       return;
     }
 
-    const extension = format === "udf" ? "udf" : format === "docx" ? "docx" : "pdf";
-    const target = await pickSaveToken(fileBaseName(defaultName), [extension]).catch(() => null);
+    const target = await pickSaveToken(fileBaseName(defaultName), [format]).catch(() => null);
     if (!target) return;
-
     setBusy(true);
     try {
-      if (format === "pdf") {
-        await exportPdf("writer", doc, target.token);
-      } else {
-        await saveDocument("writer", doc, target.token);
-      }
+      if (format === "pdf") await exportPdf("writer", doc, target.token);
+      else await saveDocument("writer", doc, target.token);
       useToasts.getState().push({
         kind: "success",
         title: t("common.documentSaved", { format: format.toUpperCase() }),

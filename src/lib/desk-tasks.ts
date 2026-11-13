@@ -24,6 +24,8 @@ export interface DeskTask {
   target: ScreenId;
   /** The task needs files from the current selection. */
   requiresFiles: boolean;
+  /** The task can also run on a Writer text selection (even without a file path). */
+  acceptsTextSelection?: boolean;
   /** AI task pack the target screen should preselect, when it is an AI task. */
   pack?: TaskPackId;
 }
@@ -61,6 +63,7 @@ export const DESK_TASKS: readonly DeskTask[] = [
     keybinding: "Ctrl+Alt+P",
     target: "petition",
     requiresFiles: false,
+    acceptsTextSelection: true,
   },
   {
     id: "official-letter",
@@ -69,6 +72,7 @@ export const DESK_TASKS: readonly DeskTask[] = [
     keybinding: "Ctrl+Alt+L",
     target: "officialLetter",
     requiresFiles: false,
+    acceptsTextSelection: true,
   },
   {
     id: "deadline",
@@ -77,6 +81,7 @@ export const DESK_TASKS: readonly DeskTask[] = [
     keybinding: "Ctrl+Alt+D",
     target: "deadline",
     requiresFiles: true,
+    acceptsTextSelection: true,
   },
   {
     id: "kvkk",
@@ -93,6 +98,7 @@ export const DESK_TASKS: readonly DeskTask[] = [
     keybinding: "Ctrl+Alt+H",
     target: "documentHealth",
     requiresFiles: true,
+    acceptsTextSelection: true,
   },
   {
     id: "cleaner",
@@ -114,9 +120,41 @@ export const DESK_TASKS: readonly DeskTask[] = [
 
 export const deskTaskCommandId = (task: DeskTask) => `task.${task.id}`;
 
+/**
+ * True when a DOM node lies inside a Writer editable block (`.writer-sheet` or
+ * `[contenteditable="true"]` inside the Office workspace).
+ */
+export function isWriterSelectionNode(node: Node | null): boolean {
+  if (!node) return false;
+  const element = node instanceof HTMLElement ? node : node.parentElement;
+  if (!element) return false;
+  return Boolean(element.closest(".writer-sheet, [data-writer-editor], [contenteditable='true']"));
+}
+
+/**
+ * Reads the active Writer selection from the DOM when present, or falls back to
+ * the last remembered Writer selection captured before opening the Command
+ * Palette.
+ */
+export function currentWriterSelection(remembered = ""): string {
+  if (typeof window !== "undefined" && typeof window.getSelection === "function") {
+    const selection = window.getSelection();
+    if (
+      selection &&
+      !selection.isCollapsed &&
+      (isWriterSelectionNode(selection.anchorNode) || isWriterSelectionNode(selection.focusNode))
+    ) {
+      const live = selection.toString().trim();
+      if (live) return live;
+    }
+  }
+  return remembered.trim();
+}
+
 /** The state a desk task needs to build its command. */
 export interface DeskTaskDeps {
   getFiles: () => string[];
+  getSelectionText?: () => string;
   navigate: Navigate;
   register: (command: DeskTaskCommand) => void;
   unregister: (id: string) => void;
@@ -132,19 +170,29 @@ export interface DeskTaskCommand {
   execute: () => void;
 }
 
-/** Builds one palette command per desk task; `files` is read at call time. */
+/**
+ * Builds one palette command per desk task; `files` and any Writer text
+ * selection are read at call time so both direct shortcuts and Command Palette
+ * invocations carry the active selection into the target screen.
+ */
 export function deskTaskCommands(deps: DeskTaskDeps): DeskTaskCommand[] {
+  const readSelection = () => deps.getSelectionText?.().trim() ?? "";
   return DESK_TASKS.map((task) => ({
     id: deskTaskCommandId(task),
     titleKey: task.titleKey,
     category: task.category,
     keybinding: task.keybinding,
-    enabled: () => !task.requiresFiles || deps.getFiles().length > 0,
+    enabled: () =>
+      !task.requiresFiles ||
+      deps.getFiles().length > 0 ||
+      Boolean(task.acceptsTextSelection && readSelection().length > 0),
     disabledReasonKey: "palette.taskNeedsFile",
     execute: () => {
+      const selectionText = task.acceptsTextSelection ? readSelection() : "";
       deps.navigate(task.target, {
         files: deps.getFiles(),
         ...(task.pack ? { pack: task.pack } : {}),
+        ...(selectionText ? { selectionText } : {}),
       });
     },
   }));

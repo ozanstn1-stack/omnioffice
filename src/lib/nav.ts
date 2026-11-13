@@ -11,5 +11,11 @@ export interface PageToolsTab {
 
 export type Navigate = (
   screen: ScreenId,
-  options?: { files?: string[]; pageToolsTab?: PageToolsTab["tab"]; targetPage?: number; pack?: TaskPackId },
+  options?: {
+    files?: string[];
+    pageToolsTab?: PageToolsTab["tab"];
+    targetPage?: number;
+    pack?: TaskPackId;
+    selectionText?: string;
+  },
 ) => void;

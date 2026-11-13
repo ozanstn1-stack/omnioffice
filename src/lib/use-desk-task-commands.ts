@@ -8,24 +8,47 @@
  * re-render re-registers the same commands; cleanup removes only the ids this
  * hook owns.
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { registerCommand, unregisterCommand } from "./commands";
-import type { Navigate } from "./nav";
+import type { Navigate, ScreenId } from "./nav";
 
-export function useDeskTaskCommands(files: string[], navigate: Navigate): void {
+export function useDeskTaskCommands(files: string[], navigate: Navigate, screen?: ScreenId): void {
+  const rememberedSelectionRef = useRef("");
+
+  useEffect(() => {
+    if (screen !== "office") {
+      rememberedSelectionRef.current = "";
+      return;
+    }
+    const onSelectionChange = () => {
+      if (typeof window === "undefined" || typeof window.getSelection !== "function") return;
+      const selection = window.getSelection();
+      if (!selection) return;
+      const anchor = selection.anchorNode;
+      const element = anchor instanceof HTMLElement ? anchor : (anchor?.parentElement ?? null);
+      if (!element?.closest(".writer-sheet, [data-writer-editor], [contenteditable='true']")) return;
+      rememberedSelectionRef.current = selection.isCollapsed ? "" : selection.toString().trim();
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, [screen]);
+
   useEffect(() => {
     let cancelled = false;
     let owned: string[] = [];
-    void import("./desk-tasks").then(({ registerDeskTaskCommands, unregisterDeskTaskCommands }) => {
-      if (cancelled) return;
-      owned = registerDeskTaskCommands({
-        getFiles: () => files,
-        navigate,
-        register: registerCommand,
-        unregister: unregisterCommand,
-      });
-      return unregisterDeskTaskCommands;
-    });
+    void import("./desk-tasks").then(
+      ({ currentWriterSelection, registerDeskTaskCommands, unregisterDeskTaskCommands }) => {
+        if (cancelled) return;
+        owned = registerDeskTaskCommands({
+          getFiles: () => files,
+          getSelectionText: () => (screen === "office" ? currentWriterSelection(rememberedSelectionRef.current) : ""),
+          navigate,
+          register: registerCommand,
+          unregister: unregisterCommand,
+        });
+        return unregisterDeskTaskCommands;
+      },
+    );
     return () => {
       cancelled = true;
       if (owned.length > 0)
@@ -33,5 +56,5 @@ export function useDeskTaskCommands(files: string[], navigate: Navigate): void {
           unregisterDeskTaskCommands(owned, unregisterCommand);
         });
     };
-  }, [files, navigate]);
+  }, [files, navigate, screen]);
 }

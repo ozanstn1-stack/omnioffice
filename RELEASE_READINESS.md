@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.48.0
+# Release Readiness — OmniOffice 7.49.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,36 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.49.0) - Guarded job liveness, version history deduplication, Writer-selection desk tasks & WebDAV/AI fuzzing
+
+- **Guarded job liveness & `vault-index` leak fix (`E2.6a`):**
+  `JobRegistry::register_managed` pairs non-tracked jobs (`merge_pdfs`,
+  `operation_with_progress`, `vault_scan`, `vault_index_build`) with a
+  `JobFinishGuard` that cancels the token on early drop, removes `"vault-index"`
+  when indexing finishes so `has_live_jobs()` and the Android foreground
+  service stop cleanly, and cancels active tokens inside `fail_active`.
+  `test:src-tauri/src/jobs_tests.rs#register_managed_cancels_token_and_stops_activity_on_early_drop`
+- **Version history deduplication on unchanged saves (`E2.6b` / `M15`):**
+  extracts `src-tauri/src/office_history.rs` and skips allocating a duplicate
+  `v{N}.json` when a consecutive save has the identical `(kind, title, model)`
+  as the newest stored version so repeated `Ctrl+S` presses never evict older
+  entries from the 25-version ring.
+  `test:src-tauri/src/office_history.rs#unchanged_save_reuses_latest_version_without_evicting_history`
+- **Writer-selection-scoped desk tasks (`E6.2` / `D13`):** tracks the active
+  Writer text selection across `selectionchange` events, enables text-capable
+  desk tasks (`petition`, `official-letter`, `deadline`, `health`) when a
+  Writer selection is active even without a file path, and forwards
+  `selectionText` into `PetitionWizard`, `OfficialLetterWizard`,
+  `DeadlineCalculatorScreen`, and `DocumentHealthScreen`.
+  `test:src/lib/desk-tasks.test.ts#enables text-aware desk tasks and forwards the active Writer text selection`
+  `test:src/lib/desk-tasks.test.ts#recognizes Writer editable DOM nodes and falls back to the remembered selection`
+- **WebDAV multistatus XML & AI provider response fuzzing (`E2.5`):** adds
+  `webdav_xml` (`synccore::webdav::parse_multistatus`) and `ai_response`
+  (`aicore::fuzz_ai_responses`) libFuzzer harnesses in `fuzz/fuzz_targets/` and
+  wires both into `.github/workflows/fuzz-pr.yml` and `.github/workflows/desktop.yml`.
+  `test:crates/aicore/src/fuzz.rs#fuzz_ai_responses_handles_model_lists_streams_and_corrupt_inputs`
+  `test:src/lib/ci-workflow.test.ts#uploads fuzz crash artifacts after the last fuzz target`
 
 ## Implemented (this cycle, 7.48.0) - Worker page_text isolation, orphan annotation cleanup, PDF fuzzing & E4.2 UI tests
 
@@ -1504,7 +1534,7 @@ release-train schedule is decided.
   `{code, message}` and localizes the failure instead of printing English.
   `test:crates/pdfcore/tests/engine_status_test.rs#a_failed_probe_reports_every_engine_missing`
   `test:src-tauri/src/links.rs#a_rejected_link_is_a_typed_error_on_the_wire`
-  `test:src-tauri/src/jobs.rs#an_unknown_job_status_is_a_typed_error`
+  `test:src-tauri/src/jobs_tests.rs#an_unknown_job_status_is_a_typed_error`
 
 ### Not done / Known limitations (7.3.0)
 
@@ -1810,9 +1840,8 @@ release-train schedule is decided.
 
 ### Not done / Known limitations (7.1.0)
 
-- The palette rows are driven by the current screen's file selection, not by a
-  range/selection inside an editor; a Writer text selection does not yet scope
-  a desk task.
+- Writer text selections scope text-capable desk tasks since 7.49.0; Calc cell
+  ranges and Impress slide object selections remain file-scoped.
   (no test: documented limitation.)
 
 ## Implemented (this cycle, 7.0.0) - Performans ve bellek

@@ -366,7 +366,7 @@ pub async fn merge_pdfs(
     request: MergeRequest,
 ) -> Result<OpResult, PdfError> {
     let job_id = request.job_id.clone().unwrap_or_else(|| "merge".into());
-    let cancel = registry.register(&job_id);
+    let (cancel, mut job_guard) = registry.register_managed(&job_id);
     let app_for_progress = app.clone();
     let job_for_progress = job_id.clone();
     let result = run_blocking(move || {
@@ -406,7 +406,9 @@ pub async fn merge_pdfs(
         })
     })
     .await;
-    registry.complete(&job_id, result.is_ok());
+    if result.is_ok() {
+        job_guard.succeed();
+    }
     result
 }
 
@@ -2380,7 +2382,7 @@ where
     F: FnOnce(&pdfcore::progress::ProgressCallback, &CancelToken) -> Result<T, PdfError> + Send + 'static,
 {
     let job_id = job_id.unwrap_or_else(|| format!("job-{}", uuid::Uuid::new_v4()));
-    let cancel = registry.register(&job_id);
+    let (cancel, mut job_guard) = registry.register_managed(&job_id);
     let app_for_progress = app.clone();
     let job_for_progress = job_id.clone();
     let result = run_blocking(move || {
@@ -2390,7 +2392,9 @@ where
         work(&progress, &cancel)
     })
     .await;
-    registry.complete(&job_id, result.is_ok());
+    if result.is_ok() {
+        job_guard.succeed();
+    }
     result
 }
 
@@ -2545,61 +2549,30 @@ mod tests {
 
     #[test]
     fn stamp_request_reads_explicit_keep_signatures() {
-        let request: StampRequest = serde_json::from_value(serde_json::json!({
-            "input": "in.pdf",
-            "output": { "path": "out.pdf" },
-            "headerFooter": null,
-            "bates": null,
-            "keepSignatures": false
-        }))
-        .expect("wire shape");
-        assert!(!request.keep_signatures);
-        assert!(request.header_footer.is_none());
-        assert!(request.bates.is_none());
+        let raw =
+            r#"{"input":"in.pdf","output":{"path":"out.pdf"},"headerFooter":null,"bates":null,"keepSignatures":false}"#;
+        let request: StampRequest = serde_json::from_str(raw).expect("wire shape");
+        assert!(!request.keep_signatures && request.header_footer.is_none() && request.bates.is_none());
     }
 
     #[test]
     fn nup_request_reads_camel_case_options() {
-        let request: NupRequest = serde_json::from_value(serde_json::json!({
-            "input": "in.pdf",
-            "output": { "path": "out.pdf", "overwrite": "replace" },
-            "options": {
-                "perSheet": 4,
-                "booklet": true,
-                "orientation": "landscape",
-                "pageSize": "a4",
-                "marginPt": 18.0,
-                "gutterPt": 12.0,
-                "border": true,
-                "pages": [1, 2, 3, 4]
-            },
-            "password": null,
-            "jobId": "job-4"
-        }))
-        .expect("wire shape");
+        let raw = r#"{"input":"in.pdf","output":{"path":"out.pdf","overwrite":"replace"},"options":{"perSheet":4,"booklet":true,"orientation":"landscape","pageSize":"a4","marginPt":18.0,"gutterPt":12.0,"border":true,"pages":[1,2,3,4]},"password":null,"jobId":"job-4"}"#;
+        let request: NupRequest = serde_json::from_str(raw).expect("wire shape");
         assert_eq!(request.options.per_sheet, 4);
-        assert!(request.options.booklet);
+        assert!(request.options.booklet && request.options.border);
         assert_eq!(request.options.page_size, "a4");
-        assert!(request.options.border);
         assert_eq!(request.job_id.as_deref(), Some("job-4"));
     }
 
     #[test]
     fn set_outline_request_wire_shape() {
-        let request: SetOutlineRequest = serde_json::from_value(serde_json::json!({
-            "input": "in.pdf",
-            "output": { "path": "out.pdf" },
-            "entries": [
-                { "title": "Chapter 1", "page": 1, "depth": 0 },
-                { "title": "Section 1.1", "page": 2, "depth": 1 }
-            ],
-            "password": null,
-            "jobId": "job-5"
-        }))
-        .expect("wire shape");
+        let raw = r#"{"input":"in.pdf","output":{"path":"out.pdf"},"entries":[{"title":"Chapter 1","page":1,"depth":0},{"title":"Section 1.1","page":2,"depth":1}],"password":null,"jobId":"job-5"}"#;
+        let request: SetOutlineRequest = serde_json::from_str(raw).expect("wire shape");
         assert_eq!(request.entries.len(), 2);
-        assert_eq!(request.entries[1].title, "Section 1.1");
-        assert_eq!(request.entries[1].depth, 1);
-        assert_eq!(request.entries[1].page, 2);
+        assert_eq!(
+            (request.entries[1].title.as_str(), request.entries[1].depth, request.entries[1].page),
+            ("Section 1.1", 1, 2)
+        );
     }
 }

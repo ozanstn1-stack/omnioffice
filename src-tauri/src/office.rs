@@ -1608,25 +1608,14 @@ pub fn store_clear(app: AppHandle, key: String) -> Result<(), OfficeErrorPayload
 // Version history
 // ---------------------------------------------------------------------------
 
-#[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HistoryEntry {
-    pub version: u32,
-    pub saved_at: String,
-    pub title: String,
-    pub kind: String,
-    #[cfg_attr(feature = "bindings", specta(type = specta_typescript::Number))]
-    pub size: u64,
-}
+#[path = "office_history.rs"]
+mod office_history;
+pub use office_history::HistoryEntry;
 
 fn history_dir(app: &AppHandle, document_id: &str) -> Result<PathBuf, OfficeErrorPayload> {
     let id = sanitize_key(document_id)?;
     Ok(config_dir(app)?.join("versions").join(id))
 }
-
-/// How many versions a document keeps.
-const HISTORY_LIMIT: usize = 25;
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
@@ -1638,91 +1627,29 @@ pub fn history_push(
     model: Value,
 ) -> Result<HistoryEntry, OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
-    push_version(&dir, kind, title, &model, HISTORY_LIMIT, officecore::io::write_atomic).map_err(payload)
-}
-
-/// Writes a new version file and updates the index, keeping the newest
-/// `limit` versions. `write` is the atomic file writer (injected so a test can
-/// make the index write fail).
-fn push_version(
-    dir: &Path,
-    kind: String,
-    title: String,
-    model: &Value,
-    limit: usize,
-    write: impl Fn(&Path, &[u8]) -> OfficeResult<()>,
-) -> OfficeResult<HistoryEntry> {
-    std::fs::create_dir_all(dir).map_err(|error| OfficeError::from_io(error, dir))?;
-    let mut index = read_history_index(dir);
-    let version = index.iter().map(|entry| entry.version).max().unwrap_or(0) + 1;
-    let payload_json = serde_json::json!({
-        "version": version,
-        "savedAt": timestamp(),
-        "kind": kind,
-        "title": title,
-        "model": model,
-    });
-    let bytes = serde_json::to_vec(&payload_json)
-        .map_err(|error| OfficeError::internal(format!("Could not encode the version: {error}")))?;
-    write(&dir.join(format!("v{version}.json")), &bytes)?;
-    let entry = HistoryEntry { version, saved_at: timestamp(), title, kind, size: bytes.len() as u64 };
-    index.push(entry.clone());
-    // Keep the newest versions.
-    index.sort_by_key(|entry| entry.version);
-    let mut pruned = Vec::new();
-    while index.len() > limit {
-        pruned.push(index.remove(0).version);
-    }
-    let index_bytes = serde_json::to_vec(&index)
-        .map_err(|error| OfficeError::internal(format!("Could not encode the history index: {error}")))?;
-    // The new index goes first: a crash before it leaves the old index, whose
-    // files all still exist; a crash after it leaves at most an orphaned file.
-    write(&dir.join("index.json"), &index_bytes)?;
-    for version in &pruned {
-        let _ = std::fs::remove_file(dir.join(format!("v{version}.json")));
-    }
-    Ok(entry)
-}
-
-fn read_history_index(dir: &Path) -> Vec<HistoryEntry> {
-    let path = dir.join("index.json");
-    if !path.exists() {
-        return Vec::new();
-    }
-    std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Vec<HistoryEntry>>(&bytes).ok())
-        .unwrap_or_default()
+    office_history::push_version(&dir, kind, title, &model, office_history::HISTORY_LIMIT, officecore::io::write_atomic)
+        .map_err(payload)
 }
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_list(app: AppHandle, document_id: String) -> Result<Vec<HistoryEntry>, OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
-    let mut index = read_history_index(&dir);
-    index.sort_by_key(|entry| std::cmp::Reverse(entry.version));
-    Ok(index)
+    Ok(office_history::list_versions(&dir))
 }
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_load(app: AppHandle, document_id: String, version: u32) -> Result<Value, OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
-    let path = dir.join(format!("v{version}.json"));
-    let bytes = officecore::io::read_bytes(&path).map_err(payload)?;
-    let value: Value = serde_json::from_slice(&bytes)
-        .map_err(|error| payload(OfficeError::corrupt(format!("The saved version is damaged: {error}"))))?;
-    Ok(value.get("model").cloned().unwrap_or(Value::Null))
+    office_history::load_version(&dir, version).map_err(payload)
 }
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub fn history_clear(app: AppHandle, document_id: String) -> Result<(), OfficeErrorPayload> {
     let dir = history_dir(&app, &document_id)?;
-    if dir.exists() {
-        std::fs::remove_dir_all(&dir).map_err(|error| payload(OfficeError::from_io(error, &dir)))?;
-    }
-    Ok(())
+    office_history::clear_versions(&dir).map_err(payload)
 }
 
 // ---------------------------------------------------------------------------
@@ -2395,67 +2322,6 @@ mod tests {
         let saved = save_model("impress", serde_json::to_value(&deck).unwrap(), &path).expect("save odp");
         assert!(!saved.warnings.is_empty(), "the ODP package warnings must be surfaced");
         assert!(path.exists());
-    }
-
-    fn push(dir: &Path, text: &str, limit: usize) -> OfficeResult<HistoryEntry> {
-        push_version(dir, "writer".into(), "Doc".into(), &serde_json::json!({ "text": text }), limit, |path, bytes| {
-            officecore::io::write_atomic(path, bytes)
-        })
-    }
-
-    fn version_files(dir: &Path) -> Vec<String> {
-        let mut names: Vec<String> = std::fs::read_dir(dir)
-            .unwrap()
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
-            .collect();
-        names.sort();
-        names
-    }
-
-    #[test]
-    fn history_keeps_the_newest_versions_and_nothing_else() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        for round in 1..=5 {
-            let entry = push(dir.path(), &format!("text {round}"), 3).unwrap();
-            assert_eq!(entry.version, round);
-        }
-        let index = read_history_index(dir.path());
-        assert_eq!(index.iter().map(|entry| entry.version).collect::<Vec<_>>(), vec![3, 4, 5]);
-        // Pruned files are gone and no temp file is left behind.
-        assert_eq!(version_files(dir.path()), vec!["index.json", "v3.json", "v4.json", "v5.json"]);
-        let newest: Value = serde_json::from_slice(&std::fs::read(dir.path().join("v5.json")).unwrap()).unwrap();
-        assert_eq!(newest["model"]["text"], "text 5");
-    }
-
-    #[test]
-    fn history_never_deletes_a_version_before_the_new_index_is_written() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        for round in 1..=3 {
-            push(dir.path(), &format!("text {round}"), 3).unwrap();
-        }
-        let before = std::fs::read(dir.path().join("index.json")).unwrap();
-        // The fourth push would prune v1, but the index write fails.
-        let failed =
-            push_version(dir.path(), "writer".into(), "Doc".into(), &serde_json::json!({}), 3, |path, bytes| {
-                if path.file_name().is_some_and(|name| name == "index.json") {
-                    return Err(OfficeError::internal("disk full"));
-                }
-                officecore::io::write_atomic(path, bytes)
-            });
-        assert!(failed.is_err());
-        // The old index is untouched and every row it lists still has its file.
-        assert_eq!(std::fs::read(dir.path().join("index.json")).unwrap(), before);
-        for entry in read_history_index(dir.path()) {
-            assert!(dir.path().join(format!("v{}.json", entry.version)).exists(), "v{} is missing", entry.version);
-        }
-        // The next successful push reuses the number of the failed one and
-        // prunes down to the limit.
-        let retry = push(dir.path(), "text 4", 3).unwrap();
-        assert_eq!(retry.version, 4);
-        let versions: Vec<u32> = read_history_index(dir.path()).iter().map(|entry| entry.version).collect();
-        assert_eq!(versions, vec![2, 3, 4]);
-        assert!(!dir.path().join("v1.json").exists());
     }
 }
 

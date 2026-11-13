@@ -18,15 +18,13 @@ import { openDocument, saveDocument } from "../lib/office-api";
 import type { TextDocument } from "../lib/office-types";
 import { reportError, useToasts } from "../lib/store";
 
-export function DocumentHealthScreen({
-  initialText = "",
-  initialMetadata = {},
-  onNavigate,
-}: {
+type HealthScreenProps = {
   initialText?: string;
   initialMetadata?: Record<string, string | undefined>;
   onNavigate?: (view: ViewId) => void;
-}) {
+};
+
+export function DocumentHealthScreen({ initialText = "", initialMetadata = {}, onNavigate }: HealthScreenProps) {
   const t = useT();
   const { push } = useToasts();
   const [filePath, setFilePath] = useState<string | null>(null);
@@ -38,22 +36,15 @@ export function DocumentHealthScreen({
   const [hasLanguage, setHasLanguage] = useState(true);
   const [fontIssuesCount, setFontIssuesCount] = useState(0);
 
-  const report: DocumentHealthReport = useMemo(() => {
-    return analyzeDocumentHealth({
-      text: content,
-      metadata,
-      hasSignatures,
-      hasTitle,
-      hasLanguage,
-      fontIssuesCount,
-    });
-  }, [content, metadata, hasSignatures, hasTitle, hasLanguage, fontIssuesCount]);
+  const report: DocumentHealthReport = useMemo(
+    () => analyzeDocumentHealth({ text: content, metadata, hasSignatures, hasTitle, hasLanguage, fontIssuesCount }),
+    [content, metadata, hasSignatures, hasTitle, hasLanguage, fontIssuesCount],
+  );
 
   const loadFileForInspection = async (path: string) => {
     setBusy(true);
     setFilePath(path);
     try {
-      // A token has no extension; its remembered name does.
       const lower = fileBaseName(path).toLowerCase();
       if (lower.endsWith(".pdf")) {
         const [insp, sigs] = await Promise.all([
@@ -172,17 +163,9 @@ export function DocumentHealthScreen({
           // In-memory state is still cleaned below
         }
       }
-      push({
-        kind: "success",
-        title: t("health.metadataClearedTitle"),
-        detail: t("health.metadataClearedDetail"),
-      });
+      push({ kind: "success", title: t("health.metadataClearedTitle"), detail: t("health.metadataClearedDetail") });
     } else if (issue.fixAction === "redact_kvkk") {
-      push({
-        kind: "info",
-        title: t("health.redactToolTitle"),
-        detail: t("health.redactToolDetail"),
-      });
+      push({ kind: "info", title: t("health.redactToolTitle"), detail: t("health.redactToolDetail") });
       onNavigate?.("redact");
     } else {
       push({
@@ -194,16 +177,10 @@ export function DocumentHealthScreen({
   };
 
   const getSeverityBadge = (severity: HealthIssue["severity"]) => {
-    switch (severity) {
-      case "critical":
-        return <Badge tone="danger">{t("health.severityCritical")}</Badge>;
-      case "warning":
-        return <Badge tone="warn">{t("health.severityWarning")}</Badge>;
-      case "info":
-        return <Badge tone="default">{t("health.severityInfo")}</Badge>;
-      default:
-        return <Badge tone="ok">{t("health.severityOk")}</Badge>;
-    }
+    if (severity === "critical") return <Badge tone="danger">{t("health.severityCritical")}</Badge>;
+    if (severity === "warning") return <Badge tone="warn">{t("health.severityWarning")}</Badge>;
+    if (severity === "info") return <Badge tone="default">{t("health.severityInfo")}</Badge>;
+    return <Badge tone="ok">{t("health.severityOk")}</Badge>;
   };
 
   return (
