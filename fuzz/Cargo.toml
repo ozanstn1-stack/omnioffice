@@ -107,3 +107,31 @@ path = "fuzz_targets/lan_frame.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "pdf_forms"
+path = "fuzz_targets/pdf_forms.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pdf_redact"
+path = "fuzz_targets/pdf_redact.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pdf_rebuild"
+path = "fuzz_targets/pdf_rebuild.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pdf_verify"
+path = "fuzz_targets/pdf_verify.rs"
+test = false
+doc = false
+bench = false

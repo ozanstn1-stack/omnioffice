@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.47.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.48.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,24 +23,24 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new in 7.47.0
+## What's new in 7.48.0
 
-- **Desktop pre-send metadata check dialog:** renders `<PresendDialog>` in the shared desktop and compact overlay tree via `GlobalOverlays` so `shareWithCheck` opens on desktop just as on compact viewports.
-- **Hierarchical Tagged PDF & pagination artifacts:** Writer, Calc, and Impress PDF exports now emit nested `/Table` → `/TR` → `/TH`/`/TD` → `/P` structure trees with validated `/P` back-pointers and `/ParentTree` mappings, wrap headers and footers (including Slide Master footers, dates, and slide numbers) in `/Artifact <</Type /Pagination /Subtype /Header|Footer>>`, and start fresh `/Table` slices on page splits.
-- **Extended Office fidelity corpus:** adds `office_fidelity_extended_test.rs` measuring embedded images, charts with cached series/category points, threaded comments/replies, headers/footers, list numbering, section breaks, freeze panes, links with tooltips, structured tables, print areas/breaks, sheet protection, slide masters/layouts, nested groups, image crops, animations, notes, transitions, and hidden slides across DOCX, ODT, XLSX, PPTX, and ODP (`docs/office-fidelity-report.md`).
+- **Worker isolation for `page_text`:** passwordless `page_text` extraction now runs inside the contained `--worker` subprocess with structured `PdfError` decoding (`worker/jobs.rs`) and shared `open_pdfium_document` initialization, while password-protected files continue prompting safely without secrets on process arguments.
+- **Orphan annotation cleanup on full-rewrite saves:** `prune_orphan_annotations` removes dangling `/Popup` and `/IRT` reply chains, unreferenced `/Type /Annot` dictionaries, and stale `/Popup` links before object pruning, leaving AcroForm widgets and append-only signed revisions untouched.
+- **Expanded PDF fuzzing & frontend interaction tests:** adds four libFuzzer harnesses (`pdf_forms`, `pdf_redact`, `pdf_rebuild`, `pdf_verify`) to PR and nightly CI workflows plus 19 Vitest interaction tests covering `PetitionWizard`, `PageTools`, `Annotate`, and `PdfStudio`.
 
-Earlier in the 7.4x series: XLSX `t="shared"` export grouping and CI engine lock checks (7.46), unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info` worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42), Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40), Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
+Earlier in the 7.4x series: hierarchical Tagged PDF tables/artifacts, desktop `PresendDialog`, and extended Office fidelity corpus (7.47), XLSX `t="shared"` export grouping and CI engine lock checks (7.46), unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info` worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42), Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40), Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 
-**Downloads (v7.47.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v7.47.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.47.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.47.0/OmniOffice-Setup-7.47.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.47.0/OmniOffice-Portable-7.47.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.47.0/OmniOffice-Linux-7.47.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.47.0/OmniOffice-Linux-7.47.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.47.0/OmniOffice-Android-7.47.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.47.0/OmniOffice-Android-7.47.0-armeabi-v7a.apk)
+**Downloads (v7.48.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v7.48.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.48.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.48.0/OmniOffice-Setup-7.48.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.48.0/OmniOffice-Portable-7.48.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.48.0/OmniOffice-Linux-7.48.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.48.0/OmniOffice-Linux-7.48.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.48.0/OmniOffice-Android-7.48.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.48.0/OmniOffice-Android-7.48.0-armeabi-v7a.apk)
 
 ## Release history
 
@@ -771,9 +771,9 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 56 |
 | Tauri commands | 253 |
-| Rust tests | 1930 |
-| TypeScript test files | 260 |
-| TypeScript test cases (approx.) | 2750 |
+| Rust tests | 1933 |
+| TypeScript test files | 264 |
+| TypeScript test cases (approx.) | 2769 |
 <!-- stats:end -->
 
 ## License

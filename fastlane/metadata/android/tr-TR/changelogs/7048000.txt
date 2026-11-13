@@ -1,0 +1,1 @@
+7.48.0: Şifresiz sayfa metin çıkarma (page_text) yalıtımlı --worker alt sürecine taşındı; tam yeniden yazım kayıtlarında öksüz PDF ek açıklamaları/pop-up ve yanıt zincirleri artımlı imzaları bozmadan temizleniyor; 4 yeni PDF fuzz hedefi ve 4 yeni etkileşimli ön yüz test paketi eklendi.

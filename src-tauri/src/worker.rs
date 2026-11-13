@@ -43,6 +43,9 @@ use std::time::{Duration, Instant};
 
 #[cfg(not(target_os = "android"))]
 mod containment;
+mod jobs;
+
+pub use jobs::{decode_pdf_error, execute};
 
 #[cfg(not(target_os = "android"))]
 use containment::{env_allowed, platform};
@@ -82,6 +85,8 @@ pub enum Job {
     EmlOpen { path: PathBuf },
     /// Inspect PDF metadata, page count, and encryption status.
     PdfInfo { path: PathBuf },
+    /// Extract the text layer of one page (unauthenticated).
+    PdfPageText { path: PathBuf, page: u32 },
     /// Repair a damaged PDF (qpdf when available, built-in rebuild otherwise).
     Repair { input: PathBuf, output: PathBuf },
 }
@@ -96,6 +101,7 @@ impl Job {
             Job::InvoicePackage { path: file } => vec!["invoice-package".into(), path(file)],
             Job::EmlOpen { path: file } => vec!["eml-open".into(), path(file)],
             Job::PdfInfo { path: file } => vec!["pdf-info".into(), path(file)],
+            Job::PdfPageText { path: file, page } => vec!["pdf-page-text".into(), path(file), page.to_string()],
             Job::Repair { input, output } => vec!["repair".into(), path(input), path(output)],
         }
     }
@@ -112,6 +118,14 @@ impl Job {
             "invoice-package" => Ok(Job::InvoicePackage { path: path(1)? }),
             "eml-open" => Ok(Job::EmlOpen { path: path(1)? }),
             "pdf-info" => Ok(Job::PdfInfo { path: path(1)? }),
+            "pdf-page-text" => {
+                let page = rest
+                    .get(2)
+                    .ok_or_else(|| format!("{operation} needs a page number"))?
+                    .parse::<u32>()
+                    .map_err(|_| format!("{operation}: invalid page number"))?;
+                Ok(Job::PdfPageText { path: path(1)?, page })
+            }
             "repair" => Ok(Job::Repair { input: path(1)?, output: path(2)? }),
             other => Err(format!("unknown worker operation: {other}")),
         }
@@ -124,47 +138,10 @@ impl Job {
             Job::InvoicePackage { .. } => "invoice-package",
             Job::EmlOpen { .. } => "eml-open",
             Job::PdfInfo { .. } => "pdf-info",
+            Job::PdfPageText { .. } => "pdf-page-text",
             Job::Repair { .. } => "repair",
         }
     }
-}
-
-/// Runs the job and returns its JSON result. This is what the worker process
-/// executes; [`run_json_or_local`] also uses it as the in-process fallback.
-pub fn execute(job: &Job) -> Result<String, String> {
-    match job {
-        Job::OfficeOpen { path } => {
-            let document = crate::office::open_path(path).map_err(|error| error.to_string())?;
-            to_json(&document)
-        }
-        Job::InvoiceOpen { path } => {
-            let document = crate::office::invoice_document(path).map_err(|error| error.to_string())?;
-            to_json(&document)
-        }
-        Job::InvoicePackage { path } => {
-            let documents = crate::office::invoice_package(path).map_err(|error| error.to_string())?;
-            to_json(&documents)
-        }
-        Job::EmlOpen { path } => {
-            let message = crate::office::eml_message(path).map_err(|error| error.to_string())?;
-            to_json(&message)
-        }
-        Job::PdfInfo { path } => {
-            let info = pdfcore::info::pdf_info(path, None).map_err(|error| error.to_string())?;
-            to_json(&info)
-        }
-        Job::Repair { input, output } => {
-            let cancel = pdfcore::progress::CancelToken::new();
-            let silent = |_| ();
-            let report =
-                pdfcore::repair::repair_pdf(input, output, &silent, &cancel).map_err(|error| error.to_string())?;
-            to_json(&report)
-        }
-    }
-}
-
-fn to_json<T: serde::Serialize>(value: &T) -> Result<String, String> {
-    serde_json::to_string(value).map_err(|error| error.to_string())
 }
 
 /// Why a worker run failed: the worker could not even start, or it started and
