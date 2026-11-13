@@ -89,6 +89,10 @@ pub enum Job {
     PdfPageText { path: PathBuf, page: u32 },
     /// Rasterize a single unauthenticated PDF page as a PNG or JPEG data URL.
     PdfPageImage { path: PathBuf, page: u32, max_width: u32, dpi: u32, jpeg_quality: Option<u8> },
+    /// List annotations in display space for an unauthenticated PDF.
+    PdfListAnnotations { path: PathBuf },
+    /// Run structural/accessibility inspection on an unauthenticated PDF.
+    PdfInspect { path: PathBuf },
     /// Repair a damaged PDF (qpdf when available, built-in rebuild otherwise).
     Repair { input: PathBuf, output: PathBuf },
 }
@@ -112,6 +116,8 @@ impl Job {
                 dpi.to_string(),
                 jpeg_quality.map(|q| q.to_string()).unwrap_or_else(|| "png".into()),
             ],
+            Job::PdfListAnnotations { path: file } => vec!["pdf-list-annotations".into(), path(file)],
+            Job::PdfInspect { path: file } => vec!["pdf-inspect".into(), path(file)],
             Job::Repair { input, output } => vec!["repair".into(), path(input), path(output)],
         }
     }
@@ -148,6 +154,8 @@ impl Job {
                     jpeg_quality: quality,
                 })
             }
+            "pdf-list-annotations" => Ok(Job::PdfListAnnotations { path: path(1)? }),
+            "pdf-inspect" => Ok(Job::PdfInspect { path: path(1)? }),
             "repair" => Ok(Job::Repair { input: path(1)?, output: path(2)? }),
             other => Err(format!("unknown worker operation: {other}")),
         }
@@ -162,6 +170,8 @@ impl Job {
             Job::PdfInfo { .. } => "pdf-info",
             Job::PdfPageText { .. } => "pdf-page-text",
             Job::PdfPageImage { .. } => "pdf-page-image",
+            Job::PdfListAnnotations { .. } => "pdf-list-annotations",
+            Job::PdfInspect { .. } => "pdf-inspect",
             Job::Repair { .. } => "repair",
         }
     }

@@ -228,9 +228,14 @@ export function VerifyScreen({ initialFiles = [], dragging = false }: { initialF
   );
 
   useEffect(() => {
-    // The loader owns the report/busy/error state; a new document starts a new run.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader owns the report state
-    if (primaryPath) void run("offline");
+    if (!primaryPath) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void run("offline");
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [primaryPath, run]);
 
   useScreenReady("verify", Boolean(primaryPath));

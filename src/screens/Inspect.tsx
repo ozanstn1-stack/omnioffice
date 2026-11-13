@@ -104,8 +104,14 @@ export function Inspect({ initialFiles, dragging }: { initialFiles?: string[]; d
   // document change has to do is kick off the new load. Stale results from the
   // previous document are ignored because `load` is keyed on the active file.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader owns the report/error state
-    if (session.primary) void load();
+    if (!session.primary) return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (!cancelled) void load();
+    });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.primary?.path]);
 

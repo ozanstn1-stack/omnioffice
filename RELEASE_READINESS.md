@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.50.0
+# Release Readiness — OmniOffice 7.51.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,24 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 7.51.0) - Worker annotation/inspection isolation, clamp deduplication & screen hook lint cleanup
+
+- **Worker isolation for `pdf_list_annotations` & `inspect_document` (`E2.1`):**
+  isolates passwordless PDF annotation listing (`worker::Job::PdfListAnnotations`)
+  and structural/accessibility inspection (`worker::Job::PdfInspect`) into the
+  contained `--worker` subprocess while keeping passworded documents in-process.
+  `test:src-tauri/src/worker_tests.rs#parses_pdf_list_annotations_and_pdf_inspect`
+- **Consolidated `clamp` & `Thumb` (`E3.6`):** removes the duplicate `clamp`
+  definition in `src/lib/redact-geometry.ts` in favor of `src/lib/format.ts`
+  and replaces the duplicate `PageThumb` in `src/screens/Organize.tsx` with the
+  shared `Thumb` component from `src/components/pages.tsx`.
+  `test:src/lib/format.test.ts#computes stems, directory names, joined paths, and numeric clamping consistently`
+- **Screen & dialog `react-hooks/set-state-in-effect` cleanup (`E3.8`):**
+  refactors `CompatibilityDialog`, `AiLibrary`, `Annotate`, `Inspect`, `Vault`,
+  and `Verify` to avoid synchronous `setState` in `useEffect` bodies without
+  ESLint suppressions.
+  (no test: ESLint rule `react-hooks/set-state-in-effect` verified across all source files by `npm run lint`)
 
 ## Implemented (this cycle, 7.50.0) - Worker page-image isolation, office_roundtrip fuzzer, fileBaseName consolidation & hook lint cleanup
 

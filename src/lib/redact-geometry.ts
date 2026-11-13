@@ -44,15 +44,13 @@ export interface NormalizedRect {
   h: number;
 }
 
+import { clamp } from "./format";
+
 export interface UserSpaceRect {
   left: number;
   bottom: number;
   right: number;
   top: number;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return value < min ? min : value > max ? max : value;
 }
 
 /**

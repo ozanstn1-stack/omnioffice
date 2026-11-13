@@ -14,13 +14,13 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { Badge, Button, Card, IconButton, Modal, Spinner, TextInput } from "../components/ui";
+import { Badge, Button, Card, IconButton, Modal, TextInput } from "../components/ui";
 import { DropZone, InfoStrip, OutputBar, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
-import type { PageItem } from "../components/pages";
+import { Thumb, type PageItem } from "../components/pages";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
-import { applyPagePlan, pageThumbnail, pdfSetOutline } from "../lib/api";
+import { applyPagePlan, pdfSetOutline } from "../lib/api";
 import type { OutlineEntry, PagePlanItem } from "../lib/types";
 
 /** A page slot in the organizer; `blank` slots insert a new empty page. */
@@ -34,74 +34,6 @@ function planItem(page: OrganizeItem): PagePlanItem {
     return { source_page: 0, rotation_delta: 0, blank: true, width_pt: null, height_pt: null };
   }
   return { source_page: page.sourcePage, rotation_delta: page.rotationDelta };
-}
-
-// The shared `Thumb` component cannot skip its thumbnail request, and a blank
-// page has nothing to render: the local copy below adds exactly that branch.
-function PageThumb({
-  path,
-  page,
-  size,
-  password,
-  refreshedAt,
-}: {
-  path: string;
-  page: number;
-  size: number;
-  password?: string;
-  refreshedAt: number;
-}) {
-  const t = useT();
-  const [src, setSrc] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const requested = useRef(false);
-  // A refresh (or a new path/page) is a different thumbnail: the reset is
-  // derived from the identity below instead of a setState effect.
-  const identity = `${path}:${page}:${refreshedAt}`;
-  const [lastIdentity, setLastIdentity] = useState(identity);
-  if (lastIdentity !== identity) {
-    setLastIdentity(identity);
-    setSrc(null);
-    setFailed(false);
-  }
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element || requested.current) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !requested.current) {
-          requested.current = true;
-          void pageThumbnail(path, page, size, password)
-            .then((thumb) => setSrc(thumb.dataUrl))
-            .catch(() => setFailed(true));
-        }
-      },
-      { rootMargin: "320px" },
-    );
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-      requested.current = false;
-    };
-  }, [path, page, size, password, identity]);
-
-  return (
-    <div
-      ref={containerRef}
-      className="w-full h-full flex items-center justify-center overflow-hidden"
-      style={{ background: "var(--surface-2)" }}
-    >
-      {src ? (
-        <img src={src} alt={t("common.pageAlt", { page })} className="w-full h-full object-contain" draggable={false} />
-      ) : failed ? (
-        <span className="text-xs muted">—</span>
-      ) : (
-        <Spinner size={18} />
-      )}
-    </div>
-  );
 }
 
 function OrganizeThumb({
@@ -126,7 +58,7 @@ function OrganizeThumb({
       </div>
     );
   }
-  return <PageThumb path={path} page={item.sourcePage} size={size} password={password} refreshedAt={refreshedAt} />;
+  return <Thumb path={path} page={item.sourcePage} size={size} password={password} refreshedAt={refreshedAt} />;
 }
 
 function OrganizeGrid({

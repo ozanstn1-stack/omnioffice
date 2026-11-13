@@ -42,6 +42,14 @@ pub fn execute(job: &Job) -> Result<String, String> {
                     .map_err(|error| error.to_string())?;
             to_json(&thumb)
         }
+        Job::PdfListAnnotations { path } => {
+            let list = pdfcore::annotate::list_annotations_in_file(path, None).map_err(|error| error.to_string())?;
+            to_json(&list)
+        }
+        Job::PdfInspect { path } => {
+            let report = pdfcore::inspect::inspect_document(path, None).map_err(|error| error.to_string())?;
+            to_json(&report)
+        }
         Job::Repair { input, output } => {
             let cancel = pdfcore::progress::CancelToken::new();
             let silent = |_| ();

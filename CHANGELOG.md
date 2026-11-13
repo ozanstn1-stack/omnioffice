@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [7.51.0] - 2026-11-13
+
+### Changed
+
+- **Worker isolation for `pdf_list_annotations` & `inspect_document` (`E2.1`):** isolates passwordless PDF annotation listing (`worker::Job::PdfListAnnotations`) and structural/accessibility inspection (`worker::Job::PdfInspect`) into the contained `--worker` subprocess, keeping passworded calls in-process so passwords never enter `argv`.
+- **Consolidated `clamp` & `Thumb` (`E3.6`):** removes the duplicate `clamp` implementation in `src/lib/redact-geometry.ts` in favor of `clamp` from `src/lib/format.ts` (`src/lib/format.test.ts`), and replaces the duplicate `PageThumb` in `src/screens/Organize.tsx` with the shared `Thumb` from `src/components/pages.tsx`.
+- **Removed `react-hooks/set-state-in-effect` suppressions across 6 screens/components (`E3.8`):** refactors `CompatibilityDialog`, `AiLibrary`, `Annotate`, `Inspect`, `Vault`, and `Verify` to avoid synchronous `setState` inside `useEffect` bodies without disabling the ESLint rule.
+
 ## [7.50.0] - 2026-11-13
 
 ### Changed

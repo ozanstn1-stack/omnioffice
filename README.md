@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.50.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 7.51.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,24 +23,23 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new in 7.50.0
+## What's new in 7.51.0
 
-- **Worker isolation for PDF thumbnails & previews:** moves passwordless `page_thumbnail` and `page_preview` rasterization into the contained `--worker` subprocess (`worker::Job::PdfPageImage`), keeping passworded calls out of `argv`.
-- **`office_roundtrip` fuzz target:** adds `officecore::fuzz_office_roundtrip` and the `office_roundtrip` libFuzzer binary exercising DOCX, XLSX, PPTX, ODT, ODS, ODP, and RTF read→write→read cycles in PR and CI fuzzing.
-- **Frontend path & React hook hygiene:** consolidates 12 inline basename splits onto `fileBaseName` (`src/lib/format.test.ts`) and removes `react-hooks/set-state-in-effect` suppressions from `useOutputTarget`, `ProvenanceCard`, and `PersonCardsDialog`.
+- **Worker isolation for PDF annotation listing & structural inspection:** moves passwordless `pdf_list_annotations` (`worker::Job::PdfListAnnotations`) and `inspect_document` (`worker::Job::PdfInspect`) into the contained `--worker` subprocess while keeping passworded calls out of `argv`.
+- **Shared `clamp` / `Thumb` & React hook hygiene:** consolidates duplicate `clamp` logic in `src/lib/redact-geometry.ts` onto `src/lib/format.ts`, reuses `Thumb` from `src/components/pages.tsx` inside `src/screens/Organize.tsx`, and eliminates `react-hooks/set-state-in-effect` suppressions across `CompatibilityDialog`, `AiLibrary`, `Annotate`, `Inspect`, `Vault`, and `Verify`.
 
-Earlier in the 7.4x series: guarded job liveness, version history deduplication, Writer-selection desk tasks, and WebDAV/AI fuzzing (7.49), `page_text` worker isolation, orphan annotation cleanup, and PDF fuzzing (7.48), hierarchical Tagged PDF tables/artifacts, desktop `PresendDialog`, and extended Office fidelity corpus (7.47), XLSX `t="shared"` export grouping and CI engine lock checks (7.46), unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info` worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42), Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40), Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
+Earlier in the 7.4x–7.5x series: worker page-image isolation, `office_roundtrip` fuzzer, and `fileBaseName` consolidation (7.50), guarded job liveness, version history deduplication, Writer-selection desk tasks, and WebDAV/AI fuzzing (7.49), `page_text` worker isolation, orphan annotation cleanup, and PDF fuzzing (7.48), hierarchical Tagged PDF tables/artifacts, desktop `PresendDialog`, and extended Office fidelity corpus (7.47), XLSX `t="shared"` export grouping and CI engine lock checks (7.46), unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info` worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42), Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40), Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 
-**Downloads (v7.49.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v7.49.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.49.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.49.0/OmniOffice-Setup-7.49.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.49.0/OmniOffice-Portable-7.49.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.49.0/OmniOffice-Linux-7.49.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.49.0/OmniOffice-Linux-7.49.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.49.0/OmniOffice-Android-7.49.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.49.0/OmniOffice-Android-7.49.0-armeabi-v7a.apk)
+**Downloads (v7.50.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v7.50.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v7.50.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.50.0/OmniOffice-Setup-7.50.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.50.0/OmniOffice-Portable-7.50.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.50.0/OmniOffice-Linux-7.50.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.50.0/OmniOffice-Linux-7.50.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.50.0/OmniOffice-Android-7.50.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v7.50.0/OmniOffice-Android-7.50.0-armeabi-v7a.apk)
 
 ## Release history
 
@@ -771,7 +770,7 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 56 |
 | Tauri commands | 253 |
-| Rust tests | 1938 |
+| Rust tests | 1939 |
 | TypeScript test files | 265 |
 | TypeScript test cases (approx.) | 2773 |
 <!-- stats:end -->
