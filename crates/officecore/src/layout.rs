@@ -679,7 +679,8 @@ impl<'a> Renderer<'a> {
         let content_width = self.content_width;
         let left = section.page.margin_left_pt;
         let page = section.page.clone();
-        let mut commands: Vec<(f64, f64, String, TextStyle)> = Vec::new();
+        let mut header_cmds: Vec<(f64, f64, String, TextStyle)> = Vec::new();
+        let mut footer_cmds: Vec<(f64, f64, String, TextStyle)> = Vec::new();
         for (blocks, is_header) in [(&section.header, true), (&section.footer, false)] {
             if blocks.is_empty() {
                 continue;
@@ -687,8 +688,6 @@ impl<'a> Renderer<'a> {
             let start_y = if is_header {
                 (page.margin_top_pt - page.header_distance_pt).max(4.0) + 10.0
             } else {
-                // As in Word, the footer's last line ends `footer_distance`
-                // above the page edge and the footer grows upwards.
                 let mut height = 0.0;
                 for block in blocks {
                     if let Block::Paragraph { props, runs } = block {
@@ -704,6 +703,7 @@ impl<'a> Renderer<'a> {
                 page.height_pt - page.footer_distance_pt.max(10.0) - height
             };
             let mut y = start_y;
+            let out = if is_header { &mut header_cmds } else { &mut footer_cmds };
             for block in blocks {
                 if let Block::Paragraph { props, runs } = block {
                     let substituted = self.substitute_runs(runs, page_number);
@@ -717,7 +717,7 @@ impl<'a> Renderer<'a> {
                                 _ => left,
                             };
                             for item in &line.items {
-                                commands.push((x + item.dx, y + line.ascent, item.text.clone(), item.style.clone()));
+                                out.push((x + item.dx, y + line.ascent, item.text.clone(), item.style.clone()));
                             }
                             y += line.height;
                         }
@@ -726,8 +726,14 @@ impl<'a> Renderer<'a> {
             }
         }
         let canvas = self.canvas();
-        for (x, y, text, style) in commands {
-            canvas.text(x, y, &text, &style);
+        for (subtype, cmds) in [("Header", header_cmds), ("Footer", footer_cmds)] {
+            if !cmds.is_empty() {
+                canvas.begin_pagination_artifact(subtype);
+                for (x, y, text, style) in cmds {
+                    canvas.text(x, y, &text, &style);
+                }
+                canvas.end_artifact();
+            }
         }
     }
 
@@ -968,12 +974,15 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_table(&mut self, table: &TableData) {
+        if self.current.is_none() {
+            self.start_page();
+        }
         let columns = table_grid_columns(table);
         let widths = table_column_widths(table, columns, self.column_width);
         let layout = table_cell_layout(table, &widths);
         let padding = 4.0;
+        let mut table_open = false;
         for (row, cells) in table.rows.iter().zip(layout.iter()) {
-            // Measure the row height without drawing.
             let mut row_height: f64 = 12.0;
             for (_, width, cell) in cells {
                 let height = measure_blocks(self.fonts, self.document, &cell.blocks, (width - padding * 2.0).max(12.0));
@@ -983,33 +992,46 @@ impl<'a> Renderer<'a> {
                 row_height = row_height.max(height);
             }
             if self.remaining() < row_height {
+                if table_open {
+                    self.canvas().end_struct();
+                    table_open = false;
+                }
                 self.next_column();
             }
+            if !table_open {
+                self.canvas().begin_struct("Table");
+                table_open = true;
+            }
+            self.canvas().begin_struct("TR");
             let base_x = self.column_x(self.column);
             let top = self.y;
+            let cell_tag = if row.header { "TH" } else { "TD" };
             for (offset, width, cell) in cells {
                 let x = base_x + offset;
+                self.canvas().begin_struct(cell_tag);
                 if let Some(background) = cell.background.as_deref().and_then(parse_hex) {
-                    let canvas = self.canvas();
-                    canvas.fill_rect(x, top, *width, row_height, background, 1.0);
+                    self.canvas().fill_rect(x, top, *width, row_height, background, 1.0);
                 }
-                let content_height = draw_blocks_in_cell(
+                let _ = draw_blocks_in_cell(
                     self,
                     &cell.blocks,
                     x + padding,
                     top + padding,
                     (width - padding * 2.0).max(12.0),
                 );
-                let _ = content_height;
+                self.canvas().end_struct();
             }
             if table.borders {
                 let color = parse_hex(&table.border_color).unwrap_or(Rgb(148, 163, 184));
                 for (offset, width, _) in cells {
-                    let canvas = self.canvas();
-                    canvas.stroke_rect(base_x + offset, top, *width, row_height, color, 0.6);
+                    self.canvas().stroke_rect(base_x + offset, top, *width, row_height, color, 0.6);
                 }
             }
+            self.canvas().end_struct();
             self.y = top + row_height;
+        }
+        if table_open {
+            self.canvas().end_struct();
         }
     }
 
@@ -1323,6 +1345,8 @@ fn draw_blocks_in_cell(renderer: &mut Renderer<'_>, blocks: &[Block], x: f64, y:
                 let (words, base) = paragraph_words(renderer.document, props, runs);
                 let available = (width - base.indent_left_pt - base.indent_right_pt).max(12.0);
                 let spacing = if base.line_spacing > 0.0 { base.line_spacing } else { 1.15 };
+                let tag = paragraph_struct_tag(props);
+                let mut marked = false;
                 cursor += base.space_before_pt;
                 for segment in split_on_newlines(words) {
                     let lines = break_line(renderer.fonts, &segment, available, &base.align, &props.tabs);
@@ -1334,12 +1358,21 @@ fn draw_blocks_in_cell(renderer: &mut Renderer<'_>, blocks: &[Block], x: f64, y:
                             _ => left,
                         };
                         let baseline = cursor + (line.height * (spacing - 1.0)) / 2.0 + line.ascent;
-                        for item in &line.items {
+                        if !line.items.is_empty() {
                             let canvas = renderer.canvas();
-                            canvas.text(line_x + item.dx, baseline, &item.text, &item.style);
+                            if !marked {
+                                canvas.begin_marked(&tag, None);
+                                marked = true;
+                            }
+                            for item in &line.items {
+                                canvas.text(line_x + item.dx, baseline, &item.text, &item.style);
+                            }
                         }
                         cursor += line.height * spacing;
                     }
+                }
+                if marked {
+                    renderer.canvas().end_marked();
                 }
                 cursor += base.space_after_pt;
             }
@@ -1354,8 +1387,11 @@ fn draw_blocks_in_cell(renderer: &mut Renderer<'_>, blocks: &[Block], x: f64, y:
                     if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
                 let image_height =
                     (height_pt * (image_width / width_pt.max(1.0))).max(12.0).min(width * aspect.max(0.1) * 4.0);
+                let alt = if image.alt.trim().is_empty() { None } else { Some(image.alt.as_str()) };
                 let canvas = renderer.canvas();
+                canvas.begin_marked("Figure", alt);
                 canvas.image(x, cursor, image_width, image_height, &bytes, &image.mime);
+                canvas.end_marked();
                 cursor += image_height + 4.0;
             }
             Block::Rule => {
@@ -1406,211 +1442,8 @@ pub fn document_to_pdf(document: &TextDocument) -> Vec<u8> {
     write_pdf(&pages, &fonts, &document.title, "tr-TR")
 }
 
-// ---------------------------------------------------------------------------
-// Calc rendering
-// ---------------------------------------------------------------------------
-
-fn column_width_px(sheet: &Sheet, column: u32) -> f64 {
-    sheet.col_widths.get(&column).copied().unwrap_or(96.0)
-}
-
-fn row_height_px(sheet: &Sheet, row: u32) -> f64 {
-    sheet.row_heights.get(&row).copied().unwrap_or(22.0)
-}
-
-fn format_cell_value(value: &CellValue, sheet: &Sheet, address: &str) -> String {
-    let _ = (sheet, address);
-    match value {
-        CellValue::Empty => String::new(),
-        CellValue::Number(number) => {
-            if number.fract() == 0.0 && number.abs() < 1e15 {
-                format!("{}", *number as i64)
-            } else {
-                let text = format!("{number:.4}");
-                text.trim_end_matches('0').trim_end_matches('.').to_string()
-            }
-        }
-        CellValue::Text(text) => text.clone(),
-        CellValue::Bool(value) => if *value { "TRUE" } else { "FALSE" }.to_string(),
-        CellValue::Error(error) => error.clone(),
-    }
-}
-
-/// Renders a workbook: every sheet becomes one or more landscape/portrait
-/// pages, sliced by print area so large grids stay readable.
-pub fn workbook_to_pdf(workbook: &Workbook, sheet_limit: usize) -> Vec<u8> {
-    let fonts = FontSet::new();
-    let mut pages: Vec<BuiltPage> = Vec::new();
-    for sheet in workbook.sheets.iter().take(sheet_limit.max(1)) {
-        pages.extend(render_sheet(&fonts, sheet, workbook));
-    }
-    if pages.is_empty() {
-        let mut canvas = Canvas::new(842.0, 595.0, &fonts);
-        canvas.text(40.0, 60.0, "Empty workbook", &TextStyle { size_pt: 16.0, ..Default::default() });
-        pages.push(canvas.finish());
-    }
-    write_pdf(&pages, &fonts, &workbook.title, "tr-TR")
-}
-
-fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<BuiltPage> {
-    let page_width = 842.0;
-    let page_height = 595.0;
-    let margin = 28.0;
-    let header_height = 40.0;
-    let footer_height = 16.0;
-    let content_top = margin + header_height;
-    let content_bottom = page_height - margin - footer_height;
-
-    // Determine the used range (bounded, keeps huge sheets printable).
-    let mut max_row = 0u32;
-    let mut max_col = 0u32;
-    for address in sheet.cells.keys() {
-        if let Some((row, column)) = crate::address::parse(address) {
-            max_row = max_row.max(row);
-            max_col = max_col.max(column);
-        }
-    }
-    max_row = max_row.min(2_000);
-    max_col = max_col.min(60);
-
-    let col_widths: Vec<f64> = (0..=max_col).map(|column| column_width_px(sheet, column).min(220.0)).collect();
-
-    // Slice columns into strips that fit the page width.
-    let available_width = page_width - margin * 2.0;
-    let mut strips: Vec<(u32, u32)> = Vec::new();
-    let mut start = 0u32;
-    let mut width = 0.0;
-    for column in 0..=max_col {
-        let column_width = col_widths[column as usize];
-        if width + column_width > available_width && column > start {
-            strips.push((start, column - 1));
-            start = column;
-            width = 0.0;
-        }
-        width += column_width;
-    }
-    strips.push((start, max_col));
-    if strips.is_empty() {
-        strips.push((0, 0));
-    }
-
-    let mut pages = Vec::new();
-    for (strip_start, strip_end) in strips {
-        let strip_width: f64 = (strip_start..=strip_end).map(|column| col_widths[column as usize]).sum();
-        let mut row = 0u32;
-        loop {
-            let mut canvas = Canvas::new(page_width, page_height, fonts);
-            let title_style = TextStyle { size_pt: 13.0, bold: true, ..Default::default() };
-            let small = TextStyle { size_pt: 8.5, color: Rgb(90, 100, 115), ..Default::default() };
-            canvas.text(margin, margin + 12.0, &sheet.name, &title_style);
-            canvas.text(
-                margin,
-                margin + 26.0,
-                &format!(
-                    "{} | columns {}-{}",
-                    workbook.title,
-                    crate::address::column_name(strip_start),
-                    crate::address::column_name(strip_end)
-                ),
-                &small,
-            );
-
-            // Column headers.
-            let mut x = margin;
-            let header_style = TextStyle { size_pt: 8.5, bold: true, color: Rgb(60, 70, 85), ..Default::default() };
-            canvas.fill_rect(margin, content_top - 14.0, strip_width, 14.0, Rgb(241, 245, 249), 1.0);
-            for column in strip_start..=strip_end {
-                let width = col_widths[column as usize];
-                // A hidden column (width 0) has no header and no cells.
-                if width > 0.0 {
-                    canvas.text(x + 3.0, content_top - 3.0, &crate::address::column_name(column), &header_style);
-                }
-                x += width;
-            }
-
-            let mut y = content_top;
-            let mut last_row = row;
-            while y + row_height_px(sheet, last_row) <= content_bottom && last_row <= max_row {
-                let row_height = row_height_px(sheet, last_row);
-                // A hidden row (height 0, also what a filter does) is not printed.
-                if row_height <= 0.0 {
-                    last_row += 1;
-                    continue;
-                }
-                let mut x = margin;
-                if last_row % 2 == 1 {
-                    canvas.fill_rect(margin, y, strip_width, row_height, Rgb(248, 250, 252), 1.0);
-                }
-                let row_label_style = TextStyle { size_pt: 8.0, color: Rgb(100, 116, 139), ..Default::default() };
-                canvas.text(margin - 20.0, y + row_height * 0.65, &(last_row + 1).to_string(), &row_label_style);
-                for column in strip_start..=strip_end {
-                    let width = col_widths[column as usize];
-                    if width <= 0.0 {
-                        continue;
-                    }
-                    let address = crate::address::format(last_row, column);
-                    if let Some(cell) = sheet.cells.get(&address) {
-                        let text = format_cell_value(&cell.value, sheet, &address);
-                        if !text.is_empty() {
-                            let bold = cell.style.bold;
-                            let color = cell.style.color.as_deref().and_then(parse_hex).unwrap_or(Rgb::BLACK);
-                            let style = TextStyle {
-                                size_pt: cell.style.size_pt.unwrap_or(9.0),
-                                bold,
-                                color,
-                                ..Default::default()
-                            };
-                            let text_width = fonts.pick(bold).advance_pt(&text, style.size_pt);
-                            let text_x = match cell.style.align.as_str() {
-                                "center" => x + (width - text_width) / 2.0,
-                                "right" => x + width - text_width - 3.0,
-                                _ => x + 3.0,
-                            };
-                            canvas.text(
-                                text_x,
-                                y + row_height * 0.68,
-                                &truncate_to_width(fonts, &text, &style, width - 6.0),
-                                &style,
-                            );
-                        }
-                        if let Some(fill) = cell.style.fill.as_deref().and_then(parse_hex) {
-                            // Draw fills behind text: repaint for cells with a fill.
-                            if text.is_empty() {
-                                canvas.fill_rect(x, y, width, row_height, fill, 1.0);
-                            }
-                        }
-                    }
-                    x += width;
-                }
-                y += row_height;
-                last_row += 1;
-            }
-            canvas.text(page_width - margin - 60.0, page_height - margin, &format!("Page {}", pages.len() + 1), &small);
-            pages.push(canvas.finish());
-            if last_row > max_row {
-                break;
-            }
-            row = last_row;
-        }
-    }
-    pages
-}
-
-fn truncate_to_width(fonts: &FontSet, text: &str, style: &TextStyle, width: f64) -> String {
-    if fonts.pick(style.bold).advance_pt(text, style.size_pt) <= width {
-        return text.to_string();
-    }
-    let mut out = String::new();
-    for ch in text.chars() {
-        let candidate = format!("{out}{ch}");
-        if fonts.pick(style.bold).advance_pt(&candidate, style.size_pt) > width - 8.0 {
-            break;
-        }
-        out.push(ch);
-    }
-    out.push('…');
-    out
-}
+use crate::layout_calc::truncate_to_width;
+pub use crate::layout_calc::workbook_to_pdf;
 
 // ---------------------------------------------------------------------------
 // Impress rendering
@@ -1723,6 +1556,7 @@ fn draw_slide_object(
     let fill = style.fill.as_deref().and_then(parse_hex);
     let stroke = style.stroke.as_deref().and_then(parse_hex).map(|color| (color, style.stroke_width_pt.max(0.5)));
     let opacity = if style.opacity > 0.0 { style.opacity } else { 1.0 };
+    let is_footer_artifact = matches!(object.placeholder.as_deref(), Some("footer" | "date" | "slideNumber"));
     canvas.save();
     if object.rotation.abs() > 0.01 {
         let cx = object.x + object.w / 2.0;
@@ -1739,6 +1573,9 @@ fn draw_slide_object(
             px - cos * px + sin * py,
             py - sin * px - cos * py
         ));
+    }
+    if is_footer_artifact {
+        canvas.begin_pagination_artifact("Footer");
     }
     match object.kind.as_str() {
         "ellipse" => canvas.ellipse(object.x, object.y, object.w, object.h, fill, stroke),
@@ -1773,7 +1610,9 @@ fn draw_slide_object(
                 let bytes = image.bytes();
                 if !bytes.is_empty() {
                     let alt = if image.alt.trim().is_empty() { None } else { Some(image.alt.as_str()) };
-                    canvas.begin_marked("Figure", alt);
+                    if !is_footer_artifact {
+                        canvas.begin_marked("Figure", alt);
+                    }
                     let crop = image
                         .crop
                         .as_ref()
@@ -1802,25 +1641,46 @@ fn draw_slide_object(
                             canvas.image(object.x, object.y, object.w, object.h, &bytes, &image.mime);
                         }
                     }
-                    canvas.end_marked();
+                    if !is_footer_artifact {
+                        canvas.end_marked();
+                    }
                 }
             }
         }
         "table" => {
             if let Some(table) = &object.table {
-                draw_slide_table(canvas, object, table, fonts);
+                draw_slide_table(canvas, object, table, fonts, !is_footer_artifact);
             }
         }
         "chart" => {
             if let Some(chart) = &object.chart {
+                if !is_footer_artifact {
+                    let alt = if chart.title.trim().is_empty() { Some("Chart") } else { Some(chart.title.as_str()) };
+                    canvas.begin_marked("Figure", alt);
+                }
                 draw_slide_chart(canvas, object, chart, fonts);
+                if !is_footer_artifact {
+                    canvas.end_marked();
+                }
             }
         }
         _ => {}
     }
+    let text_tag = match object.placeholder.as_deref() {
+        Some("title") => "H1",
+        Some("subtitle") => "H2",
+        _ => "P",
+    };
     let resolved = object.placeholder.as_deref().and_then(|role| placeholder_text(role, context));
     if let Some(frame) = &object.text {
-        canvas.begin_marked("P", None);
+        let has_text = resolved.is_some()
+            || frame
+                .paragraphs
+                .iter()
+                .any(|p| !p.text.trim().is_empty() || p.runs.iter().any(|r| !r.text.trim().is_empty()));
+        if !is_footer_artifact && has_text {
+            canvas.begin_marked(text_tag, None);
+        }
         match &resolved {
             Some(value) => {
                 let frame = frame_with_value(frame, value);
@@ -1828,15 +1688,24 @@ fn draw_slide_object(
             }
             None => draw_text_frame(canvas, object, frame, fonts),
         }
-        canvas.end_marked();
+        if !is_footer_artifact && has_text {
+            canvas.end_marked();
+        }
     } else if let Some(value) = &resolved {
         let frame = TextFrame {
             paragraphs: vec![TextParagraph { text: value.clone(), ..Default::default() }],
             ..Default::default()
         };
-        canvas.begin_marked("P", None);
+        if !is_footer_artifact && !value.trim().is_empty() {
+            canvas.begin_marked(text_tag, None);
+        }
         draw_text_frame(canvas, object, &frame, fonts);
-        canvas.end_marked();
+        if !is_footer_artifact && !value.trim().is_empty() {
+            canvas.end_marked();
+        }
+    }
+    if is_footer_artifact {
+        canvas.end_artifact();
     }
     if object.rotation.abs() > 0.01 {
         canvas.page.ops.push_str("Q\n");
@@ -1987,13 +1856,23 @@ fn draw_text_frame(canvas: &mut Canvas<'_>, object: &SlideObject, frame: &TextFr
     }
 }
 
-fn draw_slide_table(canvas: &mut Canvas<'_>, object: &SlideObject, table: &TableData, fonts: &FontSet) {
+fn draw_slide_table(canvas: &mut Canvas<'_>, object: &SlideObject, table: &TableData, fonts: &FontSet, tagged: bool) {
     let rows = table.rows.len().max(1);
     let columns = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
     let cell_width = object.w / columns as f64;
     let cell_height = object.h / rows as f64;
+    if tagged && !table.rows.is_empty() {
+        canvas.begin_struct("Table");
+    }
     for (row_index, row) in table.rows.iter().enumerate() {
+        if tagged {
+            canvas.begin_struct("TR");
+        }
+        let cell_tag = if row.header { "TH" } else { "TD" };
         for (column_index, cell) in row.cells.iter().enumerate() {
+            if tagged {
+                canvas.begin_struct(cell_tag);
+            }
             let x = object.x + cell_width * column_index as f64;
             let y = object.y + cell_height * row_index as f64;
             if let Some(background) = cell.background.as_deref().and_then(parse_hex) {
@@ -2003,8 +1882,25 @@ fn draw_slide_table(canvas: &mut Canvas<'_>, object: &SlideObject, table: &Table
             let text = cell.blocks.iter().map(Block::plain_text).collect::<Vec<_>>().join(" ");
             let style = TextStyle { size_pt: 12.0, ..Default::default() };
             let truncated = truncate_to_width(fonts, &text, &style, cell_width - 10.0);
-            canvas.text(x + 5.0, y + cell_height / 2.0 + 4.0, &truncated, &style);
+            if !truncated.is_empty() {
+                if tagged {
+                    canvas.begin_marked("P", None);
+                }
+                canvas.text(x + 5.0, y + cell_height / 2.0 + 4.0, &truncated, &style);
+                if tagged {
+                    canvas.end_marked();
+                }
+            }
+            if tagged {
+                canvas.end_struct();
+            }
         }
+        if tagged {
+            canvas.end_struct();
+        }
+    }
+    if tagged && !table.rows.is_empty() {
+        canvas.end_struct();
     }
 }
 

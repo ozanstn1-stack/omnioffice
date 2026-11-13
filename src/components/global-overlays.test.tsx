@@ -32,4 +32,22 @@ describe("global overlays (3.5)", () => {
     rerender(overlays(false, true));
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
+
+  it("renders the presend slot when provided", () => {
+    render(
+      <GlobalOverlays
+        screen="home"
+        backgroundJobs={0}
+        paletteOpen={false}
+        onClosePalette={vi.fn()}
+        searchOpen={false}
+        onCloseSearch={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenPath={vi.fn()}
+        onOpenRecent={vi.fn()}
+        presend={<div role="dialog">Presend check</div>}
+      />,
+    );
+    expect(screen.getByRole("dialog")).toHaveTextContent("Presend check");
+  });
 });

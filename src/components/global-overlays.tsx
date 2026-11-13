@@ -17,8 +17,9 @@ const GlobalSearch = lazy(() => import("./command-palette").then((m) => ({ defau
  * the background-jobs live region, the overwrite / password / data-loss /
  * file-conflict dialogs (one global host each, so the compatibility gate also
  * covers the converter outside the office workspace), the command palette
- * and global search. `presend` is the phone shell's pre-send dialog slot,
- * kept in its place between the overwrite and password dialogs.
+ * and global search. `presend` is the pre-send dialog slot shared by both
+ * the desktop and phone shells, kept between the overwrite and password
+ * dialogs.
  */
 export function GlobalOverlays({
   screen,
