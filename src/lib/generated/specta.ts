@@ -643,7 +643,7 @@ export const commands = {
 	 *  Adds interactive AcroForm fields (`/Tx`, `/Btn`, `/Ch`, `/Sig`) to a PDF
 	 *  and writes the updated document to `output`.
 	 */
-	pdfCreateFormFields: (request: CreateFormFieldsRequest) => typedError<number, PdfError>(__TAURI_INVOKE("pdf_create_form_fields", { request })),
+	pdfCreateFormFields: (request: CreateFormFieldsRequest_Deserialize) => typedError<number, PdfError>(__TAURI_INVOKE("pdf_create_form_fields", { request })),
 	/**  Lists annotations, widgets and drawn image placements for every page. */
 	pdfListObjects: (path: string, password: string | null) => typedError<PageObjectInfo_Serialize[], PdfError>(__TAURI_INVOKE("pdf_list_objects", { path, password })),
 	/**
@@ -1748,6 +1748,22 @@ export type ConvertOptions_Serialize = {
 	 *  persisted or logged.
 	 */
 	password: string | null,
+};
+
+export type CreateFormFieldsRequest = CreateFormFieldsRequest_Serialize | CreateFormFieldsRequest_Deserialize;
+
+export type CreateFormFieldsRequest_Deserialize = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	password?: string | null,
+	fields?: NewFormField_Deserialize[],
+};
+
+export type CreateFormFieldsRequest_Serialize = {
+	input: string,
+	output: OutputSpec_Serialize,
+	password: string | null,
+	fields: NewFormField_Serialize[],
 };
 
 export type CropItem = {
@@ -3183,6 +3199,37 @@ export type MetadataSuggestion = {
 	author: string,
 	subject: string,
 	keywords: string[],
+};
+
+/**  Specification for a new interactive AcroForm field to add to a PDF page. */
+export type NewFormField = NewFormField_Serialize | NewFormField_Deserialize;
+
+/**  Specification for a new interactive AcroForm field to add to a PDF page. */
+export type NewFormField_Deserialize = {
+	name: string,
+	/**  `text` | `checkbox` | `choice` | `signature`. */
+	fieldType: string,
+	/**  1-based page number. */
+	page: number,
+	/**  Page-space rectangle `[x0, y0, x1, y1]` (bottom-left origin, points). */
+	rect: [number, number, number, number],
+	required?: boolean,
+	defaultValue?: string | null,
+	options?: string[],
+};
+
+/**  Specification for a new interactive AcroForm field to add to a PDF page. */
+export type NewFormField_Serialize = {
+	name: string,
+	/**  `text` | `checkbox` | `choice` | `signature`. */
+	fieldType: string,
+	/**  1-based page number. */
+	page: number,
+	/**  Page-space rectangle `[x0, y0, x1, y1]` (bottom-left origin, points). */
+	rect: [number, number, number, number],
+	required: boolean,
+	defaultValue: string | null,
+	options: string[],
 };
 
 export type NumberingOptions = NumberingOptions_Serialize | NumberingOptions_Deserialize;
@@ -6200,23 +6247,6 @@ export type WatermarkRequest_Serialize = {
 	keepSignatures: boolean,
 	password: string | null,
 	jobId: string | null,
-};
-
-export type CreateFormFieldsRequest = {
-	input: string,
-	output: OutputSpec_Deserialize,
-	password?: string | null,
-	fields?: NewFormField[],
-};
-
-export type NewFormField = {
-	name: string,
-	fieldType: string,
-	page: number,
-	rect: [number, number, number, number],
-	required?: boolean,
-	defaultValue?: string | null,
-	options?: string[],
 };
 
 /* Tauri Specta runtime */
