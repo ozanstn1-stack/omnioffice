@@ -143,15 +143,9 @@ pub fn cancel_job(registry: State<'_, JobRegistry>, job_id: String) {
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_info(path: String, password: Option<String>) -> Result<pdfcore::info::PdfInfo, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
-    run_blocking(move || {
-        if password.is_none() {
-            let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfInfo { path })
-                .map_err(crate::worker::decode_pdf_error)?;
-            serde_json::from_str(&json)
-                .map_err(|error| PdfError::Internal(format!("the pdf-info result is not valid: {error}")))
-        } else {
-            pdfcore::info::pdf_info(&path, password.as_deref())
-        }
+    run_blocking(move || match password {
+        None => crate::worker::run_json_decoded(&crate::worker::Job::PdfInfo { path }),
+        Some(pw) => pdfcore::info::pdf_info(&path, Some(&pw)),
     })
     .await
 }
@@ -234,7 +228,7 @@ pub async fn page_preview(
 
 /// Encodes a preview or tile as a data URL. Reading mode requests JPEG (much
 /// smaller for large pages); the thumbnail/preview default stays lossless PNG.
-fn preview_data_url(
+pub(crate) fn preview_data_url(
     rendered: &pdfcore::render::RenderedPage,
     format: Option<&str>,
     quality: Option<u8>,
@@ -292,6 +286,22 @@ pub async fn page_tile(
         )));
     }
     run_blocking(move || {
+        if password.is_none() {
+            let jpeg_quality = match format.as_deref() {
+                Some("jpeg") | Some("jpg") => Some(quality.unwrap_or(86)),
+                _ => None,
+            };
+            return crate::worker::run_json_decoded(&crate::worker::Job::PdfPageTile {
+                path,
+                page,
+                scale_bits: scale.to_bits(),
+                x,
+                y,
+                width,
+                height,
+                jpeg_quality,
+            });
+        }
         let region = pdfcore::render::PixelRegion { x, y, width, height };
         let rendered = pdfcore::render::render_page_region(&path, password.as_deref(), page, scale, region)?;
         preview_data_url(&rendered, format.as_deref(), quality)
@@ -304,15 +314,9 @@ pub async fn page_tile(
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn page_text(path: String, page: u32, password: Option<String>) -> Result<String, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
-    run_blocking(move || {
-        if password.is_none() {
-            let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfPageText { path, page })
-                .map_err(crate::worker::decode_pdf_error)?;
-            serde_json::from_str(&json)
-                .map_err(|error| PdfError::Internal(format!("the pdf-page-text result is not valid: {error}")))
-        } else {
-            pdfcore::render::extract_page_text(&path, password.as_deref(), page)
-        }
+    run_blocking(move || match password {
+        None => crate::worker::run_json_decoded(&crate::worker::Job::PdfPageText { path, page }),
+        Some(pw) => pdfcore::render::extract_page_text(&path, Some(&pw), page),
     })
     .await
 }
@@ -1389,13 +1393,9 @@ pub async fn pdf_list_annotations(
     password: Option<String>,
 ) -> Result<Vec<pdfcore::annotate::EditableAnnotation>, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
-    run_blocking(move || {
-        if password.is_some() {
-            return pdfcore::annotate::list_annotations_in_file(&path, password.as_deref());
-        }
-        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfListAnnotations { path })
-            .map_err(crate::worker::decode_pdf_error)?;
-        serde_json::from_str(&json).map_err(|error| PdfError::Internal(error.to_string()))
+    run_blocking(move || match password {
+        None => crate::worker::run_json_decoded(&crate::worker::Job::PdfListAnnotations { path }),
+        Some(pw) => pdfcore::annotate::list_annotations_in_file(&path, Some(&pw)),
     })
     .await
 }
@@ -1962,13 +1962,9 @@ pub async fn inspect_document(
     password: Option<String>,
 ) -> Result<pdfcore::inspect::DocumentInspection, PdfError> {
     let path = crate::paths::input_file(&path)?.into_path_buf();
-    run_blocking(move || {
-        if password.is_some() {
-            return pdfcore::inspect::inspect_document(&path, password.as_deref());
-        }
-        let json = crate::worker::run_json_or_local(&crate::worker::Job::PdfInspect { path })
-            .map_err(crate::worker::decode_pdf_error)?;
-        serde_json::from_str(&json).map_err(|error| PdfError::Internal(error.to_string()))
+    run_blocking(move || match password {
+        None => crate::worker::run_json_decoded(&crate::worker::Job::PdfInspect { path }),
+        Some(pw) => pdfcore::inspect::inspect_document(&path, Some(&pw)),
     })
     .await
 }

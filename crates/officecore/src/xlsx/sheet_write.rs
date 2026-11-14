@@ -181,11 +181,16 @@ pub(super) fn sheet_xml(
             // flag and a width Excel shows again on "Unhide"; the clamp in
             // `column_width_units` would otherwise draw it 2 characters wide.
             let hidden = *width <= 0.0;
+            let write_px = if hidden {
+                sheet.hidden_col_widths.get(column).copied().filter(|w| *w > 0.0).unwrap_or(DEFAULT_COLUMN_PX)
+            } else {
+                *width
+            };
             writer.raw(&format!(
                 "<col min=\"{}\" max=\"{}\" width=\"{:.2}\"{} customWidth=\"1\"/>",
                 column + 1,
                 column + 1,
-                column_width_units(if hidden { DEFAULT_COLUMN_PX } else { *width }),
+                column_width_units(write_px),
                 if hidden { " hidden=\"1\"" } else { "" }
             ));
         }
@@ -237,7 +242,12 @@ pub(super) fn sheet_xml(
         cells.sort_by_key(|(column, _)| *column);
         // The editor hides a row (or an AutoFilter does) by storing height 0.
         let row_open = match sheet.row_heights.get(&row) {
-            Some(height) if *height <= 0.0 => format!("<row r=\"{}\" hidden=\"1\"", row + 1),
+            Some(height) if *height <= 0.0 => match sheet.hidden_row_heights.get(&row) {
+                Some(saved) if *saved > 0.0 => {
+                    format!("<row r=\"{}\" ht=\"{:.2}\" customHeight=\"1\" hidden=\"1\"", row + 1, saved * 0.75)
+                }
+                _ => format!("<row r=\"{}\" hidden=\"1\"", row + 1),
+            },
             Some(height) => format!("<row r=\"{}\" ht=\"{:.2}\" customHeight=\"1\"", row + 1, height * 0.75),
             None => format!("<row r=\"{}\"", row + 1),
         };

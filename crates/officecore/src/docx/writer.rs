@@ -376,6 +376,9 @@ struct DocxState {
     /// `w:numId` of the numbered-list run each paragraph belongs to, keyed by
     /// the address of its properties (see [`plan_list_numbering`]).
     list_num_ids: HashMap<usize, u32>,
+    /// Bookmarks `(offset, name, numeric_id)` pending for the block currently being written.
+    active_bookmarks: Vec<(u32, String, u32)>,
+    bookmark_seq: u32,
 }
 
 impl DocxState {
@@ -627,11 +630,23 @@ fn write_field_run(state: &mut DocxState, writer: &mut XmlWriter, run: &Run, fie
     writer.raw("</w:r>");
 }
 
+fn write_bookmark_point(writer: &mut XmlWriter, id: u32, name: &str) {
+    let escaped = crate::xml::escape_attr(name);
+    writer.raw(&format!("<w:bookmarkStart w:id=\"{id}\" w:name=\"{escaped}\"/><w:bookmarkEnd w:id=\"{id}\"/>"));
+}
+
 fn write_paragraph(state: &mut DocxState, writer: &mut XmlWriter, props: &ParaProps, runs: &[Run], sect: Option<&str>) {
     let num_id = state.list_num_ids.get(&(props as *const ParaProps as usize)).copied();
+    let bookmarks = std::mem::take(&mut state.active_bookmarks);
+    let mut bm_idx = 0usize;
+    let mut char_offset = 0u32;
     writer.raw("<w:p>");
     write_paragraph_properties(writer, props, sect, num_id);
     for run in runs {
+        while bm_idx < bookmarks.len() && bookmarks[bm_idx].0 <= char_offset {
+            write_bookmark_point(writer, bookmarks[bm_idx].2, &bookmarks[bm_idx].1);
+            bm_idx += 1;
+        }
         let comment = run.comment.as_deref().and_then(|id| state.comment_id(id));
         if let Some(comment) = comment {
             writer.raw(&format!("<w:commentRangeStart w:id=\"{comment}\"/>"));
@@ -648,6 +663,11 @@ fn write_paragraph(state: &mut DocxState, writer: &mut XmlWriter, props: &ParaPr
             writer.raw(&format!("<w:commentRangeEnd w:id=\"{comment}\"/>"));
             writer.raw(&format!("<w:r><w:rPr><w:rStyle w:val=\"CommentReference\"/></w:rPr><w:commentReference w:id=\"{comment}\"/></w:r>"));
         }
+        char_offset += run.text.chars().count() as u32;
+    }
+    while bm_idx < bookmarks.len() {
+        write_bookmark_point(writer, bookmarks[bm_idx].2, &bookmarks[bm_idx].1);
+        bm_idx += 1;
     }
     writer.raw("</w:p>");
 }
@@ -1395,7 +1415,25 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
 
     let mut body = XmlWriter::new();
     let mut current = 0usize;
-    for block in &document.blocks {
+    for (block_idx, block) in document.blocks.iter().enumerate() {
+        let mut block_bookmarks: Vec<(u32, String, u32)> = document
+            .bookmarks
+            .iter()
+            .filter(|bookmark| bookmark.block as usize == block_idx && !bookmark.name.is_empty())
+            .map(|bookmark| {
+                let id = bookmark.id.parse::<u32>().unwrap_or_else(|_| {
+                    state.bookmark_seq += 1;
+                    state.bookmark_seq
+                });
+                if id > state.bookmark_seq {
+                    state.bookmark_seq = id;
+                }
+                (bookmark.offset, bookmark.name.clone(), id)
+            })
+            .collect();
+        block_bookmarks.sort_by_key(|(offset, _, _)| *offset);
+        state.active_bookmarks = block_bookmarks;
+
         if matches!(block, Block::SectionBreak { .. }) {
             // Word stores the properties of the section that just ended in the
             // last paragraph of that section.
@@ -1411,6 +1449,9 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
             continue;
         }
         write_block(&mut state, &mut body, block, 0);
+        for (_, name, id) in std::mem::take(&mut state.active_bookmarks) {
+            write_bookmark_point(&mut body, id, &name);
+        }
     }
     let last = section_xml.last().cloned().unwrap_or_default();
     body.raw(&format!("<w:sectPr>{last}</w:sectPr>"));

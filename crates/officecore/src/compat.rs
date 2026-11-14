@@ -138,7 +138,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             vec![
                 feature("sections", SupportLevel::Partial, "Section breaks are written as page breaks; per-section page setup is not exported to ODT."),
                 feature("footnotes", SupportLevel::Full, "Footnotes and endnotes round-trip as text:note elements with matching citation numbers."),
-                feature("trackChanges", SupportLevel::Unsupported, "Tracked changes are kept in .oswk only; a warning is reported when exporting to ODT."),
+                feature("trackChanges", SupportLevel::Partial, "Insertions and deletions round-trip via text:tracked-changes; formatting-only revisions are simplified."),
                 feature("comments", SupportLevel::Partial, "Comments round-trip as office:annotation ranges with LibreOffice's resolved flag; ODF has no portable reply threading, so replies are stored as reply paragraphs."),
                 feature("fields", SupportLevel::Unsupported, "Fields export as their cached text."),
                 feature("tables", SupportLevel::Full, "Merged cells round-trip as table:number-columns-spanned / table:number-rows-spanned with covered-table-cell placeholders."),
@@ -157,7 +157,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
                 feature("characterFormatting", SupportLevel::Full, "Bold, italic, underline, strikethrough, font, size, colour and super/subscript round-trip per segment."),
                 feature("alignment", SupportLevel::Full, "Left, centre, right and justified alignment, indents, spacing and line height round-trip."),
                 feature("tables", SupportLevel::Partial, "Tables, header rows, spans and cell backgrounds round-trip; nested tables are not written."),
-                feature("images", SupportLevel::Unsupported, "Embedded images are kept verbatim and reported, but are not shown in the editor."),
+                feature("images", SupportLevel::Partial, "Embedded base64 images (<image imageData=\"...\"/>) round-trip and display in the editor; other picture/object tags are preserved verbatim."),
                 feature("rtfFragments", SupportLevel::Partial, "An embedded base64 RTF fragment is imported as plain text and reported."),
                 feature("unknownElements", SupportLevel::Partial, "Elements this build does not model are preserved verbatim and reported, so a round trip does not drop them."),
                 feature("pageSetup", SupportLevel::Partial, "Page size, margins and orientation round-trip; columns and header/footer distance do not."),
@@ -431,8 +431,8 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
             if has_revisions(document) {
                 items.push(item(
                     "trackChanges",
-                    "lost",
-                    "Pending tracked changes are not written to ODT; keep the .oswk copy.",
+                    "transformed",
+                    "Insertions and deletions are written as text:tracked-changes; formatting-only revisions are simplified.",
                 ));
             }
             if table_comment(document) {
@@ -859,7 +859,7 @@ mod tests {
         assert!(!native.lossy());
         let odt = document_feature_report(&document, "odt");
         assert!(odt.lossy());
-        assert!(odt.items.iter().any(|item| item.feature == "trackChanges" && item.status == "lost"));
+        assert!(odt.items.iter().any(|item| item.feature == "trackChanges" && item.status == "transformed"));
         assert!(odt.items.iter().any(|item| item.feature == "sections"));
         let docx = document_feature_report(&document, "docx");
         assert!(docx.items.iter().any(|item| item.feature == "trackChanges" && item.status == "transformed"));

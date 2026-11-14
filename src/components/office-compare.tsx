@@ -4,13 +4,15 @@
  * stays the screen's other mode; this component never renders pages.
  */
 import { useState } from "react";
-import { FileSearch, Play } from "lucide-react";
-import { Button, Card, Field } from "./ui";
+import { Download, FileSearch, Play } from "lucide-react";
+import { Badge, Button, Card, Field } from "./ui";
 import { OfficeDiffView } from "./office-diff-view";
-import { pickDocumentToken, type FileToken } from "../lib/file-tokens";
+import { pickDocumentToken, pickSaveToken, type FileToken } from "../lib/file-tokens";
 import { useT } from "../lib/i18n";
-import { openDocument } from "../lib/office-api";
+import { asWriterModel, openDocument, saveDocument } from "../lib/office-api";
 import { diffOfficeDocuments, type OfficeDiff } from "../lib/office-diff";
+import { diffDocuments } from "../office/writer/compare";
+import type { TextDocument } from "../lib/office-types";
 import { officeDocumentExtensions } from "../lib/format";
 import { reportError } from "../lib/store";
 
@@ -35,14 +37,19 @@ export function OfficeCompare() {
   const [left, setLeft] = useState<FileToken | null>(null);
   const [right, setRight] = useState<FileToken | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [savedName, setSavedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [diff, setDiff] = useState<OfficeDiff | null>(null);
+  const [writerPair, setWriterPair] = useState<{ base: TextDocument; current: TextDocument } | null>(null);
 
   const pick = async (setter: (picked: FileToken) => void) => {
     const picked = await pickDocumentToken([...officeDocumentExtensions()]).catch(() => null);
     if (picked) {
       setter(picked);
       setDiff(null);
+      setWriterPair(null);
+      setSavedName(null);
     }
   };
 
@@ -51,6 +58,8 @@ export function OfficeCompare() {
     setBusy(true);
     setError(null);
     setDiff(null);
+    setWriterPair(null);
+    setSavedName(null);
     try {
       const [base, current] = await Promise.all([openDocument(left.token), openDocument(right.token)]);
       if (base.kind !== current.kind) {
@@ -58,10 +67,31 @@ export function OfficeCompare() {
         return;
       }
       setDiff(diffOfficeDocuments(base.kind, base.model, current.model));
+      if (base.kind === "writer") {
+        setWriterPair({ base: asWriterModel(base.model), current: asWriterModel(current.model) });
+      }
     } catch (caught) {
       reportError(caught, t);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const exportRedline = async () => {
+    if (!writerPair) return;
+    const baseName = (right?.name ?? "document").replace(/\.[^.]+$/, "");
+    const target = await pickSaveToken(`${baseName}-redline.docx`, ["docx"]).catch(() => null);
+    if (!target) return;
+    setExporting(true);
+    setSavedName(null);
+    try {
+      const redline = diffDocuments(writerPair.base, writerPair.current, "Comparison");
+      await saveDocument("writer", redline, target.token);
+      setSavedName(target.name);
+    } catch (caught) {
+      reportError(caught, t);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -72,7 +102,7 @@ export function OfficeCompare() {
         <div className="stack mt-2">
           <FileRow label={t("diff.left")} picked={left} onPick={() => void pick(setLeft)} />
           <FileRow label={t("diff.right")} picked={right} onPick={() => void pick(setRight)} />
-          <div className="row">
+          <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
             <Button
               size="sm"
               variant="primary"
@@ -82,6 +112,18 @@ export function OfficeCompare() {
             >
               {t("diff.run")}
             </Button>
+            {writerPair ? (
+              <Button
+                size="sm"
+                variant="default"
+                icon={<Download size={13} />}
+                disabled={exporting}
+                onClick={() => void exportRedline()}
+              >
+                {t("diff.exportRedlineDocx")}
+              </Button>
+            ) : null}
+            {savedName ? <Badge tone="ok">{t("diff.redlineSaved", { name: savedName })}</Badge> : null}
           </div>
           {error ? (
             <p className="small" style={{ color: "var(--danger, #ef4444)" }}>

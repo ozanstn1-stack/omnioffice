@@ -64,6 +64,7 @@ struct ReadStyles {
     paragraphs: HashMap<String, ParaProps>,
     texts: HashMap<String, Run>,
     graphics: HashMap<String, GraphicStyle>,
+    lists: HashMap<String, String>,
 }
 
 /// Overlays the attributes of one `style:text-properties` element onto `run`.

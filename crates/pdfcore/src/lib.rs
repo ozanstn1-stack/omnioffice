@@ -54,6 +54,7 @@ pub mod evidence;
 pub mod flatten;
 pub mod fontembed;
 mod fontusage;
+pub mod form_builder;
 pub mod forms;
 pub mod gibqr;
 pub mod images;

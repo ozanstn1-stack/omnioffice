@@ -10,15 +10,12 @@
 
 use crate::commands::{operation_with_progress, OutputSpec};
 use crate::jobs::JobRegistry;
+use crate::worker::{run_json_decoded, Job};
 use pdfcore::error::PdfError;
 use pdfcore::flatten::FlattenReport;
 use pdfcore::pdfa::{PdfaLevel, PdfaReport};
 use pdfcore::sanitize::SanitizeReport;
 use tauri::{AppHandle, State};
-
-fn level_from(value: &str) -> Result<PdfaLevel, PdfError> {
-    PdfaLevel::parse(value)
-}
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]
@@ -155,15 +152,22 @@ pub struct PdfaRequest {
     pub job_id: Option<String>,
 }
 
+async fn run_blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, PdfError> + Send + 'static,
+) -> Result<T, PdfError> {
+    let _permit = crate::concurrency::acquire().await;
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
+}
+
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdfa_validate(request: PdfaRequest) -> Result<PdfaReport, PdfError> {
-    let level = level_from(&request.level)?;
+    let _level = PdfaLevel::parse(&request.level)?;
     let input = crate::paths::input_file(&request.input)?.into_path_buf();
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || pdfcore::pdfa::validate_pdfa(&input, level))
-        .await
-        .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
+    let level = request.level;
+    run_blocking(move || run_json_decoded(&Job::PdfaValidate { path: input, level })).await
 }
 
 #[tauri::command]
@@ -173,7 +177,7 @@ pub async fn pdfa_convert(
     registry: State<'_, JobRegistry>,
     request: PdfaRequest,
 ) -> Result<PdfaReport, PdfError> {
-    let level = level_from(&request.level)?;
+    let level = PdfaLevel::parse(&request.level)?;
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let input = crate::paths::input_file(&request.input)?;
         let output = match &request.output {
@@ -198,13 +202,14 @@ pub async fn pdf_list_form_fields(
     path: String,
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::FormFieldInfo>, PdfError> {
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let path = crate::paths::input_file(&path)?;
+        if password.is_none() {
+            return run_json_decoded(&Job::PdfListFormFields { path: path.into_path_buf() });
+        }
         pdfcore::forms::list_fields_in_file(path.as_path(), password.as_deref())
     })
     .await
-    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -225,8 +230,7 @@ pub struct FillFormRequest {
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_fill_form(request: FillFormRequest) -> Result<pdfcore::forms::FillReport, PdfError> {
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let input = crate::paths::input_file(&request.input)?;
         let mut document = pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
         let (output, policy) = request.output.resolve()?;
@@ -236,7 +240,6 @@ pub async fn pdf_fill_form(request: FillFormRequest) -> Result<pdfcore::forms::F
         Ok(report)
     })
     .await
-    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
 /// Checks the given values against the form. Only provable constraints are
@@ -249,14 +252,12 @@ pub async fn pdf_validate_form(
     values: Vec<pdfcore::forms::FieldValue>,
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::FieldIssue>, PdfError> {
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let path = crate::paths::input_file(&path)?;
         let document = pdfcore::docutil::load_document(path.as_path(), password.as_deref())?;
         Ok(pdfcore::forms::validate_fields(&document, &values))
     })
     .await
-    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
 // ---------------------------------------------------------------------------
@@ -270,13 +271,14 @@ pub async fn pdf_list_objects(
     path: String,
     password: Option<String>,
 ) -> Result<Vec<pdfcore::forms::PageObjectInfo>, PdfError> {
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let path = crate::paths::input_file(&path)?;
+        if password.is_none() {
+            return run_json_decoded(&Job::PdfListObjects { path: path.into_path_buf() });
+        }
         pdfcore::forms::list_page_objects_in_file(path.as_path(), password.as_deref())
     })
     .await
-    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -297,8 +299,7 @@ pub struct EditObjectsRequest {
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::forms::EditReport, PdfError> {
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let input = crate::paths::input_file(&request.input)?;
         let mut document = pdfcore::docutil::load_document(input.as_path(), request.password.as_deref())?;
         let (output, policy) = request.output.resolve()?;
@@ -308,7 +309,6 @@ pub async fn pdf_edit_objects(request: EditObjectsRequest) -> Result<pdfcore::fo
         Ok(report)
     })
     .await
-    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
 // ---------------------------------------------------------------------------
@@ -322,13 +322,14 @@ pub async fn pdf_list_text_runs(
     path: String,
     password: Option<String>,
 ) -> Result<Vec<pdfcore::content::TextRunInfo>, PdfError> {
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let path = crate::paths::input_file(&path)?;
+        if password.is_none() {
+            return run_json_decoded(&Job::PdfListTextRuns { path: path.into_path_buf() });
+        }
         pdfcore::content::list_text_runs_in_file(path.as_path(), password.as_deref())
     })
     .await
-    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
@@ -348,8 +349,7 @@ pub struct EditTextRunsRequest {
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
 pub async fn pdf_edit_text_runs(request: EditTextRunsRequest) -> Result<pdfcore::content::TextEditReport, PdfError> {
-    let _permit = crate::concurrency::acquire().await;
-    tauri::async_runtime::spawn_blocking(move || {
+    run_blocking(move || {
         let input = crate::paths::input_file(&request.input)?;
         let (output, policy) = request.output.resolve()?;
         let target = pdfcore::docutil::resolve_output_path(&output, policy)?;
@@ -365,5 +365,4 @@ pub async fn pdf_edit_text_runs(request: EditTextRunsRequest) -> Result<pdfcore:
         Ok(report)
     })
     .await
-    .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?
 }

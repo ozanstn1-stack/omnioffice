@@ -91,7 +91,7 @@ impl<'a> FontCache<'a> {
 
 /// One text-showing operation on a page, with what the editor can do with it.
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextRunInfo {
     /// 1-based page number.

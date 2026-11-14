@@ -40,6 +40,7 @@ mod office_tools;
 mod paths;
 mod paths_policy;
 mod paths_read;
+mod pdf_form_builder;
 mod pdf_v3;
 mod person_cards;
 mod plugin;
@@ -489,6 +490,7 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             recipes::watched_folder_scan,
             recipes::watched_folder_start,
             recipes::watched_folder_stop,
+            recipes::watched_folder_status,
             sign::pdf_archive_validation_data,
             sign::pdf_sign,
             sign::pdf_verify_signatures,
@@ -503,6 +505,7 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             pdf_v3::pdf_list_form_fields,
             pdf_v3::pdf_fill_form,
             pdf_v3::pdf_validate_form,
+            pdf_form_builder::pdf_create_form_fields,
             pdf_v3::pdf_list_objects,
             pdf_v3::pdf_edit_objects,
             pdf_v3::pdf_list_text_runs,
