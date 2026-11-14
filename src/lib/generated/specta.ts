@@ -576,6 +576,7 @@ export const commands = {
 	 */
 	watchedFolderStart: (intervalSeconds: number | null) => typedError<null, PdfError>(__TAURI_INVOKE("watched_folder_start", { intervalSeconds })),
 	watchedFolderStop: () => typedError<null, PdfError>(__TAURI_INVOKE("watched_folder_stop")),
+	watchedFolderStatus: () => __TAURI_INVOKE<boolean>("watched_folder_status"),
 	/**
 	 *  Archives the validation data of every signature in the document.
 	 * 
@@ -638,6 +639,11 @@ export const commands = {
 	 *  flagged as unchecked warnings instead.
 	 */
 	pdfValidateForm: (path: string, values: FieldValue_Deserialize[], password: string | null) => typedError<FieldIssue_Serialize[], PdfError>(__TAURI_INVOKE("pdf_validate_form", { path, values, password })),
+	/**
+	 *  Adds interactive AcroForm fields (`/Tx`, `/Btn`, `/Ch`, `/Sig`) to a PDF
+	 *  and writes the updated document to `output`.
+	 */
+	pdfCreateFormFields: (request: CreateFormFieldsRequest) => typedError<number, PdfError>(__TAURI_INVOKE("pdf_create_form_fields", { request })),
 	/**  Lists annotations, widgets and drawn image placements for every page. */
 	pdfListObjects: (path: string, password: string | null) => typedError<PageObjectInfo_Serialize[], PdfError>(__TAURI_INVOKE("pdf_list_objects", { path, password })),
 	/**
@@ -6194,6 +6200,23 @@ export type WatermarkRequest_Serialize = {
 	keepSignatures: boolean,
 	password: string | null,
 	jobId: string | null,
+};
+
+export type CreateFormFieldsRequest = {
+	input: string,
+	output: OutputSpec_Deserialize,
+	password?: string | null,
+	fields?: NewFormField[],
+};
+
+export type NewFormField = {
+	name: string,
+	fieldType: string,
+	page: number,
+	rect: [number, number, number, number],
+	required?: boolean,
+	defaultValue?: string | null,
+	options?: string[],
 };
 
 /* Tauri Specta runtime */

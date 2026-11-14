@@ -1,5 +1,5 @@
-use crate::error::PdfError;
-use crate::paths::OutputSpec;
+use crate::commands::OutputSpec;
+use pdfcore::error::PdfError;
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]
 #[derive(serde::Deserialize)]

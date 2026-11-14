@@ -1,6 +1,5 @@
 import type * as specta from "./generated/specta";
 import type { SyncState, VaultScanRequest_Deserialize } from "./generated/specta";
-import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { FileToken } from "./file-tokens";
 import type {
@@ -471,7 +470,7 @@ export const watchedFolderScan = (seen?: string[]) => call((c) => c.watchedFolde
 export const watchedFolderStart = (intervalSeconds?: number) =>
   call((c) => c.watchedFolderStart(intervalSeconds ?? null));
 export const watchedFolderStop = () => call((c) => c.watchedFolderStop());
-export const watchedFolderStatus = () => invoke<boolean>("watched_folder_status");
+export const watchedFolderStatus = () => callPlain((c) => c.watchedFolderStatus());
 
 /** Keyword/regex matches for redaction, next to the built-in detector. */
 export const detectRedactionMatches = (
@@ -851,7 +850,7 @@ export const pdfListFormFields = (path: string, password?: string) => call((c) =
 export const pdfFillForm = (request: { input: string; output: OutputSpec; values: FieldValue[]; password?: string | null }) => call((c) => c.pdfFillForm(request));
 export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) => call((c) => c.pdfValidateForm(path, values, password || null));
 export const pdfCreateFormFields = (request: { input: string; output: OutputSpec; password?: string | null; fields: NewFormFieldSpec[] }) =>
-  invoke<number>("pdf_create_form_fields", { request });
+  call((c) => c.pdfCreateFormFields({ ...request, password: request.password ?? null }));
 export const pdfListObjects = (path: string, password?: string) => call((c) => c.pdfListObjects(path, password || null));
 export const pdfEditObjects = (request: { input: string; output: OutputSpec; edits: ObjectEdit[]; password?: string | null }) => call((c) => c.pdfEditObjects(request));
 

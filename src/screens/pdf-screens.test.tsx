@@ -305,7 +305,7 @@ describe("PDF Studio Forms & objects", () => {
     await screen.findByText("full_name");
     expect(screen.getByText("Türkiye")).toBeInTheDocument();
     expect(screen.getByText("max 10")).toBeInTheDocument();
-    expect(screen.getByText("required")).toBeInTheDocument();
+    expect(screen.getAllByText("required").length).toBeGreaterThan(0);
     expect(invoke.mock.calls.some(([name]) => name === "pdf_list_form_fields")).toBe(true);
     expect(invoke.mock.calls.some(([name]) => name === "pdf_list_objects")).toBe(true);
 

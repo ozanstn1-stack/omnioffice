@@ -16,8 +16,8 @@ use crate::ai::edit as ai_edit;
 use crate::android_update;
 use crate::{
     ai, android_intent, android_share, commands, diagnostics, evidence, file_dirs, files, jobs, lan_sync, launch,
-    links, oauth, office, office_pdfa, office_tools, pdf_v3, person_cards, plugin, provenance, recent, recipes,
-    scanner, sign, signatures, sync, update, vault,
+    links, oauth, office, office_pdfa, office_tools, pdf_form_builder, pdf_v3, person_cards, plugin, provenance,
+    recent, recipes, scanner, sign, signatures, sync, update, vault,
 };
 use tauri::ipc::Invoke;
 use tauri::Wry;
