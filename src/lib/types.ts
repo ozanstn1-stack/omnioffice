@@ -562,7 +562,7 @@ export type AiTableResult = specta.AiTableResult_Serialize;
 
 export interface AiBatchItemRequest {
   path: string;
-  action: "summarize" | "translate" | "classify" | "extract";
+  action: "summarize" | "translate" | "classify" | "extract" | "matrix";
   targetLang?: string;
   labels?: string[];
   /** Password for this item's encrypted source document. */

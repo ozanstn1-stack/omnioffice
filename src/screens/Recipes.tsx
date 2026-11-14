@@ -267,7 +267,7 @@ export function Recipes() {
         <Card className="p-5 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
             <strong>{t("recipes.watchTitle")}</strong>
-            <Badge tone={watchActive ? "ok" : "neutral"}>
+            <Badge tone={watchActive ? "ok" : "default"}>
               {watchActive ? t("recipes.watchRunning") : t("recipes.watchStoppedBadge")}
             </Badge>
           </div>

@@ -535,7 +535,7 @@ export function Reader({
   const searchProgress = useJobProgress(searchJobId ?? "");
 
   const debouncedZoom = useDebounced(zoom, 180);
-  const geometries = session.info?.pageGeometries ?? [];
+  const geometries = useMemo(() => session.info?.pageGeometries ?? [], [session.info?.pageGeometries]);
   const pageCount = geometries.length;
   const [verification, setVerification] = useState<EdevletVerification | null>(null);
 
@@ -690,6 +690,7 @@ export function Reader({
       }, 100);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [initialPage, scrollToPage, geometries.length]);
 
   const applyZoom = (next: number | "fit") => setZoom(next);

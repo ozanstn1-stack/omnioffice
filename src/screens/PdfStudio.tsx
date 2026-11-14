@@ -20,7 +20,6 @@ import {
   RotateCcw,
   RotateCw,
   ShieldAlert,
-  ShieldCheck,
   Trash2,
   Type as TypeIcon,
   Wrench,
@@ -407,7 +406,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       } finally {
         if (!cancelled) setDataLoading(false);
       }
-    })();
+    });
     return () => {
       cancelled = true;
     };
@@ -442,7 +441,7 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       } finally {
         if (!cancelled) setDataLoading(false);
       }
-    })();
+    });
     return () => {
       cancelled = true;
     };
@@ -1530,10 +1529,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
           <FormBuilderPanel
             input={input}
-            password={password}
             shownPage={shownPage}
             onFieldsCreated={(savedPath) => {
-              void pdfListFormFields(savedPath, password).then((list) => {
+              void pdfListFormFields(savedPath).then((list) => {
                 if (list) setFields(list);
               });
             }}

@@ -85,7 +85,7 @@ export function Thumb({
   );
 }
 
-export function ThumbGrid({
+export function ThumbGrid<T extends PageItem = PageItem>({
   path,
   pages,
   selected,
@@ -95,11 +95,13 @@ export function ThumbGrid({
   thumbWidth = 190,
   refreshedAt = 0,
   overlayFor,
+  renderThumb,
+  renderActions,
   onPageClick,
   onPageDoubleClick,
 }: {
   path: string;
-  pages: PageItem[];
+  pages: T[];
   selected: Set<number>;
   onSelectionChange: (next: Set<number>) => void;
   onReorder?: (from: number, to: number) => void;
@@ -107,6 +109,8 @@ export function ThumbGrid({
   thumbWidth?: number;
   refreshedAt?: number;
   overlayFor?: (index: number) => React.ReactNode;
+  renderThumb?: (page: T, index: number) => React.ReactNode;
+  renderActions?: (page: T, index: number) => React.ReactNode;
   onPageClick?: (index: number, event: React.MouseEvent) => void;
   onPageDoubleClick?: (index: number) => void;
 }) {

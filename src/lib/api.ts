@@ -1,5 +1,6 @@
 import type * as specta from "./generated/specta";
 import type { SyncState, VaultScanRequest_Deserialize } from "./generated/specta";
+import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { FileToken } from "./file-tokens";
 import type {
@@ -850,7 +851,7 @@ export const pdfListFormFields = (path: string, password?: string) => call((c) =
 export const pdfFillForm = (request: { input: string; output: OutputSpec; values: FieldValue[]; password?: string | null }) => call((c) => c.pdfFillForm(request));
 export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) => call((c) => c.pdfValidateForm(path, values, password || null));
 export const pdfCreateFormFields = (request: { input: string; output: OutputSpec; password?: string | null; fields: NewFormFieldSpec[] }) =>
-  (call as (fn: (c: Record<string, (arg: unknown) => Promise<number>>) => Promise<number>) => Promise<number>)((c) => c.pdfCreateFormFields(request));
+  invoke<number>("pdf_create_form_fields", { request });
 export const pdfListObjects = (path: string, password?: string) => call((c) => c.pdfListObjects(path, password || null));
 export const pdfEditObjects = (request: { input: string; output: OutputSpec; edits: ObjectEdit[]; password?: string | null }) => call((c) => c.pdfEditObjects(request));
 

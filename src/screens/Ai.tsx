@@ -4,13 +4,11 @@ import {
   Bot,
   Brain,
   Copy,
-  ExternalLink,
   Languages,
   Layers,
   ListChecks,
   MessageCircleQuestion,
   MessageSquare,
-  RefreshCw,
   Save,
   Sparkles,
   Square,
@@ -52,7 +50,7 @@ import {
   onAiChunk,
   onAiProgress,
 } from "../lib/api";
-import { Badge, Button, Card, Checkbox, Field, Segmented, Spinner, TextArea, TextInput } from "../components/ui";
+import { Badge, Button, Card, Checkbox, Field, Segmented, Spinner, TextInput } from "../components/ui";
 import { DropZone, InfoStrip, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";

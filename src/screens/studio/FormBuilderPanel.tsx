@@ -67,7 +67,7 @@ export function FormBuilderPanel({
     try {
       const count = await pdfCreateFormFields({
         input,
-        output: { path: target.token, policy: "overwrite" },
+        output: { path: target.token, overwrite: "replace" },
         password: password || null,
         fields: queued,
       });
@@ -146,7 +146,7 @@ export function FormBuilderPanel({
         )}
         <Toggle checked={required} onChange={setRequired} label={t("studio.required")} />
         <div className="row" style={{ gap: 8 }}>
-          <Button size="sm" variant="secondary" icon={<Plus size={13} />} onClick={addField} disabled={!name.trim()}>
+          <Button size="sm" variant="default" icon={<Plus size={13} />} onClick={addField} disabled={!name.trim()}>
             {t("studio.formBuilderAdd")}
           </Button>
           <Button
