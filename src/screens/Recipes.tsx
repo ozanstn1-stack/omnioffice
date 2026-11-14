@@ -327,7 +327,7 @@ export function Recipes() {
                   <span className="truncate" title={entry.input}>
                     {entry.input}
                   </span>
-                  <Badge tone={entry.ok ? "ok" : "danger"}>{entry.detail || (entry.ok ? "OK" : "Error")}</Badge>
+                  <Badge tone={entry.ok ? "ok" : "danger"}>{entry.detail || (entry.ok ? t("recipes.watchOk") : t("recipes.watchError"))}</Badge>
                 </div>
               ))}
             </div>

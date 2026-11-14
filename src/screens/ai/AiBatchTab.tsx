@@ -91,7 +91,7 @@ export function AiBatchTab(props: AiBatchTabProps) {
 
         {batchAction === "translate" ? (
           <Field label={label("ai.batchTargetLang", "Target Language")}>
-            <TextInput value={batchLang} onChange={(e) => setBatchLang(e.target.value)} placeholder="tr, en, de" />
+            <TextInput value={batchLang} onChange={(e) => setBatchLang(e.target.value)} placeholder={label("ai.batchTargetLangPlaceholder", "tr, en, de")} />
           </Field>
         ) : null}
       </div>
@@ -185,7 +185,7 @@ export function AiBatchTab(props: AiBatchTabProps) {
               ) : null}
               <span className="text-[10px] muted">
                 {(res.elapsedMs / 1000).toFixed(2)}s · {res.action}
-                {res.estimatedTokens ? ` · ~${res.estimatedTokens} tok` : ""}
+                {res.estimatedTokens ? ` · ~${res.estimatedTokens} ${label("ai.tokensShort", "tok")}` : ""}
                 {res.estimatedCostUsd ? ` · ~$${res.estimatedCostUsd.toFixed(4)}` : ""}
               </span>
             </div>

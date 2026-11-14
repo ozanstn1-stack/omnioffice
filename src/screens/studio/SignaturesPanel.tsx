@@ -175,7 +175,7 @@ export function SignaturesPanel(props: SignaturesPanelProps) {
                       {info.chain.map((cert, position) => (
                         <p key={position} className="muted small">
                           {position + 1}. {cert.subject}
-                          {cert.isCa ? " (CA)" : ""}
+                          {cert.isCa ? ` (${t("studio.caBadge")})` : ""}
                           {cert.expired ? ` (${t("studio.expired")})` : ""}
                         </p>
                       ))}
@@ -282,7 +282,7 @@ export function SignaturesPanel(props: SignaturesPanelProps) {
               className="input"
               value={tsaUrl}
               spellCheck={false}
-              placeholder="https://tsa.example.com/"
+              placeholder={t("studio.tsaPlaceholder")}
               onChange={(event) => setTsaUrl(event.target.value)}
             />
           </Field>

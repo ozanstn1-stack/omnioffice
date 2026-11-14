@@ -151,7 +151,7 @@ export function AiChatTab(props: AiChatTabProps) {
                   className="text-left flex-1 truncate font-medium hover:underline cursor-pointer"
                   onClick={() => handleLoadThread(thread.id)}
                 >
-                  {thread.title} ({thread.messages.length} msgs)
+                  {thread.title} ({thread.messages.length} {label("ai.msgsShort", "msgs")})
                 </button>
                 <Button
                   size="sm"

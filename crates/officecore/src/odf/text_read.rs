@@ -123,8 +123,7 @@ impl NoteReadState {
                 );
             } else if let Some(del) = region.child("deletion") {
                 let (author, date) = read_change_info(del.child("change-info"));
-                let deleted_text =
-                    del.children_named("p").into_iter().map(XmlNode::deep_text).collect::<Vec<_>>().join("\n");
+                let deleted_text = del.children_named("p").map(XmlNode::deep_text).collect::<Vec<_>>().join("\n");
                 self.tracked_regions
                     .insert(id.to_string(), TrackedRegionRead { kind: "delete".into(), author, date, deleted_text });
             }
