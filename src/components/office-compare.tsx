@@ -115,7 +115,7 @@ export function OfficeCompare() {
             {writerPair ? (
               <Button
                 size="sm"
-                variant="secondary"
+                variant="default"
                 icon={<Download size={13} />}
                 disabled={exporting}
                 onClick={() => void exportRedline()}

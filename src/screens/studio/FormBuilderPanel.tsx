@@ -14,7 +14,7 @@ export function FormBuilderPanel({
   onFieldsCreated,
 }: {
   input: string;
-  password: string;
+  password?: string;
   shownPage: number;
   onFieldsCreated: (savedPath: string) => void;
 }) {
@@ -122,16 +122,16 @@ export function FormBuilderPanel({
           </Field>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-          <Field label="X (pt)">
+          <Field label={t("studio.coordX0")}>
             <TextInput className="input-sm" type="number" value={x} onChange={(e) => setX(Number(e.target.value) || 0)} />
           </Field>
-          <Field label="Y (pt)">
+          <Field label={t("studio.coordY0")}>
             <TextInput className="input-sm" type="number" value={y} onChange={(e) => setY(Number(e.target.value) || 0)} />
           </Field>
-          <Field label="W (pt)">
+          <Field label={t("studio.coordX1")}>
             <TextInput className="input-sm" type="number" value={width} onChange={(e) => setWidth(Number(e.target.value) || 24)} />
           </Field>
-          <Field label="H (pt)">
+          <Field label={t("studio.coordY1")}>
             <TextInput className="input-sm" type="number" value={height} onChange={(e) => setHeight(Number(e.target.value) || 18)} />
           </Field>
         </div>
