@@ -312,7 +312,12 @@ export function Recipes() {
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void scanWatch()}>
               {t("recipes.watchScanNow")}
             </Button>
-            <Button size="sm" variant={watchActive ? "ghost" : "primary"} disabled={watchActive} onClick={() => void startWatch()}>
+            <Button
+              size="sm"
+              variant={watchActive ? "ghost" : "primary"}
+              disabled={watchActive}
+              onClick={() => void startWatch()}
+            >
               {t("recipes.watchStart")}
             </Button>
             <Button size="sm" variant="ghost" disabled={!watchActive} onClick={() => void stopWatch()}>
@@ -327,7 +332,9 @@ export function Recipes() {
                   <span className="truncate" title={entry.input}>
                     {entry.input}
                   </span>
-                  <Badge tone={entry.ok ? "ok" : "danger"}>{entry.detail || (entry.ok ? t("recipes.watchOk") : t("recipes.watchError"))}</Badge>
+                  <Badge tone={entry.ok ? "ok" : "danger"}>
+                    {entry.detail || (entry.ok ? t("recipes.watchOk") : t("recipes.watchError"))}
+                  </Badge>
                 </div>
               ))}
             </div>

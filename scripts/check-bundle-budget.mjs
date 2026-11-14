@@ -120,7 +120,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // keeps ribbon state/action prop names under minification (~0.4 KB gzip in
 // the WriterEditor chunk at 32.1 / 35 KB), plus bounded progressById eviction
 // (~0.3 KB gzip); entry stays 58.0 / 62 KB and total measures 538.3 KB.
-const TOTAL_BUDGET_KB = 539;
+// Raised to 548 in 8.0.0 (Phase F): FormBuilderPanel, AiMatrixPanel, Watched
+// Folder live status/log, and Reader 3D/BIM controls add ~5.9 KB gzip across
+// lazy chunks (total measured at 544.2 KB); entry and per-route caps hold.
+const TOTAL_BUDGET_KB = 548;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

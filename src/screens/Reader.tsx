@@ -600,7 +600,9 @@ export function Reader({
       const container = scrollRef.current;
       if (!container) return;
       const vh = container.clientHeight || 900;
-      setScrollMetrics((p) => (Math.abs(p.top - container.scrollTop) > 40 || p.height !== vh ? { top: container.scrollTop, height: vh } : p));
+      setScrollMetrics((p) =>
+        Math.abs(p.top - container.scrollTop) > 40 || p.height !== vh ? { top: container.scrollTop, height: vh } : p,
+      );
       const top = container.getBoundingClientRect().top + 12;
       let best = currentPageRef.current;
       let bestDistance = Number.POSITIVE_INFINITY;
@@ -663,25 +665,30 @@ export function Reader({
     else pageRefs.current.delete(page);
   }, []);
 
-  const scrollToPage = useCallback((page: number) => {
-    const element = pageRefs.current.get(page);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" });
-      currentPageRef.current = page;
-      setCurrentPage(page);
-      return;
-    }
-    const container = scrollRef.current;
-    const idx = geometries.findIndex((g) => g.page === page);
-    if (container && idx >= 0) {
-      const heights = geometries.map((g) => Math.round((renderWidth * g.display_height_pt) / Math.max(1, g.display_width_pt)));
-      const targetTop = pageOffsetTop(heights, 20, idx) + 20;
-      container.scrollTo({ top: targetTop, behavior: "smooth" });
-      setScrollMetrics({ top: targetTop, height: container.clientHeight || 900 });
-      currentPageRef.current = page;
-      setCurrentPage(page);
-    }
-  }, [geometries, renderWidth]);
+  const scrollToPage = useCallback(
+    (page: number) => {
+      const element = pageRefs.current.get(page);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "start" });
+        currentPageRef.current = page;
+        setCurrentPage(page);
+        return;
+      }
+      const container = scrollRef.current;
+      const idx = geometries.findIndex((g) => g.page === page);
+      if (container && idx >= 0) {
+        const heights = geometries.map((g) =>
+          Math.round((renderWidth * g.display_height_pt) / Math.max(1, g.display_width_pt)),
+        );
+        const targetTop = pageOffsetTop(heights, 20, idx) + 20;
+        container.scrollTo({ top: targetTop, behavior: "smooth" });
+        setScrollMetrics({ top: targetTop, height: container.clientHeight || 900 });
+        currentPageRef.current = page;
+        setCurrentPage(page);
+      }
+    },
+    [geometries, renderWidth],
+  );
 
   useEffect(() => {
     if (initialPage && initialPage >= 1 && geometries.length > 0) {
@@ -1281,7 +1288,9 @@ export function Reader({
               </div>
             ) : null}
             {(() => {
-              const heights = geometries.map((g) => Math.round((renderWidth * g.display_height_pt) / Math.max(1, g.display_width_pt)));
+              const heights = geometries.map((g) =>
+                Math.round((renderWidth * g.display_height_pt) / Math.max(1, g.display_width_pt)),
+              );
               const range = computeVirtualPageRange(heights, 20, scrollMetrics.top, scrollMetrics.height, 3);
               return (
                 <>
@@ -1308,7 +1317,9 @@ export function Reader({
                       }
                     />
                   ))}
-                  {range.bottomSpacerPx > 0 ? <div aria-hidden="true" style={{ height: range.bottomSpacerPx }} /> : null}
+                  {range.bottomSpacerPx > 0 ? (
+                    <div aria-hidden="true" style={{ height: range.bottomSpacerPx }} />
+                  ) : null}
                 </>
               );
             })()}

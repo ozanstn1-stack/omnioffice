@@ -206,9 +206,17 @@ export function ThumbGrid<T extends PageItem = PageItem>({
             }}
             title={page.rotationDelta ? `${t("common.rotation")}: ${page.rotationDelta}°` : undefined}
           >
-            {renderThumb
-              ? renderThumb(page, index)
-              : <Thumb path={path} page={page.sourcePage} size={thumbWidth * 2} password={password} refreshedAt={refreshedAt} />}
+            {renderThumb ? (
+              renderThumb(page, index)
+            ) : (
+              <Thumb
+                path={path}
+                page={page.sourcePage}
+                size={thumbWidth * 2}
+                password={password}
+                refreshedAt={refreshedAt}
+              />
+            )}
             {overlayFor ? <div className="absolute inset-0 pointer-events-none">{overlayFor(index)}</div> : null}
             <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
               <span

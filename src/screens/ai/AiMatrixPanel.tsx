@@ -146,7 +146,9 @@ export function AiMatrixPanel({ label, columnsText, setColumnsText, batchResult 
                       ))}
                       <td className="p-2">
                         <Badge tone={res.success ? "ok" : "danger"}>
-                          {res.success ? label("ai.statusSuccess", "Success") : res.error || label("ai.statusFailed", "Failed")}
+                          {res.success
+                            ? label("ai.statusSuccess", "Success")
+                            : res.error || label("ai.statusFailed", "Failed")}
                         </Badge>
                       </td>
                     </tr>

@@ -59,11 +59,7 @@ export function AiBatchTab(props: AiBatchTabProps) {
           {label("ai.addBatchFiles", "Add Files")}
         </Button>
         {primaryPath && !batchFiles.includes(primaryPath) ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setBatchFiles((prev) => [...prev, primaryPath])}
-          >
+          <Button size="sm" variant="ghost" onClick={() => setBatchFiles((prev) => [...prev, primaryPath])}>
             + {label("ai.addCurrentFile", "Add Active File")}
           </Button>
         ) : null}
@@ -91,7 +87,11 @@ export function AiBatchTab(props: AiBatchTabProps) {
 
         {batchAction === "translate" ? (
           <Field label={label("ai.batchTargetLang", "Target Language")}>
-            <TextInput value={batchLang} onChange={(e) => setBatchLang(e.target.value)} placeholder={label("ai.batchTargetLangPlaceholder", "tr, en, de")} />
+            <TextInput
+              value={batchLang}
+              onChange={(e) => setBatchLang(e.target.value)}
+              placeholder={label("ai.batchTargetLangPlaceholder", "tr, en, de")}
+            />
           </Field>
         ) : null}
       </div>

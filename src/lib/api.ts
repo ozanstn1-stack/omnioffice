@@ -845,14 +845,39 @@ export interface EditReport {
   warnings: string[];
 }
 
-export type NewFormFieldSpec = { name: string; fieldType: "text" | "checkbox" | "choice" | "signature"; page: number; rect: [number, number, number, number]; required?: boolean; defaultValue?: string | null; options?: string[] };
-export const pdfListFormFields = (path: string, password?: string) => call((c) => c.pdfListFormFields(path, password || null));
-export const pdfFillForm = (request: { input: string; output: OutputSpec; values: FieldValue[]; password?: string | null }) => call((c) => c.pdfFillForm(request));
-export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) => call((c) => c.pdfValidateForm(path, values, password || null));
-export const pdfCreateFormFields = (request: { input: string; output: OutputSpec; password?: string | null; fields: NewFormFieldSpec[] }) =>
-  call((c) => c.pdfCreateFormFields({ ...request, password: request.password ?? null }));
-export const pdfListObjects = (path: string, password?: string) => call((c) => c.pdfListObjects(path, password || null));
-export const pdfEditObjects = (request: { input: string; output: OutputSpec; edits: ObjectEdit[]; password?: string | null }) => call((c) => c.pdfEditObjects(request));
+export type NewFormFieldSpec = {
+  name: string;
+  fieldType: "text" | "checkbox" | "choice" | "signature";
+  page: number;
+  rect: [number, number, number, number];
+  required?: boolean;
+  defaultValue?: string | null;
+  options?: string[];
+};
+export const pdfListFormFields = (path: string, password?: string) =>
+  call((c) => c.pdfListFormFields(path, password || null));
+export const pdfFillForm = (request: {
+  input: string;
+  output: OutputSpec;
+  values: FieldValue[];
+  password?: string | null;
+}) => call((c) => c.pdfFillForm(request));
+export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) =>
+  call((c) => c.pdfValidateForm(path, values, password || null));
+export const pdfCreateFormFields = (request: {
+  input: string;
+  output: OutputSpec;
+  password?: string | null;
+  fields: NewFormFieldSpec[];
+}) => call((c) => c.pdfCreateFormFields({ ...request, password: request.password ?? null }));
+export const pdfListObjects = (path: string, password?: string) =>
+  call((c) => c.pdfListObjects(path, password || null));
+export const pdfEditObjects = (request: {
+  input: string;
+  output: OutputSpec;
+  edits: ObjectEdit[];
+  password?: string | null;
+}) => call((c) => c.pdfEditObjects(request));
 
 /** One text-showing operation on a page (V3.6 content editing). */
 export interface TextRunInfo {

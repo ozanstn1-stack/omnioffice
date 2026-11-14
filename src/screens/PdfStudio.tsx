@@ -75,13 +75,7 @@ import {
   type StudioPageGeometry,
 } from "./studio/StudioGeometry";
 
-export {
-  displayedPageSize,
-  pageRectToDisplayRect,
-  displayRectToPageRect,
-  displayDeltaToPage,
-  type StudioPageGeometry,
-};
+export { displayedPageSize, pageRectToDisplayRect, displayRectToPageRect, displayDeltaToPage, type StudioPageGeometry };
 
 function objectKey(object: Pick<PageObjectInfo, "page" | "index">): string {
   return `${object.page}:${object.index}`;

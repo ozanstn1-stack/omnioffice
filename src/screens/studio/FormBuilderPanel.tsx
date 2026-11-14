@@ -123,16 +123,36 @@ export function FormBuilderPanel({
         </div>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
           <Field label={t("studio.coordX0")}>
-            <TextInput className="input-sm" type="number" value={x} onChange={(e) => setX(Number(e.target.value) || 0)} />
+            <TextInput
+              className="input-sm"
+              type="number"
+              value={x}
+              onChange={(e) => setX(Number(e.target.value) || 0)}
+            />
           </Field>
           <Field label={t("studio.coordY0")}>
-            <TextInput className="input-sm" type="number" value={y} onChange={(e) => setY(Number(e.target.value) || 0)} />
+            <TextInput
+              className="input-sm"
+              type="number"
+              value={y}
+              onChange={(e) => setY(Number(e.target.value) || 0)}
+            />
           </Field>
           <Field label={t("studio.coordX1")}>
-            <TextInput className="input-sm" type="number" value={width} onChange={(e) => setWidth(Number(e.target.value) || 24)} />
+            <TextInput
+              className="input-sm"
+              type="number"
+              value={width}
+              onChange={(e) => setWidth(Number(e.target.value) || 24)}
+            />
           </Field>
           <Field label={t("studio.coordY1")}>
-            <TextInput className="input-sm" type="number" value={height} onChange={(e) => setHeight(Number(e.target.value) || 18)} />
+            <TextInput
+              className="input-sm"
+              type="number"
+              value={height}
+              onChange={(e) => setHeight(Number(e.target.value) || 18)}
+            />
           </Field>
         </div>
         {fieldType === "choice" ? (
@@ -164,7 +184,8 @@ export function FormBuilderPanel({
             {queued.map((item, idx) => (
               <div key={`${item.name}-${idx}`} className="row" style={{ justifyContent: "space-between" }}>
                 <span className="small">
-                  <strong>{item.name}</strong> ({item.fieldType}) · p.{item.page} [{item.rect.map((n) => Math.round(n)).join(", ")}]
+                  <strong>{item.name}</strong> ({item.fieldType}) · p.{item.page} [
+                  {item.rect.map((n) => Math.round(n)).join(", ")}]
                 </span>
                 <Button
                   size="sm"
