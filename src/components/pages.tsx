@@ -202,13 +202,9 @@ export function ThumbGrid({
             }}
             title={page.rotationDelta ? `${t("common.rotation")}: ${page.rotationDelta}°` : undefined}
           >
-            <Thumb
-              path={path}
-              page={page.sourcePage}
-              size={thumbWidth * 2}
-              password={password}
-              refreshedAt={refreshedAt}
-            />
+            {renderThumb
+              ? renderThumb(page, index)
+              : <Thumb path={path} page={page.sourcePage} size={thumbWidth * 2} password={password} refreshedAt={refreshedAt} />}
             {overlayFor ? <div className="absolute inset-0 pointer-events-none">{overlayFor(index)}</div> : null}
             <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
               <span
@@ -217,7 +213,7 @@ export function ThumbGrid({
               >
                 {index + 1}
               </span>
-              {page.sourcePage !== index + 1 ? (
+              {page.sourcePage > 0 && page.sourcePage !== index + 1 ? (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded-md"
                   style={{ background: "rgb(0 0 0 / 0.4)", color: "white" }}
@@ -237,6 +233,7 @@ export function ThumbGrid({
               ) : null}
             </div>
           </div>
+          {renderActions ? renderActions(page, index) : null}
         </div>
       ))}
     </div>

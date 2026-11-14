@@ -470,6 +470,7 @@ export const watchedFolderScan = (seen?: string[]) => call((c) => c.watchedFolde
 export const watchedFolderStart = (intervalSeconds?: number) =>
   call((c) => c.watchedFolderStart(intervalSeconds ?? null));
 export const watchedFolderStop = () => call((c) => c.watchedFolderStop());
+export const watchedFolderStatus = () => invoke<boolean>("watched_folder_status");
 
 /** Keyword/regex matches for redaction, next to the built-in detector. */
 export const detectRedactionMatches = (
@@ -844,28 +845,14 @@ export interface EditReport {
   warnings: string[];
 }
 
-export const pdfListFormFields = (path: string, password?: string) =>
-  call((c) => c.pdfListFormFields(path, password || null));
-
-export const pdfFillForm = (request: {
-  input: string;
-  output: OutputSpec;
-  values: FieldValue[];
-  password?: string | null;
-}) => call((c) => c.pdfFillForm(request));
-
-export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) =>
-  call((c) => c.pdfValidateForm(path, values, password || null));
-
-export const pdfListObjects = (path: string, password?: string) =>
-  call((c) => c.pdfListObjects(path, password || null));
-
-export const pdfEditObjects = (request: {
-  input: string;
-  output: OutputSpec;
-  edits: ObjectEdit[];
-  password?: string | null;
-}) => call((c) => c.pdfEditObjects(request));
+export type NewFormFieldSpec = { name: string; fieldType: "text" | "checkbox" | "choice" | "signature"; page: number; rect: [number, number, number, number]; required?: boolean; defaultValue?: string | null; options?: string[] };
+export const pdfListFormFields = (path: string, password?: string) => call((c) => c.pdfListFormFields(path, password || null));
+export const pdfFillForm = (request: { input: string; output: OutputSpec; values: FieldValue[]; password?: string | null }) => call((c) => c.pdfFillForm(request));
+export const pdfValidateForm = (path: string, values: FieldValue[], password?: string) => call((c) => c.pdfValidateForm(path, values, password || null));
+export const pdfCreateFormFields = (request: { input: string; output: OutputSpec; password?: string | null; fields: NewFormFieldSpec[] }) =>
+  (call as (fn: (c: Record<string, (arg: unknown) => Promise<number>>) => Promise<number>) => Promise<number>)((c) => c.pdfCreateFormFields(request));
+export const pdfListObjects = (path: string, password?: string) => call((c) => c.pdfListObjects(path, password || null));
+export const pdfEditObjects = (request: { input: string; output: OutputSpec; edits: ObjectEdit[]; password?: string | null }) => call((c) => c.pdfEditObjects(request));
 
 /** One text-showing operation on a page (V3.6 content editing). */
 export interface TextRunInfo {

@@ -67,6 +67,14 @@ fn read_span_style(node: &XmlNode, text_styles: &HashMap<String, Run>) -> Run {
 /// Reader-side note and comment accumulator. Notes and comments are collected
 /// while paragraphs are parsed and attached to the document once the whole
 /// body is read.
+#[derive(Clone)]
+pub(super) struct TrackedRegionRead {
+    kind: String,
+    author: String,
+    date: String,
+    deleted_text: String,
+}
+
 #[derive(Default)]
 pub(super) struct NoteReadState {
     footnotes: Vec<Footnote>,
@@ -86,6 +94,49 @@ pub(super) struct NoteReadState {
     open_comments: Vec<String>,
     /// A point comment waiting for the next run with content.
     pending_comment: Option<String>,
+    /// Whether `<text:tracked-changes>` has `text:track-changes="true"`.
+    track_changes: bool,
+    /// `<text:changed-region>` entries keyed by `text:id`.
+    tracked_regions: HashMap<String, TrackedRegionRead>,
+    /// Active insertion revision between `<text:change-start>` and `<text:change-end>`.
+    active_revision: Option<RevisionMark>,
+}
+
+impl NoteReadState {
+    fn push_run(&self, runs: &mut Vec<Run>, mut run: Run) {
+        if run.revision.is_none() {
+            run.revision = self.active_revision.clone();
+        }
+        runs.push(run);
+    }
+
+    fn read_tracked_changes(&mut self, container: &XmlNode) {
+        let Some(tracked) = container.child("tracked-changes") else { return };
+        self.track_changes = tracked.attr_any_ns("track-changes").map(|value| value != "false").unwrap_or(true);
+        for region in tracked.children_named("changed-region") {
+            let Some(id) = region.attr_any_ns("id") else { continue };
+            if let Some(ins) = region.child("insertion") {
+                let (author, date) = read_change_info(ins.child("change-info"));
+                self.tracked_regions.insert(
+                    id.to_string(),
+                    TrackedRegionRead { kind: "insert".into(), author, date, deleted_text: String::new() },
+                );
+            } else if let Some(del) = region.child("deletion") {
+                let (author, date) = read_change_info(del.child("change-info"));
+                let deleted_text =
+                    del.children_named("p").into_iter().map(XmlNode::deep_text).collect::<Vec<_>>().join("\n");
+                self.tracked_regions
+                    .insert(id.to_string(), TrackedRegionRead { kind: "delete".into(), author, date, deleted_text });
+            }
+        }
+    }
+}
+
+fn read_change_info(info: Option<&XmlNode>) -> (String, String) {
+    let Some(info) = info else { return (String::new(), String::new()) };
+    let author = info.child("creator").map(XmlNode::deep_text).unwrap_or_default();
+    let date = info.child("date").map(XmlNode::deep_text).unwrap_or_default();
+    (author, date)
 }
 
 impl NoteReadState {
@@ -273,22 +324,24 @@ pub(super) fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut No
         "span" => {
             let base = read_span_style(node, &styles.texts);
             if !node.text.is_empty() {
-                runs.push(Run { text: node.text.clone(), ..base.clone() });
+                notes.push_run(runs, Run { text: node.text.clone(), ..base.clone() });
             }
             for child in &node.children {
                 match child.local_name() {
                     "s" => {
                         let count = child.attr_any_ns("c").and_then(|value| value.parse::<usize>().ok()).unwrap_or(1);
-                        runs.push(Run { text: " ".repeat(count), ..base.clone() });
+                        notes.push_run(runs, Run { text: " ".repeat(count), ..base.clone() });
                     }
-                    "tab" => runs.push(Run { text: "\t".into(), ..base.clone() }),
-                    "line-break" => runs.push(Run { text: "\n".into(), ..base.clone() }),
+                    "tab" => notes.push_run(runs, Run { text: "\t".into(), ..base.clone() }),
+                    "line-break" => notes.push_run(runs, Run { text: "\n".into(), ..base.clone() }),
                     "note" => read_note(child, runs, notes, styles),
-                    "annotation" | "annotation-end" => node_text_runs(child, runs, notes, styles),
+                    "annotation" | "annotation-end" | "change-start" | "change-end" | "change" => {
+                        node_text_runs(child, runs, notes, styles)
+                    }
                     _ => {
                         let text = child.deep_text();
                         if !text.is_empty() {
-                            runs.push(Run { text, ..base.clone() });
+                            notes.push_run(runs, Run { text, ..base.clone() });
                         }
                     }
                 }
@@ -297,7 +350,7 @@ pub(super) fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut No
         "a" => {
             let link = node.attr("href").map(str::to_string);
             if !node.text.is_empty() {
-                runs.push(Run { text: node.text.clone(), link: link.clone(), ..Default::default() });
+                notes.push_run(runs, Run { text: node.text.clone(), link: link.clone(), ..Default::default() });
             }
             for child in &node.children {
                 let mut inner = Vec::new();
@@ -306,7 +359,7 @@ pub(super) fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut No
                     if run.link.is_none() {
                         run.link = link.clone();
                     }
-                    runs.push(run);
+                    notes.push_run(runs, run);
                 }
             }
         }
@@ -315,17 +368,54 @@ pub(super) fn node_text_runs(node: &XmlNode, runs: &mut Vec<Run>, notes: &mut No
         // author, date and text into the paragraph.
         "annotation" => read_annotation(node, runs, notes, styles),
         "annotation-end" => runs.push(annotation_marker(ANNOTATION_END, node.attr_any_ns("name").unwrap_or_default())),
+        "change-start" => {
+            if let Some(id) = node.attr_any_ns("change-id") {
+                if let Some(region) = notes.tracked_regions.get(id) {
+                    if region.kind == "insert" {
+                        notes.active_revision = Some(RevisionMark {
+                            id: id.to_string(),
+                            kind: "insert".into(),
+                            author: region.author.clone(),
+                            date: region.date.clone(),
+                            original: None,
+                        });
+                    }
+                }
+            }
+        }
+        "change-end" => {
+            notes.active_revision = None;
+        }
+        "change" => {
+            if let Some(id) = node.attr_any_ns("change-id") {
+                if let Some(region) = notes.tracked_regions.get(id).cloned() {
+                    if region.kind == "delete" {
+                        runs.push(Run {
+                            text: region.deleted_text,
+                            revision: Some(RevisionMark {
+                                id: id.to_string(),
+                                kind: "delete".into(),
+                                author: region.author,
+                                date: region.date,
+                                original: None,
+                            }),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
         "s" => {
             let count = node.attr_any_ns("c").and_then(|value| value.parse::<usize>().ok()).unwrap_or(1);
-            runs.push(Run { text: " ".repeat(count), ..Default::default() });
+            notes.push_run(runs, Run { text: " ".repeat(count), ..Default::default() });
         }
-        "tab" => runs.push(Run { text: "\t".into(), ..Default::default() }),
-        "line-break" => runs.push(Run { text: "\n".into(), ..Default::default() }),
-        "page-break" => runs.push(Run { text: "\n".into(), ..Default::default() }),
+        "tab" => notes.push_run(runs, Run { text: "\t".into(), ..Default::default() }),
+        "line-break" => notes.push_run(runs, Run { text: "\n".into(), ..Default::default() }),
+        "page-break" => notes.push_run(runs, Run { text: "\n".into(), ..Default::default() }),
         _ => {
             let text = node.direct_text();
             if !text.is_empty() {
-                runs.push(Run { text, ..Default::default() });
+                notes.push_run(runs, Run { text, ..Default::default() });
             }
             for child in &node.children {
                 node_text_runs(child, runs, notes, styles);
@@ -452,12 +542,18 @@ fn read_blocks(
                 }
             }
             "list" => {
+                let kind = child
+                    .attr_any_ns("style-name")
+                    .and_then(|name| styles.lists.get(name))
+                    .map(String::as_str)
+                    .unwrap_or("bullet");
+                let marker = if kind == "number" { String::new() } else { "•".to_string() };
                 for item in child.children_named("list-item") {
                     for inner in &item.children {
                         if inner.local_name() == "p" || inner.local_name() == "h" {
                             let mut runs = Vec::new();
                             if !inner.text.is_empty() {
-                                runs.push(Run { text: inner.text.clone(), ..Default::default() });
+                                notes.push_run(&mut runs, Run { text: inner.text.clone(), ..Default::default() });
                             }
                             for part in &inner.children {
                                 node_text_runs(part, &mut runs, notes, styles);
@@ -466,8 +562,7 @@ fn read_blocks(
                             let mut props = paragraph_props(inner, styles);
                             let level =
                                 inner.attr_any_ns("level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(0);
-                            props.list =
-                                Some(ListInfo { kind: "bullet".into(), level, start: 1, marker: "•".into() });
+                            props.list = Some(ListInfo { kind: kind.into(), level, start: 1, marker: marker.clone() });
                             blocks.push(Block::Paragraph { props, runs });
                         }
                     }
@@ -679,6 +774,16 @@ pub(super) fn collect_styles(root: &XmlNode, styles: &mut ReadStyles) {
             styles.graphics.insert(name.to_string(), GraphicStyle { wrap, run_through, opacity });
         }
     }
+    let mut list_styles = Vec::new();
+    root.find_all("list-style", &mut list_styles);
+    for list_style in list_styles {
+        let Some(name) = list_style.attr_any_ns("name") else { continue };
+        if list_style.children.iter().any(|child| child.local_name() == "list-level-style-number") {
+            styles.lists.insert(name.to_string(), "number".into());
+        } else if list_style.children.iter().any(|child| child.local_name() == "list-level-style-bullet") {
+            styles.lists.insert(name.to_string(), "bullet".into());
+        }
+    }
 }
 
 /// A `draw:opacity` value, which may be a fraction (`0.18`) or a percentage
@@ -847,6 +952,8 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
     let mut note_state = NoteReadState::default();
     note_state.start_comment_part(&root);
     let container = root.child("body").and_then(|body| body.child("text")).unwrap_or(&root);
+    note_state.read_tracked_changes(container);
+    document.track_changes = note_state.track_changes;
     document.blocks = read_blocks(container, &read_styles, &reader, &mut warnings, &mut note_state);
     if document.blocks.is_empty() {
         document.blocks.push(Block::paragraph(""));

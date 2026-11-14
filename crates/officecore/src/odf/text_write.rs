@@ -137,6 +137,7 @@ pub(crate) struct NoteContext {
     footnotes: HashMap<String, (usize, Footnote)>,
     endnotes: HashMap<String, (usize, Footnote)>,
     comments: CommentAnchors,
+    revisions: RevisionAnchors,
 }
 
 impl NoteContext {
@@ -253,6 +254,87 @@ fn count_comment_runs(blocks: &[Block], anchors: &mut HashMap<String, (usize, bo
             }
             _ => {}
         }
+    }
+}
+
+struct TrackedRegion {
+    id: String,
+    kind: String,
+    author: String,
+    date: String,
+    text: String,
+}
+
+#[derive(Default)]
+struct RevisionAnchors {
+    by_run: HashMap<usize, (String, String)>,
+    regions: Vec<TrackedRegion>,
+}
+
+impl RevisionAnchors {
+    fn for_document(document: &TextDocument) -> Self {
+        let mut out = Self::default();
+        out.collect_blocks(&document.blocks);
+        out
+    }
+
+    fn collect_blocks(&mut self, blocks: &[Block]) {
+        for block in blocks {
+            match block {
+                Block::Paragraph { runs, .. } => {
+                    for run in runs {
+                        if let Some(rev) = &run.revision {
+                            let id = format!("ct{}", self.regions.len() + 1);
+                            self.by_run.insert(run as *const Run as usize, (id.clone(), rev.kind.clone()));
+                            self.regions.push(TrackedRegion {
+                                id,
+                                kind: rev.kind.clone(),
+                                author: rev.author.clone(),
+                                date: rev.date.clone(),
+                                text: run.text.clone(),
+                            });
+                        }
+                    }
+                }
+                Block::Table { table } => {
+                    for cell in table.rows.iter().flat_map(|row| row.cells.iter()) {
+                        self.collect_blocks(&cell.blocks);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn get(&self, run: &Run) -> Option<(&str, &str)> {
+        self.by_run.get(&(run as *const Run as usize)).map(|(id, kind)| (id.as_str(), kind.as_str()))
+    }
+
+    fn tracked_changes_xml(&self, track_changes: bool) -> String {
+        if self.regions.is_empty() && !track_changes {
+            return String::new();
+        }
+        let mut out =
+            format!("<text:tracked-changes text:track-changes=\"{}\">", if track_changes { "true" } else { "false" });
+        for region in &self.regions {
+            let info = format!(
+                "<office:change-info><dc:creator>{}</dc:creator><dc:date>{}</dc:date></office:change-info>",
+                crate::xml::escape_text(&region.author),
+                crate::xml::escape_text(&region.date),
+            );
+            out.push_str(&format!("<text:changed-region text:id=\"{}\">", escape(&region.id)));
+            if region.kind == "delete" {
+                out.push_str(&format!(
+                    "<text:deletion>{info}<text:p>{}</text:p></text:deletion>",
+                    crate::xml::escape_text(&region.text)
+                ));
+            } else {
+                out.push_str(&format!("<text:insertion>{info}</text:insertion>"));
+            }
+            out.push_str("</text:changed-region>");
+        }
+        out.push_str("</text:tracked-changes>");
+        out
     }
 }
 
@@ -406,6 +488,15 @@ pub(crate) fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut Auto
     notes.comments.write_unanchored(writer);
     for run in runs {
         notes.comments.before_run(writer, run);
+        let revision = notes.revisions.get(run);
+        if let Some((change_id, kind)) = revision {
+            if kind == "delete" {
+                writer.raw(&format!("<text:change text:change-id=\"{}\"/>", escape(change_id)));
+                notes.comments.after_run(writer, run);
+                continue;
+            }
+            writer.raw(&format!("<text:change-start text:change-id=\"{}\"/>", escape(change_id)));
+        }
         let text = run.text.replace('\n', " ");
         if !text.is_empty() {
             let content = crate::xml::escape_text(&text);
@@ -443,6 +534,9 @@ pub(crate) fn write_runs(writer: &mut XmlWriter, runs: &[Run], styles: &mut Auto
             let last = writer.as_str().len();
             let _ = last;
             let _ = url;
+        }
+        if let Some((change_id, _)) = revision {
+            writer.raw(&format!("<text:change-end text:change-id=\"{}\"/>", escape(change_id)));
         }
         notes.comments.after_run(writer, run);
     }
@@ -897,6 +991,7 @@ pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     let mut media = Media::default();
     let mut notes = NoteContext::for_document(document);
     notes.comments = CommentAnchors::for_document(document);
+    notes.revisions = RevisionAnchors::for_document(document);
     let mut body = XmlWriter::new();
     write_blocks(&mut body, &document.blocks, &mut styles, &mut media, &notes, 0);
     // A body without any paragraph still needs a home for unanchored comments.
@@ -906,8 +1001,9 @@ pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     if !unanchored.is_empty() {
         body.raw(&format!("<text:p>{unanchored}</text:p>"));
     }
+    let tracked = notes.revisions.tracked_changes_xml(document.track_changes);
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {LOEXT_NS} office:version=\"1.2\">{}{}<office:body><office:text text:style-name=\"Standard\">{}</office:text></office:body></office:document-content>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NS} {LOEXT_NS} office:version=\"1.2\">{}{}<office:body><office:text text:style-name=\"Standard\">{tracked}{}</office:text></office:body></office:document-content>",
         styles.xml(),
         named_styles_xml(document),
         body.finish()

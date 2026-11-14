@@ -1890,6 +1890,50 @@ async fn run_batch_item(
                                 Err(error) => item_error = Some(ai_error(error).to_string()),
                             }
                         }
+                        "matrix" => {
+                            let default_cols = vec![
+                                "Party".into(),
+                                "Effective Date".into(),
+                                "Liability Cap".into(),
+                                "Termination Notice".into(),
+                            ];
+                            let cols = item.labels.as_ref().filter(|v| !v.is_empty()).unwrap_or(&default_cols);
+                            let cols_json = serde_json::to_string(cols).unwrap_or_else(|_| "[]".into());
+                            let excerpt: String = text.chars().take(client.config().chunk_chars()).collect();
+                            let messages = vec![
+                                ChatMessage::system(
+                                    "You extract structured comparison fields from a document. Reply ONLY with a valid JSON object whose keys exactly match the requested column names and whose values are concise strings (use \"—\" if not found).",
+                                ),
+                                ChatMessage::user(format!(
+                                    "Columns: {cols_json}\n\nDocument text:\n{excerpt}"
+                                )),
+                            ];
+                            match chat_with_retry(
+                                &client,
+                                &messages,
+                                ChatOptions { temperature: Some(0.0), max_tokens: Some(1536) },
+                                &cancel,
+                            )
+                            .await
+                            {
+                                Ok(reply) => {
+                                    let trimmed = reply.trim();
+                                    let stripped = trimmed
+                                        .strip_prefix("```json")
+                                        .or_else(|| trimmed.strip_prefix("```"))
+                                        .map(|s| s.trim().strip_suffix("```").unwrap_or(s).trim())
+                                        .unwrap_or(trimmed);
+                                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(stripped) {
+                                        item_success = true;
+                                        item_output = Some(serde_json::to_string(&val).unwrap_or(reply));
+                                    } else {
+                                        item_success = true;
+                                        item_output = Some(reply);
+                                    }
+                                }
+                                Err(error) => item_error = Some(ai_error(error).to_string()),
+                            }
+                        }
                         other => item_error = Some(format!("Unknown batch action: {other}")),
                     }
                 }

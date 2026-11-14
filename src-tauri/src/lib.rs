@@ -40,6 +40,7 @@ mod office_tools;
 mod paths;
 mod paths_policy;
 mod paths_read;
+mod pdf_form_builder;
 mod pdf_v3;
 mod person_cards;
 mod plugin;

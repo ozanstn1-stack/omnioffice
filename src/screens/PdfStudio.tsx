@@ -12,7 +12,6 @@ import { listen } from "@tauri-apps/api/event";
 import { pickDocumentToken, pickSaveToken } from "../lib/file-tokens";
 import { fileBaseName } from "../lib/format";
 import {
-  BadgeCheck,
   FileCheck2,
   Layers,
   Move,
@@ -33,7 +32,6 @@ import { trackedRequest } from "../lib/tracked-request";
 import { DropZone, FileList } from "../components/files";
 import { Badge, Card, Field, Toggle } from "../components/ui";
 import { Screen } from "../components/layout";
-import { RevocationStatus } from "../components/revocation-status";
 import { PageCanvas } from "../components/pages";
 import {
   fileSizes,
@@ -57,121 +55,34 @@ import {
   type LtvReport,
   type ObjectEdit,
   type PageObjectInfo,
-  type SignatureInfo,
   type SignatureReport,
   type SigningCertificateSummary,
   type SignResult,
   type TextRunInfo,
 } from "../lib/api";
+import { SignaturesPanel } from "./studio/SignaturesPanel";
+import { FormBuilderPanel } from "./studio/FormBuilderPanel";
 import type { PdfInfo } from "../lib/types";
 import { useScreenReady } from "../lib/screen-ready";
 import { isAndroid, pickAndroidFiles, pickAndroidSaveTarget, publishOutputs, type AndroidTarget } from "../lib/mobile";
 
 type StudioTab = "sanitize" | "repair" | "flatten" | "pdfa" | "signatures" | "objects" | "textruns";
 
-/**
- * The page geometry the PDF Studio overlay needs. Mirroring `render::PageGeometry`
- * (which serializes with `width_pt`), this is normalized once here.
- */
-export interface StudioPageGeometry {
-  width: number;
-  height: number;
-  rotation: number;
-}
+import {
+  displayedPageSize,
+  pageRectToDisplayRect,
+  displayRectToPageRect,
+  displayDeltaToPage,
+  type StudioPageGeometry,
+} from "./studio/StudioGeometry";
 
-/** Displayed page size (rotation 90/270 swaps width and height). */
-export function displayedPageSize(geometry: StudioPageGeometry): { width: number; height: number } {
-  const rotation = ((geometry.rotation % 360) + 360) % 360;
-  return rotation === 90 || rotation === 270
-    ? { width: geometry.height, height: geometry.width }
-    : { width: geometry.width, height: geometry.height };
-}
-
-/**
- * Maps a page-space rectangle (bottom-left origin, y up) to a normalized
- * rectangle over the rendered page image (top-left origin, y down). The page
- * rotation is applied exactly like `docutil::Matrix::display_to_page`, only
- * inverted - getting this wrong selects the wrong object.
- */
-export function pageRectToDisplayRect(
-  rect: [number, number, number, number],
-  geometry: StudioPageGeometry,
-): { x: number; y: number; w: number; h: number } {
-  const x0 = Math.min(rect[0], rect[2]);
-  const y0 = Math.min(rect[1], rect[3]);
-  const x1 = Math.max(rect[0], rect[2]);
-  const y1 = Math.max(rect[1], rect[3]);
-  const rotation = ((geometry.rotation % 360) + 360) % 360;
-  const map = (x: number, y: number): [number, number] => {
-    switch (rotation) {
-      case 90:
-        return [y, geometry.width - x];
-      case 180:
-        return [geometry.width - x, geometry.height - y];
-      case 270:
-        return [geometry.height - y, x];
-      default:
-        return [x, y];
-    }
-  };
-  const corners = [map(x0, y0), map(x1, y0), map(x0, y1), map(x1, y1)];
-  const minX = Math.min(...corners.map((corner) => corner[0]));
-  const maxX = Math.max(...corners.map((corner) => corner[0]));
-  const minY = Math.min(...corners.map((corner) => corner[1]));
-  const maxY = Math.max(...corners.map((corner) => corner[1]));
-  const displayed = displayedPageSize(geometry);
-  return {
-    x: minX / displayed.width,
-    y: 1 - maxY / displayed.height,
-    w: (maxX - minX) / displayed.width,
-    h: (maxY - minY) / displayed.height,
-  };
-}
-
-/** Inverse of `pageRectToDisplayRect`, used when a resize handle is released. */
-export function displayRectToPageRect(
-  rect: { x: number; y: number; w: number; h: number },
-  geometry: StudioPageGeometry,
-): [number, number, number, number] {
-  const rotation = ((geometry.rotation % 360) + 360) % 360;
-  const displayed = displayedPageSize(geometry);
-  const left = rect.x * displayed.width;
-  const right = (rect.x + rect.w) * displayed.width;
-  const bottom = (1 - rect.y - rect.h) * displayed.height;
-  const top = (1 - rect.y) * displayed.height;
-  const map = (x: number, y: number): [number, number] => {
-    switch (rotation) {
-      case 90:
-        return [geometry.width - y, x];
-      case 180:
-        return [geometry.width - x, geometry.height - y];
-      case 270:
-        return [y, geometry.height - x];
-      default:
-        return [x, y];
-    }
-  };
-  const corners = [map(left, bottom), map(right, bottom), map(left, top), map(right, top)];
-  const minX = Math.min(...corners.map((corner) => corner[0]));
-  const maxX = Math.max(...corners.map((corner) => corner[0]));
-  const minY = Math.min(...corners.map((corner) => corner[1]));
-  const maxY = Math.max(...corners.map((corner) => corner[1]));
-  return [minX, minY, maxX, maxY];
-}
-
-/** Deltas measured on the displayed (rotated) page back into page space. */
-export function displayDeltaToPage(dx: number, dy: number, rotation: number): [number, number] {
-  switch (((rotation % 360) + 360) % 360) {
-    case 90:
-      return [-dy, dx];
-    case 180:
-      return [-dx, -dy];
-    case 270:
-      return [dy, -dx];
-    default:
-      return [dx, dy];
-  }
-}
+export {
+  displayedPageSize,
+  pageRectToDisplayRect,
+  displayRectToPageRect,
+  displayDeltaToPage,
+  type StudioPageGeometry,
+};
 
 function objectKey(object: Pick<PageObjectInfo, "page" | "index">): string {
   return `${object.page}:${object.index}`;
@@ -247,12 +158,6 @@ interface PdfaReport {
   failures: number;
   warnings: number;
   converted: boolean;
-}
-
-function signatureTone(info: SignatureInfo): "ok" | "warn" | "danger" {
-  if (!info.signatureValid || !info.digestMatches) return "danger";
-  if (info.modifiedAfterSigning || !info.coversWholeDocument) return "warn";
-  return "ok";
 }
 
 export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[]; dragging?: boolean }) {
@@ -341,10 +246,11 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
 
   const windows = !isAndroid() && typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- adopting the files handed to the tool
+  const [prevInitialFiles, setPrevInitialFiles] = useState(initialFiles);
+  if (initialFiles !== prevInitialFiles) {
+    setPrevInitialFiles(initialFiles);
     if (initialFiles?.length) setFiles(initialFiles);
-  }, [initialFiles]);
+  }
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -459,9 +365,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   useEffect(() => {
     if (tab !== "objects" || !input) return;
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the async load owns loading/error
-    setDataLoading(true);
-    void (async () => {
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setDataLoading(true);
       try {
         const [fieldList, objectList, info] = await Promise.all([
           pdfListFormFields(input),
@@ -519,9 +425,9 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   useEffect(() => {
     if (tab !== "textruns" || !input) return;
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the async load owns loading/error
-    setDataLoading(true);
-    void (async () => {
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setDataLoading(true);
       try {
         const runs = await pdfListTextRuns(input);
         if (cancelled) return;
@@ -834,8 +740,14 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the certificate loader owns its state
-    if (tab === "signatures" && windows) void loadCertificates();
+    if (tab !== "signatures" || !windows) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) void loadCertificates();
+    });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the loader is stable and tab/windows gate it
   }, [tab, windows]);
 
@@ -1273,234 +1185,41 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
       ) : null}
 
       {tab === "signatures" ? (
-        <>
-          <Card>
-            <strong>{t("studio.signatures")}</strong>
-            <p className="muted small">{t("studio.signaturesHint")}</p>
-            <div className="row">
-              <button
-                type="button"
-                className="btn btn-soft"
-                disabled={!input || verifying || signing}
-                onClick={() => void verifySignatures()}
-              >
-                <ShieldCheck size={14} /> {t("studio.verify")}
-              </button>
-              <button
-                type="button"
-                className="btn btn-soft"
-                disabled={!input || archiving || signing}
-                onClick={() => void archiveValidationData()}
-              >
-                <ShieldCheck size={14} /> {t("studio.ltv")}
-              </button>
-            </div>
-            <p className="muted small">{t("studio.ltvHint")}</p>
-            {ltvReport ? (
-              <p className="muted small" style={{ marginTop: 10 }}>
-                <Badge tone="ok">{t("studio.ltvDone")}</Badge> {t("studio.ltvResult")}: {ltvReport.certificates}
-                {ltvReport.warnings.map((warning, index) => (
-                  <span key={index} className="muted small">
-                    {" "}
-                    {warning}
-                  </span>
-                ))}
-              </p>
-            ) : null}
-            {signReport ? (
-              <>
-                {signReport.warnings.map((warning, index) => (
-                  <p key={index} className="muted small" style={{ marginTop: 10 }}>
-                    <Badge tone="warn">{t("studio.notes")}</Badge> {warning}
-                  </p>
-                ))}
-                {signReport.signatures.length ? (
-                  signReport.signatures.map((info, index) => (
-                    <div key={index} className="stack" style={{ marginTop: 12 }}>
-                      <div className="row">
-                        <Badge tone={signatureTone(info)}>
-                          {info.signatureValid ? t("studio.signatureValid") : t("studio.signatureInvalid")}
-                        </Badge>
-                        <Badge tone={info.digestMatches ? "ok" : "danger"}>
-                          {info.digestMatches ? t("studio.digestOk") : t("studio.digestBad")}
-                        </Badge>
-                        <Badge tone={info.coversWholeDocument ? "ok" : "warn"}>{t("studio.coversWhole")}</Badge>
-                        {info.modifiedAfterSigning ? <Badge tone="danger">{t("studio.modifiedAfter")}</Badge> : null}
-                        {info.supersededByLaterRevision ? <Badge tone="warn">{t("studio.superseded")}</Badge> : null}
-                        <Badge tone="warn">{t("studio.trustUnknown")}</Badge>
-                      </div>
-                      <div className="row">
-                        <RevocationStatus revocation={info.revocation} />
-                      </div>
-                      <p className="muted small">
-                        <strong>{info.fieldName}</strong> · {info.subFilter || "?"} · {info.algorithm}
-                      </p>
-                      <p className="muted small">
-                        {t("studio.signer")}: {info.signer.subject || "?"}
-                      </p>
-                      <p className="muted small">
-                        {t("studio.issuer")}: {info.signer.issuer || "?"}
-                      </p>
-                      <p className="muted small">
-                        {t("studio.serial")}: {info.signer.serialHex || "?"} · {t("studio.validity")}:{" "}
-                        {info.signer.notBefore || "?"} → {info.signer.notAfter || "?"}
-                        {info.signer.expired ? ` (${t("studio.expired")})` : ""}
-                      </p>
-                      {info.signingTime ? (
-                        <p className="muted small">
-                          {t("studio.signingTime")}: {info.signingTime}
-                        </p>
-                      ) : null}
-                      <p className="muted small">
-                        {t("studio.fingerprint")}: {info.signer.sha256Fingerprint || "?"}
-                      </p>
-                      {info.chain.length > 1 ? (
-                        <div className="stack">
-                          <p className="muted small">
-                            {t("studio.chain")}: {info.chainLinked ? t("studio.chainLinked") : t("studio.chainBroken")}
-                            {info.selfSignedChain ? ` · ${t("studio.selfSigned")}` : ""}
-                          </p>
-                          {info.chain.map((cert, position) => (
-                            <p key={position} className="muted small">
-                              {position + 1}. {cert.subject}
-                              {cert.isCa ? " (CA)" : ""}
-                              {cert.expired ? ` (${t("studio.expired")})` : ""}
-                            </p>
-                          ))}
-                        </div>
-                      ) : null}
-                      {info.notes.map((note, position) => (
-                        <p key={position} className="muted small">
-                          {t("studio.notes")}: {note}
-                        </p>
-                      ))}
-                    </div>
-                  ))
-                ) : signReport.warnings.length ? null : (
-                  <p className="muted small" style={{ marginTop: 10 }}>
-                    {t("studio.noSignatures")}
-                  </p>
-                )}
-              </>
-            ) : null}
-          </Card>
-
-          <Card>
-            <strong>{t("studio.signSection")}</strong>
-            <div className="stack">
-              {windows ? (
-                <div className="stack">
-                  <div className="row">
-                    <span className="muted small">{t("studio.storeCertificates")}</span>
-                    <button type="button" className="btn btn-soft" onClick={() => void loadCertificates()}>
-                      <RefreshCw size={13} /> {t("studio.refresh")}
-                    </button>
-                  </div>
-                  {certificates.length ? (
-                    <select
-                      value={certIndex ?? ""}
-                      onChange={(event) => {
-                        setCertIndex(Number(event.target.value));
-                        setPfxPath(null);
-                      }}
-                    >
-                      {certificates.map((cert) => (
-                        <option key={cert.index} value={cert.index}>
-                          {cert.subject}
-                          {cert.expired ? ` (${t("studio.expired")})` : ""}
-                          {cert.hasPrivateKey ? "" : ` - ${t("studio.noPrivateKey")}`}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="muted small">{t("studio.noStoreCertificates")}</p>
-                  )}
-                  <p className="muted small">{t("studio.storeSigningNote")}</p>
-                </div>
-              ) : (
-                <div className="stack">
-                  <p className="muted small">{t("studio.androidPfxNote")}</p>
-                  {pfxPath ? null : <p className="muted small">{t("studio.noPfxSelected")}</p>}
-                </div>
-              )}
-
-              <div className="row">
-                <button type="button" className="btn btn-soft" onClick={() => void choosePfx()}>
-                  {t("studio.choosePfx")}
-                </button>
-                {pfxName ? <span className="muted small">{pfxName}</span> : null}
-              </div>
-              {pfxPath ? (
-                <Field label={t("studio.pfxPassword")} hint={t("studio.pfxHint")}>
-                  <input
-                    className="input"
-                    type="password"
-                    value={pfxPassword}
-                    onChange={(event) => setPfxPassword(event.target.value)}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </Field>
-              ) : null}
-
-              <div className="row">
-                <Field label={t("studio.page")}>
-                  <input
-                    className="input"
-                    type="number"
-                    min={1}
-                    value={shownPage}
-                    onChange={(event) => setPage(Math.max(1, Number(event.target.value) || 1))}
-                    style={{ width: 90 }}
-                  />
-                </Field>
-                <Field label={t("studio.reason")}>
-                  <input className="input" value={reason} onChange={(event) => setReason(event.target.value)} />
-                </Field>
-                <Field label={t("studio.location")}>
-                  <input className="input" value={location} onChange={(event) => setLocation(event.target.value)} />
-                </Field>
-                <Field label={t("studio.signerName")}>
-                  <input className="input" value={signerName} onChange={(event) => setSignerName(event.target.value)} />
-                </Field>
-              </div>
-              <Toggle checked={appearance} onChange={setAppearance} label={t("studio.visibleAppearance")} />
-              <Field label={t("studio.tsaUrl")} hint={t("studio.tsaUrlHint")}>
-                <input
-                  className="input"
-                  value={tsaUrl}
-                  spellCheck={false}
-                  placeholder="https://tsa.example.com/"
-                  onChange={(event) => setTsaUrl(event.target.value)}
-                />
-              </Field>
-
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!input || signing || verifying || (!pfxPath && certIndex === null)}
-                onClick={() => void signDocument()}
-              >
-                <PenLine size={14} /> {t("studio.signSave")}
-              </button>
-
-              {lastResult ? (
-                <div className="stack">
-                  <Badge tone={lastResult.signature.signatureValid ? "ok" : "danger"}>
-                    <BadgeCheck size={12} />{" "}
-                    {lastResult.signature.signatureValid ? t("studio.signatureValid") : t("studio.signatureInvalid")}
-                  </Badge>
-                  <p className="muted small">{lastResult.output}</p>
-                  <p className="muted small">
-                    {lastResult.signature.timestamp
-                      ? t("studio.timestampPresent", { time: lastResult.signature.timestamp })
-                      : t("studio.timestampNone")}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          </Card>
-        </>
+        <SignaturesPanel
+          input={input}
+          windows={windows}
+          verifying={verifying}
+          archiving={archiving}
+          signing={signing}
+          ltvReport={ltvReport}
+          signReport={signReport}
+          certificates={certificates}
+          certIndex={certIndex}
+          setCertIndex={setCertIndex}
+          pfxPath={pfxPath}
+          setPfxPath={setPfxPath}
+          pfxName={pfxName}
+          pfxPassword={pfxPassword}
+          setPfxPassword={setPfxPassword}
+          shownPage={shownPage}
+          setPage={setPage}
+          reason={reason}
+          setReason={setReason}
+          location={location}
+          setLocation={setLocation}
+          signerName={signerName}
+          setSignerName={setSignerName}
+          appearance={appearance}
+          setAppearance={setAppearance}
+          tsaUrl={tsaUrl}
+          setTsaUrl={setTsaUrl}
+          lastResult={lastResult}
+          verifySignatures={verifySignatures}
+          archiveValidationData={archiveValidationData}
+          loadCertificates={loadCertificates}
+          choosePfx={choosePfx}
+          signDocument={signDocument}
+        />
       ) : null}
 
       {tab === "textruns" ? (
@@ -1808,6 +1527,17 @@ export function PdfStudio({ initialFiles, dragging }: { initialFiles?: string[];
               </p>
             ) : null}
           </Card>
+
+          <FormBuilderPanel
+            input={input}
+            password={password}
+            shownPage={shownPage}
+            onFieldsCreated={(savedPath) => {
+              void pdfListFormFields(savedPath, password).then((list) => {
+                if (list) setFields(list);
+              });
+            }}
+          />
 
           <Card>
             <strong>{t("studio.objectsOnPage", { page: shownPage })}</strong>

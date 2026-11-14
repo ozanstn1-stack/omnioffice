@@ -243,26 +243,23 @@ export function useTool(options: ToolOptions): ToolSession {
     if (primary) await loadInfoFor(primary, password || undefined);
   }, [loadInfoFor, password, primary]);
 
+  const [lastInfoPath, setLastInfoPath] = useState<string | null>(primary?.path ?? null);
+  if ((primary?.path ?? null) !== lastInfoPath) {
+    setLastInfoPath(primary?.path ?? null);
+    if (!primary && loadInfo) { setInfo(null); setInfoError(null); }
+  }
+
   useEffect(() => {
-    if (!loadInfo) return;
-    if (primary) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the loader sets info from an async response
-      void loadInfoFor(primary, password || undefined);
-    } else {
-      setInfo(null);
-    }
+    if (!loadInfo || !primary) return;
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) void loadInfoFor(primary, password || undefined); });
+    return () => { cancelled = true; };
     // The load is keyed on the file path; including loadInfoFor/password here
     // would refetch on every password keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primary?.path, loadInfo]);
 
-  const output = useOutputTarget({
-    input: primary?.path ?? null,
-    suffix,
-    accept,
-    isMultiOutput,
-    defaultOutputDir: settings.defaultOutputDir,
-  });
+  const output = useOutputTarget({ input: primary?.path ?? null, suffix, accept, isMultiOutput, defaultOutputDir: settings.defaultOutputDir });
 
   // Files handed over from another screen.
   const initialised = useRef(false);
@@ -270,8 +267,7 @@ export function useTool(options: ToolOptions): ToolSession {
     if (initialised.current) return;
     if (initialPaths && initialPaths.length) {
       initialised.current = true;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- addPaths owns the file/info state
-      void addPaths(initialPaths);
+      queueMicrotask(() => void addPaths(initialPaths));
     }
   }, [addPaths, initialPaths]);
 

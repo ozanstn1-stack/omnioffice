@@ -17,7 +17,7 @@ import {
 import { Badge, Button, Card, IconButton, Modal, TextInput } from "../components/ui";
 import { DropZone, InfoStrip, OutputBar, ResultCard } from "../components/files";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
-import { Thumb, type PageItem } from "../components/pages";
+import { Thumb, ThumbGrid, type PageItem } from "../components/pages";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
 import { applyPagePlan, pdfSetOutline } from "../lib/api";
@@ -59,155 +59,6 @@ function OrganizeThumb({
     );
   }
   return <Thumb path={path} page={item.sourcePage} size={size} password={password} refreshedAt={refreshedAt} />;
-}
-
-function OrganizeGrid({
-  path,
-  pages,
-  selected,
-  onSelectionChange,
-  onReorder,
-  password,
-  thumbWidth,
-  refreshedAt,
-}: {
-  path: string;
-  pages: OrganizeItem[];
-  selected: Set<number>;
-  onSelectionChange: (next: Set<number>) => void;
-  onReorder?: (from: number, to: number) => void;
-  password?: string;
-  thumbWidth: number;
-  refreshedAt: number;
-}) {
-  const t = useT();
-  // State (not a ref) so the render can honestly reflect the drag highlight.
-  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
-  const dragFrom = useRef<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
-  const [shiftAnchor, setShiftAnchor] = useState<number | null>(null);
-
-  const handleClick = useCallback(
-    (index: number, event: React.MouseEvent) => {
-      const next = new Set(selected);
-      if (event.shiftKey && shiftAnchor !== null) {
-        const [a, b] = [Math.min(shiftAnchor, index), Math.max(shiftAnchor, index)];
-        for (let i = a; i <= b; i += 1) next.add(i);
-      } else if (event.ctrlKey || event.metaKey) {
-        if (next.has(index)) next.delete(index);
-        else next.add(index);
-        setShiftAnchor(index);
-      } else {
-        if (next.size === 1 && next.has(index)) next.clear();
-        else {
-          next.clear();
-          next.add(index);
-        }
-        setShiftAnchor(index);
-      }
-      onSelectionChange(next);
-    },
-    [onSelectionChange, selected, shiftAnchor],
-  );
-
-  const handlePointerDown = (index: number) => (event: React.PointerEvent) => {
-    if (!onReorder) return;
-    if (event.button !== 0) return;
-    if ((event.target as HTMLElement).closest("button")) return;
-    dragFrom.current = index;
-    setDragFromIndex(index);
-    setOverIndex(index);
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent) => {
-    if (dragFrom.current === null) return;
-    const elements = document.elementsFromPoint(event.clientX, event.clientY);
-    const target = elements.find(
-      (element) => element instanceof HTMLElement && element.dataset.pageIndex !== undefined,
-    ) as HTMLElement | undefined;
-    if (target) setOverIndex(Number(target.dataset.pageIndex));
-  };
-
-  const handlePointerUp = () => {
-    if (dragFrom.current !== null && overIndex !== null && dragFrom.current !== overIndex) {
-      onReorder?.(dragFrom.current, overIndex);
-    }
-    dragFrom.current = null;
-    setDragFromIndex(null);
-    setOverIndex(null);
-  };
-
-  const columns = useMemo(() => `repeat(auto-fill, minmax(${thumbWidth}px, 1fr))`, [thumbWidth]);
-
-  return (
-    <div
-      className="grid gap-3"
-      style={{ gridTemplateColumns: columns, touchAction: "none" }}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-    >
-      {pages.map((page, index) => (
-        <div key={page.id} className="flex flex-col gap-1.5">
-          <div
-            data-page-index={index}
-            className="thumb"
-            data-selected={selected.has(index)}
-            data-dragging={dragFromIndex === index}
-            data-droptarget={overIndex === index && dragFromIndex !== null && dragFromIndex !== index}
-            style={{ aspectRatio: "1 / 1.3" }}
-            onPointerDown={handlePointerDown(index)}
-            onClick={(event) => handleClick(index, event)}
-            role="button"
-            tabIndex={0}
-            aria-label={`${t("common.page")} ${index + 1}`}
-            onKeyDown={(event) => {
-              if (event.key === " " || event.key === "Enter") {
-                event.preventDefault();
-                handleClick(index, event as unknown as React.MouseEvent);
-              }
-            }}
-            title={page.rotationDelta ? `${t("common.rotation")}: ${page.rotationDelta}°` : undefined}
-          >
-            <OrganizeThumb
-              path={path}
-              item={page}
-              size={thumbWidth * 2}
-              password={password}
-              refreshedAt={refreshedAt}
-            />
-            <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
-              <span
-                className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md"
-                style={{ background: "rgb(0 0 0 / 0.55)", color: "white" }}
-              >
-                {index + 1}
-              </span>
-              {!page.blank && page.sourcePage !== index + 1 ? (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded-md"
-                  style={{ background: "rgb(0 0 0 / 0.4)", color: "white" }}
-                  title={t("organize.sourcePage", { page: page.sourcePage })}
-                >
-                  ←{page.sourcePage}
-                </span>
-              ) : null}
-              {page.rotationDelta ? (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded-md flex items-center gap-0.5"
-                  style={{ background: "rgb(0 0 0 / 0.45)", color: "white" }}
-                >
-                  <RotateCw size={9} />
-                  {page.rotationDelta}°
-                </span>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; dragging: boolean }) {
@@ -527,7 +378,7 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
                 </div>
               ) : null}
 
-              <OrganizeGrid
+              <ThumbGrid
                 path={session.primary.path}
                 pages={pages}
                 selected={selected}
@@ -536,6 +387,15 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
                 password={session.password || undefined}
                 thumbWidth={thumbWidth}
                 refreshedAt={refreshedAt}
+                renderThumb={(page) => (
+                  <OrganizeThumb
+                    path={session.primary!.path}
+                    item={page}
+                    size={thumbWidth * 2}
+                    password={session.password || undefined}
+                    refreshedAt={refreshedAt}
+                  />
+                )}
               />
 
               <Card className="p-4 flex flex-col gap-3">

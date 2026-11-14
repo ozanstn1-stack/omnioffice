@@ -154,3 +154,48 @@ fn write_uyap_fixture() {
     std::fs::write(FIXTURE, zip.finish()).expect("write the fixture");
     println!("wrote {FIXTURE}");
 }
+
+#[test]
+fn udf_roundtrips_embedded_image_and_warns_on_signature() {
+    use officecore::model::{ImageData, TextDocument};
+    // Minimal 1x1 PNG bytes.
+    let png: [u8; 67] = [
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21,
+        196, 137, 0, 0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 0, 1, 0, 0, 5, 0, 1, 13, 10, 45, 180, 0, 0, 0, 0, 73, 69,
+        78, 68, 174, 66, 96, 130,
+    ];
+    let mut doc = TextDocument::new_blank("Signed");
+    doc.blocks = vec![
+        Block::paragraph("Dilekçe"),
+        Block::Image {
+            image: ImageData::from_bytes("ek.png", &png),
+            width_pt: 120.0,
+            height_pt: 80.0,
+            align: "center".into(),
+            caption: String::new(),
+            wrap: "inline".into(),
+        },
+    ];
+    let bytes = write_udf(&doc).expect("write udf");
+    let read = read_udf(&bytes).expect("read udf");
+    let img = read
+        .document
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::Image { image, width_pt, height_pt, align, .. } => Some((image, *width_pt, *height_pt, align)),
+            _ => None,
+        })
+        .expect("embedded image");
+    assert_eq!(img.0.bytes(), png);
+    assert_eq!(img.1, 120.0);
+    assert_eq!(img.2, 80.0);
+    assert_eq!(img.3, "center");
+
+    let mut signed_zip = ZipWriter::new();
+    let content = officecore::zip::ZipReader::open(bytes).unwrap().read_text("content.xml").unwrap();
+    signed_zip.add_text("content.xml", &content);
+    signed_zip.add_text("sign.sgn", "DUMMY-SIGNATURE");
+    let signed_read = read_udf(&signed_zip.finish()).expect("read signed udf");
+    assert!(signed_read.warnings.iter().any(|w| w.contains("sign.sgn")), "warnings: {:?}", signed_read.warnings);
+}

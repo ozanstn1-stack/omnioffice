@@ -181,3 +181,65 @@ fn parses_pdf_list_annotations_and_pdf_inspect() {
     assert_eq!(Job::parse(&inspect_job.args()).unwrap(), inspect_job);
     assert!(Job::parse(&["pdf-inspect".into()]).is_err());
 }
+
+#[test]
+fn parses_pdf_studio_and_pdfa_worker_jobs() {
+    let fields_job = Job::PdfListFormFields { path: PathBuf::from("form.pdf") };
+    assert_eq!(fields_job.name(), "pdf-list-form-fields");
+    assert_eq!(fields_job.args(), vec!["pdf-list-form-fields", "form.pdf"]);
+    assert_eq!(Job::parse(&fields_job.args()).unwrap(), fields_job);
+    assert!(Job::parse(&["pdf-list-form-fields".into()]).is_err());
+
+    let objects_job = Job::PdfListObjects { path: PathBuf::from("objects.pdf") };
+    assert_eq!(objects_job.name(), "pdf-list-objects");
+    assert_eq!(objects_job.args(), vec!["pdf-list-objects", "objects.pdf"]);
+    assert_eq!(Job::parse(&objects_job.args()).unwrap(), objects_job);
+    assert!(Job::parse(&["pdf-list-objects".into()]).is_err());
+
+    let runs_job = Job::PdfListTextRuns { path: PathBuf::from("runs.pdf") };
+    assert_eq!(runs_job.name(), "pdf-list-text-runs");
+    assert_eq!(runs_job.args(), vec!["pdf-list-text-runs", "runs.pdf"]);
+    assert_eq!(Job::parse(&runs_job.args()).unwrap(), runs_job);
+    assert!(Job::parse(&["pdf-list-text-runs".into()]).is_err());
+
+    let pdfa_job = Job::PdfaValidate { path: PathBuf::from("archival.pdf"), level: "2b".into() };
+    assert_eq!(pdfa_job.name(), "pdfa-validate");
+    assert_eq!(pdfa_job.args(), vec!["pdfa-validate", "archival.pdf", "2b"]);
+    assert_eq!(Job::parse(&pdfa_job.args()).unwrap(), pdfa_job);
+    assert!(Job::parse(&["pdfa-validate".into(), "archival.pdf".into()]).is_err());
+}
+
+#[test]
+fn parses_pdf_tile_and_verify_signatures_worker_jobs() {
+    let tile_job = Job::PdfPageTile {
+        path: PathBuf::from("big.pdf"),
+        page: 2,
+        scale_bits: 3.5f32.to_bits(),
+        x: 128,
+        y: 256,
+        width: 512,
+        height: 512,
+        jpeg_quality: Some(86),
+    };
+    assert_eq!(tile_job.name(), "pdf-page-tile");
+    assert_eq!(Job::parse(&tile_job.args()).unwrap(), tile_job);
+
+    let png_tile = Job::PdfPageTile {
+        path: PathBuf::from("big.pdf"),
+        page: 1,
+        scale_bits: 2.0f32.to_bits(),
+        x: 0,
+        y: 0,
+        width: 256,
+        height: 256,
+        jpeg_quality: None,
+    };
+    assert_eq!(Job::parse(&png_tile.args()).unwrap(), png_tile);
+    assert!(Job::parse(&["pdf-page-tile".into(), "big.pdf".into(), "1".into()]).is_err());
+
+    let sig_job = Job::PdfVerifySignatures { path: PathBuf::from("signed.pdf") };
+    assert_eq!(sig_job.name(), "pdf-verify-signatures");
+    assert_eq!(sig_job.args(), vec!["pdf-verify-signatures", "signed.pdf"]);
+    assert_eq!(Job::parse(&sig_job.args()).unwrap(), sig_job);
+    assert!(Job::parse(&["pdf-verify-signatures".into()]).is_err());
+}

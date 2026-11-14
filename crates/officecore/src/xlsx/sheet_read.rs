@@ -133,11 +133,15 @@ pub(super) fn apply_columns(root: &XmlNode, sheet: &mut Sheet) {
             continue;
         }
         let pixels = if hidden { 0.0 } else { (width.unwrap_or(0.0) * 7.0 + 5.0).max(24.0) };
+        let hidden_pixels = if hidden { width.filter(|w| *w > 0.0).map(|w| (w * 7.0 + 5.0).max(24.0)) } else { None };
         // "Hide everything right of Z" is one `<col min="27" max="16384">`; only
         // the columns of the imported grid are recorded.
         let last = if hidden { max.min(sheet.col_count.saturating_sub(1)) } else { max };
         for column in min..=last.min(MAX_IMPORT_COLS) {
             sheet.col_widths.insert(column, pixels);
+            if let Some(saved) = hidden_pixels {
+                sheet.hidden_col_widths.insert(column, saved);
+            }
         }
     }
 }
@@ -178,6 +182,11 @@ pub(super) fn apply_sheet_cells(root: &XmlNode, sheet: &mut Sheet, styles: &Impo
             // everything under its data would add a hundred thousand entries).
             if row_number < sheet.row_count {
                 sheet.row_heights.insert(row_number, 0.0);
+                if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
+                    if height > 0.0 {
+                        sheet.hidden_row_heights.insert(row_number, height * PT_TO_PX);
+                    }
+                }
             }
         } else if let Some(height) = row.attr("ht").and_then(|value| value.trim().parse::<f64>().ok()) {
             sheet.row_heights.insert(row_number, height * PT_TO_PX);

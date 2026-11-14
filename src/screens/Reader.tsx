@@ -38,9 +38,11 @@ import {
   toAppError,
 } from "../lib/api";
 import type { TextRunInfo } from "../lib/api";
-import { clampSpeechRate, pageTextFromRuns, speechSupported, textLayerItems } from "../lib/reader-text";
+import { clampSpeechRate, pageTextFromRuns, speechSupported } from "../lib/reader-text";
+import { ReaderTextLayer } from "./reader/ReaderTextLayer";
 import type { SpeechWindow } from "../lib/reader-text";
 import { clamp, previewPixelRatio, previewRasterWidth, uid } from "../lib/format";
+import { computeVirtualPageRange, pageOffsetTop } from "../lib/virtual-pages";
 import { reportError, useJobProgress, useToasts } from "../lib/store";
 import {
   TILE_VIEW_MARGIN,
@@ -334,45 +336,6 @@ function ReaderTiles({
   );
 }
 
-const ReaderTextLayer = memo(function ReaderTextLayer({
-  runs,
-  geometry,
-  width,
-}: {
-  runs: readonly TextRunInfo[];
-  geometry: PageGeometry;
-  width: number;
-}) {
-  const items = useMemo(() => textLayerItems(runs, geometry, width), [runs, geometry, width]);
-  if (items.length === 0) return null;
-  return (
-    <div
-      className="absolute inset-0 overflow-hidden"
-      style={{ lineHeight: 1, userSelect: "text", WebkitUserSelect: "text" }}
-    >
-      {items.map((item, index) => (
-        <span
-          key={index}
-          style={{
-            position: "absolute",
-            left: item.left,
-            top: item.top,
-            width: item.width,
-            height: item.height,
-            fontSize: item.fontSize,
-            lineHeight: `${item.height}px`,
-            color: "transparent",
-            whiteSpace: "pre",
-            cursor: "text",
-          }}
-        >
-          {item.text}
-        </span>
-      ))}
-    </div>
-  );
-});
-
 const ReaderPage = memo(function ReaderPage({
   docId,
   path,
@@ -628,6 +591,7 @@ export function Reader({
     return () => observer.disconnect();
   }, [session.primary]);
 
+  const [scrollMetrics, setScrollMetrics] = useState({ top: 0, height: 900 });
   const handleScroll = useCallback(() => {
     if (framePending.current) return;
     framePending.current = true;
@@ -635,6 +599,8 @@ export function Reader({
       framePending.current = false;
       const container = scrollRef.current;
       if (!container) return;
+      const vh = container.clientHeight || 900;
+      setScrollMetrics((p) => (Math.abs(p.top - container.scrollTop) > 40 || p.height !== vh ? { top: container.scrollTop, height: vh } : p));
       const top = container.getBoundingClientRect().top + 12;
       let best = currentPageRef.current;
       let bestDistance = Number.POSITIVE_INFINITY;
@@ -703,8 +669,19 @@ export function Reader({
       element.scrollIntoView({ behavior: "smooth", block: "start" });
       currentPageRef.current = page;
       setCurrentPage(page);
+      return;
     }
-  }, []);
+    const container = scrollRef.current;
+    const idx = geometries.findIndex((g) => g.page === page);
+    if (container && idx >= 0) {
+      const heights = geometries.map((g) => Math.round((renderWidth * g.display_height_pt) / Math.max(1, g.display_width_pt)));
+      const targetTop = pageOffsetTop(heights, 20, idx) + 20;
+      container.scrollTo({ top: targetTop, behavior: "smooth" });
+      setScrollMetrics({ top: targetTop, height: container.clientHeight || 900 });
+      currentPageRef.current = page;
+      setCurrentPage(page);
+    }
+  }, [geometries, renderWidth]);
 
   useEffect(() => {
     if (initialPage && initialPage >= 1 && geometries.length > 0) {
@@ -1302,28 +1279,38 @@ export function Reader({
                 {t("reader.noTextLayer")}
               </div>
             ) : null}
-            {geometries.map((geometry) => (
-              <ReaderPage
-                key={`${docId}-${geometry.page}`}
-                docId={docId}
-                path={session.primary!.path}
-                page={geometry.page}
-                geometry={geometry}
-                width={renderWidth}
-                password={session.password || undefined}
-                cache={imageCacheMap}
-                tileCache={tileCacheMap}
-                tileQueue={tileQueue}
-                register={register}
-                runs={runsByPage.get(geometry.page)}
-                showTextLayer={showTextLayer}
-                highlight={
-                  matchesByPage.get(geometry.page)?.[0]?.snippet
-                    ? `${matchesByPage.get(geometry.page)!.length}× ${matchesByPage.get(geometry.page)![0].snippet}`
-                    : undefined
-                }
-              />
-            ))}
+            {(() => {
+              const heights = geometries.map((g) => Math.round((renderWidth * g.display_height_pt) / Math.max(1, g.display_width_pt)));
+              const range = computeVirtualPageRange(heights, 20, scrollMetrics.top, scrollMetrics.height, 3);
+              return (
+                <>
+                  {range.topSpacerPx > 0 ? <div aria-hidden="true" style={{ height: range.topSpacerPx }} /> : null}
+                  {geometries.slice(range.startIndex, range.endIndex + 1).map((geometry) => (
+                    <ReaderPage
+                      key={`${docId}-${geometry.page}`}
+                      docId={docId}
+                      path={session.primary!.path}
+                      page={geometry.page}
+                      geometry={geometry}
+                      width={renderWidth}
+                      password={session.password || undefined}
+                      cache={imageCacheMap}
+                      tileCache={tileCacheMap}
+                      tileQueue={tileQueue}
+                      register={register}
+                      runs={runsByPage.get(geometry.page)}
+                      showTextLayer={showTextLayer}
+                      highlight={
+                        matchesByPage.get(geometry.page)?.[0]?.snippet
+                          ? `${matchesByPage.get(geometry.page)!.length}× ${matchesByPage.get(geometry.page)![0].snippet}`
+                          : undefined
+                      }
+                    />
+                  ))}
+                  {range.bottomSpacerPx > 0 ? <div aria-hidden="true" style={{ height: range.bottomSpacerPx }} /> : null}
+                </>
+              );
+            })()}
             <div className="text-center text-xs muted py-3" style={{ maxWidth: renderWidth }}>
               {t("reader.shortcutHint")}
             </div>
