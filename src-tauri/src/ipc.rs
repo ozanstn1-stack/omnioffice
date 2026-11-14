@@ -440,5 +440,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 249;
+    const TOTAL: usize = 251;
 }
