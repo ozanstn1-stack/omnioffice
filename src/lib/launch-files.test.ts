@@ -3,9 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const api = vi.hoisted(() => ({
   startupFiles: vi.fn(),
   takeLaunchFiles: vi.fn(),
+  takeLaunchSkipped: vi.fn(),
   onLaunchFilesQueued: vi.fn(),
 }));
 vi.mock("./api", () => api);
+vi.mock("./typed-call", () => ({
+  callPlain: (run: (commands: { officeTakeLaunchSkipped: () => unknown }) => unknown) =>
+    run({ officeTakeLaunchSkipped: () => api.takeLaunchSkipped() }),
+}));
 
 import { watchLaunchFiles } from "./launch-files";
 
@@ -21,10 +26,21 @@ describe("watchLaunchFiles", () => {
     fire = () => undefined;
     api.startupFiles.mockResolvedValue([]);
     api.takeLaunchFiles.mockResolvedValue([]);
+    api.takeLaunchSkipped.mockResolvedValue([]);
     api.onLaunchFilesQueued.mockImplementation(async (handler: () => void) => {
       fire = handler;
       return unlisten;
     });
+  });
+
+  it("reports launch arguments that named no openable file", async () => {
+    api.takeLaunchSkipped.mockResolvedValueOnce(["kayıp.pdf (not found)"]);
+    const skipped = vi.fn();
+    const stop = watchLaunchFiles(() => undefined, skipped);
+    await settle();
+    await settle();
+    expect(skipped).toHaveBeenCalledWith(["kayıp.pdf (not found)"]);
+    stop();
   });
 
   it("delivers the files of this launch", async () => {

@@ -53,6 +53,10 @@ export function useDropTokens(options: {
 export function useLaunchTokens(options: {
   openOffice: (tokens: string[]) => void;
   openPdfs: (tokens: string[]) => void;
+  /** Anything else (images, e-mail, XML invoices): routed like a dropped file. */
+  openOther: (ref: FileToken) => void;
+  /** Arguments that named no openable file (name and reason). */
+  notifySkipped: (names: string[]) => void;
 }): void {
   const latest = useRef(options);
   useEffect(() => {
@@ -60,13 +64,31 @@ export function useLaunchTokens(options: {
   });
   useEffect(
     () =>
-      watchLaunchFiles((refs) => {
-        rememberTokenRefs(refs);
-        const office = refs.filter((ref) => isOfficePath(ref.name));
-        if (office.length > 0) latest.current.openOffice(office.map((ref) => ref.token));
-        const pdfs = refs.filter((ref) => ref.name.toLowerCase().endsWith(".pdf"));
-        if (pdfs.length > 0 && office.length === 0) latest.current.openPdfs(pdfs.map((ref) => ref.token));
-      }),
+      watchLaunchFiles(
+        (refs) => {
+          rememberTokenRefs(refs);
+          const office = refs.filter((ref) => isOfficePath(ref.name));
+          const pdfs = refs.filter((ref) => !isOfficePath(ref.name) && ref.name.toLowerCase().endsWith(".pdf"));
+          const other = refs.filter((ref) => !isOfficePath(ref.name) && !ref.name.toLowerCase().endsWith(".pdf"));
+          void import("./api")
+            .then(({ logFrontend }) =>
+              logFrontend(
+                "info",
+                `launch: ${refs.length} file(s), office=${office.length} pdf=${pdfs.length} other=${other.length}`,
+              ),
+            )
+            .catch(() => undefined);
+          if (office.length > 0) latest.current.openOffice(office.map((ref) => ref.token));
+          if (pdfs.length > 0 && office.length === 0) latest.current.openPdfs(pdfs.map((ref) => ref.token));
+          if (other.length > 0 && office.length === 0 && pdfs.length === 0) latest.current.openOther(other[0]);
+        },
+        (names) => {
+          void import("./api")
+            .then(({ logFrontend }) => logFrontend("warn", `launch: could not open ${names.join(", ")}`))
+            .catch(() => undefined);
+          latest.current.notifySkipped(names);
+        },
+      ),
     [],
   );
 }

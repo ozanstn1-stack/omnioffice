@@ -49,6 +49,7 @@ commands.allow = [
   "clear_operations",
   "log_frontend",
   "office_take_launch_files",
+  "office_take_launch_skipped",
   "person_card_list",
   "person_card_save",
   "person_card_delete",

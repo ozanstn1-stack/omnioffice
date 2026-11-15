@@ -259,10 +259,11 @@ export default function App() {
         return;
       }
       recordOpenWith(`route:${route.screen}`);
-      setFiles(route.files ?? []);
-      setScreen(route.screen);
+      // navigate() also selects the Convert/Security tab: a bare setScreen left
+      // an image on the PDF-to-images tab, which refused it.
+      navigate(route.screen, { files: route.files ?? [] });
     },
-    [pushToast, t],
+    [navigate, pushToast, t],
   );
 
   const openDocumentRef = useCallback(
@@ -274,13 +275,10 @@ export default function App() {
           setScreen("office");
           void openOfficePath(token);
         },
-        openScreen: (next, files) => {
-          setFiles(files);
-          setScreen(next);
-        },
+        openScreen: (next, files) => navigate(next, { files }),
         openExternal: (token) => void openAnyFile(token).catch(() => undefined),
       }),
-    [pushToast, t],
+    [navigate, pushToast, t],
   );
 
   // OS drag & drop from Explorer. The highlight still comes from the webview
@@ -460,6 +458,9 @@ export default function App() {
       setFiles(tokens);
       setScreen("reader");
     },
+    openOther: (ref) => openDocumentRef(ref),
+    // Said out loud instead of leaving the app on Home with no explanation.
+    notifySkipped: (names) => pushToast({ kind: "error", title: t("errors.openFailed"), detail: names.join(", ") }),
   });
 
   // Routes documents that arrived through an Android open-with intent to the
@@ -519,14 +520,13 @@ export default function App() {
       const imagePaths = realPaths.filter((path) => isImage(path));
       if (imagePaths.length > 0) {
         recordOpenWith(`route:imagesToPdf:${imagePaths.length}`);
-        setFiles(imagePaths);
-        setScreen("imagesToPdf");
+        navigate("imagesToPdf", { files: imagePaths });
         return;
       }
       recordOpenWith(`route:external:${realPaths.length}`);
       for (const path of realPaths) void openAnyFile(path).catch(() => undefined);
     },
-    [openSinglePath, pushToast, t],
+    [navigate, openSinglePath, pushToast, t],
   );
 
   // Android open-with: the poll and its trace live in lib/android-open-with.ts,

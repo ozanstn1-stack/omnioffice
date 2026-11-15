@@ -2329,8 +2329,8 @@ mod tests {
 /// Only existing file paths are returned; anything else is ignored.
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn office_startup_files() -> Vec<crate::files::FileRef> {
-    crate::launch::startup_tokens(std::env::args())
+pub fn office_startup_files(app: tauri::AppHandle) -> Vec<crate::files::FileRef> {
+    crate::launch::startup_tokens_logged(&app, std::env::args().collect())
 }
 
 #[cfg_attr(feature = "bindings", derive(specta::Type))]

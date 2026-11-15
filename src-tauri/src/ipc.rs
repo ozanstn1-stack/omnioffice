@@ -97,6 +97,7 @@ domain! {
         commands::clear_operations,
         commands::log_frontend,
         launch::office_take_launch_files,
+        launch::office_take_launch_skipped,
         person_cards::person_card_list,
         person_cards::person_card_save,
         person_cards::person_card_delete,
