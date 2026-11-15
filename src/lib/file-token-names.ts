@@ -24,6 +24,6 @@ export function rememberTokenRefs(refs: Array<{ token: string; name: string }>):
  * PDF from the rest (the reader used to drop a recent PDF as "unsupported").
  */
 export function rememberRecentNames<T extends { token: string; fileName: string }>(entries: T[]): T[] {
-  for (const entry of entries) rememberTokenName(entry.token, entry.fileName);
+  if (Array.isArray(entries)) for (const entry of entries) rememberTokenName(entry.token, entry.fileName);
   return entries;
 }
