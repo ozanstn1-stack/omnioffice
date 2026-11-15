@@ -17,9 +17,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
 const outDir = join(root, "..", "docs", "screenshots");
 const baseUrl = process.argv[2] ?? "http://localhost:4173/app.html";
-const profile = join(process.env.TEMP ?? "/tmp", `pdfsak-chrome-${Date.now()}`);
+const profile = join(process.env.TEMP ?? "/tmp", `omnioffice-chrome-${Date.now()}`);
 
 const chromeCandidates = [
+  // An explicit binary wins (e.g. a Playwright Chromium on a dev machine).
+  ...(process.env.CHROME_PATH ? [process.env.CHROME_PATH] : []),
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -201,7 +203,29 @@ async function main() {
   const hostileOk = hostilePrompt === false;
   console.log(hostileOk ? "[PASS] hostile deep link is ignored" : "[FAIL] hostile deep link opened a prompt");
 
-  const ok = selfTestOk && deepLinkOk && hostileOk;
+  // 4. Selected text from the context menu opens straight in the reader as a
+  // PDF (no consent prompt: nothing is downloaded).
+  const selection = new URLSearchParams({ text: "Merhaba dünya, şöyle ığdır.", src: "https://example.com/page", n: "1" });
+  await cdp.send("Page.navigate", { url: `${baseUrl}#${selection.toString()}` });
+  const readerText = await cdp.evaluate(`
+    new Promise((resolve) => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        const text = document.body.textContent || '';
+        if (text.includes('example.com - selected text.pdf')) {
+          clearInterval(timer);
+          resolve(text);
+        } else if (Date.now() - started > 15000) {
+          clearInterval(timer);
+          resolve('');
+        }
+      }, 200);
+    })
+  `);
+  const selectionOk = String(readerText).length > 0;
+  console.log(selectionOk ? "[PASS] selected text opens in the reader" : "[FAIL] selected text did not open in the reader");
+
+  const ok = selfTestOk && deepLinkOk && hostileOk && selectionOk;
   cdp.close();
   await rm(profile, { recursive: true, force: true }).catch(() => undefined);
   chromeProcess.kill();

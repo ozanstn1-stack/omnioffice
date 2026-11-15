@@ -18,6 +18,11 @@ run the suites also verify the markers against the test output
   opaque file token; `useTool` now checks the extension on the token's remembered
   display name, so the reader opens the file instead of staying on the file picker.
   `test:src/screens/Verify.test.tsx#accepts an opaque recent-file token whose remembered name is a PDF`
+- **Chrome extension 1.0.4 right-click menu:** the PDF entry shows only on PDF links
+  and pages; selected text opens in the reader as a PDF built with the bundled
+  Unicode font; a repeated or same-screen hand-off is no longer dropped.
+  `test:chrome-extension/test/selection.test.ts#selected text becomes a PDF with the Unicode font`
+  (the headless-Chrome self test also checks "selected text opens in the reader")
 
 ## Implemented (this cycle, 8.0.0) - Phase F: worker isolation, virtualization, office/UDF fidelity, AcroForm builder & v8 tools
 
