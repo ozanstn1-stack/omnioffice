@@ -1,0 +1,1 @@
+8.0.0: Etkileşimli AcroForm form alanı oluşturucu, Çoklu Belge AI Karşılaştırma Matrisi, İzlenen Klasör otomasyonu, DOCX yer imleri, ODT izlenen değişiklikler, UYAP .udf gömülü görsel desteği, Reader sayfa sanallaştırma ve genişletilmiş worker izolasyonu.

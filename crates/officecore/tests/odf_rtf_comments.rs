@@ -468,3 +468,73 @@ fn many_unnamed_comments_import_quickly() {
     assert_eq!(rtf_read.document.comments.len(), COUNT);
     assert!(started.elapsed().as_secs() < 20, "took {:?}", started.elapsed());
 }
+
+#[test]
+fn odt_tracked_changes_and_list_kind_roundtrip() {
+    use officecore::model::{Block, ListInfo, ParaProps, RevisionMark, Run, TextDocument};
+
+    let mut document = TextDocument::new_blank("ODT Fidelity");
+    document.track_changes = true;
+    document.blocks = vec![
+        Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "Keep ".into(), ..Default::default() },
+                Run {
+                    text: "added".into(),
+                    revision: Some(RevisionMark {
+                        id: "r1".into(),
+                        kind: "insert".into(),
+                        author: "Ozan".into(),
+                        date: "2026-11-14T10:00:00Z".into(),
+                        original: None,
+                    }),
+                    ..Default::default()
+                },
+                Run {
+                    text: "removed".into(),
+                    revision: Some(RevisionMark {
+                        id: "r2".into(),
+                        kind: "delete".into(),
+                        author: "Ada".into(),
+                        date: "2026-11-14T11:00:00Z".into(),
+                        original: None,
+                    }),
+                    ..Default::default()
+                },
+            ],
+        },
+        Block::Paragraph {
+            props: ParaProps {
+                list: Some(ListInfo { kind: "number".into(), level: 0, start: 1, marker: String::new() }),
+                ..Default::default()
+            },
+            runs: vec![Run { text: "First".into(), ..Default::default() }],
+        },
+        Block::Paragraph {
+            props: ParaProps {
+                list: Some(ListInfo { kind: "bullet".into(), level: 0, start: 1, marker: "•".into() }),
+                ..Default::default()
+            },
+            runs: vec![Run { text: "Bullet".into(), ..Default::default() }],
+        },
+    ];
+
+    let bytes = odf::write_odt(&document).unwrap();
+    let read = odf::read_odt(&bytes).unwrap();
+    assert!(read.document.track_changes);
+    let runs = paragraphs(&read.document)[0];
+    let inserted = runs.iter().find(|run| run.text == "added").expect("inserted run");
+    assert_eq!(inserted.revision.as_ref().map(|r| r.kind.as_str()), Some("insert"));
+    assert_eq!(inserted.revision.as_ref().map(|r| r.author.as_str()), Some("Ozan"));
+    let deleted = runs.iter().find(|run| run.text == "removed").expect("deleted run");
+    assert_eq!(deleted.revision.as_ref().map(|r| r.kind.as_str()), Some("delete"));
+    assert_eq!(deleted.revision.as_ref().map(|r| r.author.as_str()), Some("Ada"));
+
+    match &read.document.blocks[1] {
+        Block::Paragraph { props, .. } => {
+            assert_eq!(props.list.as_ref().map(|l| l.kind.as_str()), Some("number"));
+        }
+        other => panic!("expected list paragraph, got {other:?}"),
+    }
+}

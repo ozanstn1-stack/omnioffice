@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.0] - 2026-11-15
+
+### Added
+
+- **Interactive AcroForm Field Builder (`pdfcore::form_builder`, `PdfStudio`):** creates `/Tx` text inputs, `/Btn` checkboxes, `/Ch` dropdowns, and `/Sig` signature fields with `/NeedAppearances` and `/AP` streams via `pdf_create_form_fields` and [`FormBuilderPanel`](src/screens/studio/FormBuilderPanel.tsx).
+- **Multi-Document AI Comparison Matrix (`AiMatrixPanel`, `ai.rs` `"matrix"`):** runs structured multi-document synthesis across selected files with verified citations and one-click Markdown copy / CSV export.
+- **Watched Folder Automation Controls (`recipes.rs`, `Recipes.tsx`):** adds restart-safe `output.exists()` idempotency, `watched_folder_status`, live `"watched:status"` events, scan interval selector, and activity log.
+- **DOCX Bookmarks, ODT Tracked Changes & UYAP `.udf` Embedded Images:** round-trips `w:bookmarkStart`/`w:bookmarkEnd` (filtering `_GoBack`), ODT `text:tracked-changes` + list kind (`number`/`bullet`), Calc hidden row/column dimensions (`hidden_row_heights`/`hidden_col_widths`), `.udf` embedded images + `sign.sgn` warning, and Redline Track-Changes `.docx` comparison export.
+
+### Changed
+
+- **Worker Isolation (`E2.1`), Virtualization (`E3.7`) & TypeScript/Hook Hygiene (`E3.2`, `E3.4`, `E3.8`):** isolates passwordless `pdf_list_form_fields`, `pdf_list_objects`, `pdf_list_text_runs`, `pdfa_validate`, `page_tile`, and `pdf_verify_signatures` into `--worker`; virtualizes `Reader.tsx` (`src/lib/virtual-pages.ts`) and consolidates `Organize.tsx` onto `ThumbGrid`; removes all remaining 7 `react-hooks/set-state-in-effect` suppressions; splits `PdfStudio.tsx` and `Ai.tsx` into focused panels; and enables `noImplicitReturns` + `noImplicitOverride` in `tsconfig.json`.
+
 ## [7.51.0] - 2026-11-13
 
 ### Changed

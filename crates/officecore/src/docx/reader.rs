@@ -40,6 +40,10 @@ struct PartContext {
     pending_comment: Option<String>,
     /// A non page-number field being captured (`REF`, `DATE`, ...).
     field_capture: Option<FieldRef>,
+    /// Bookmarks collected from the main body part.
+    bookmarks: Vec<Bookmark>,
+    /// Starting block index for the paragraph currently being read.
+    current_block: u32,
 }
 
 impl PartContext {
@@ -52,6 +56,8 @@ impl PartContext {
             pending_revision: None,
             pending_comment: None,
             field_capture: None,
+            bookmarks: Vec::new(),
+            current_block: 0,
         }
     }
 }
@@ -577,7 +583,21 @@ fn read_runs(
                     context.pending_comment = Some(id.to_string());
                 }
             }
-            "commentRangeEnd" | "commentReference" => {}
+            "bookmarkStart" => {
+                let name = child.attr_any_ns("name").unwrap_or_default();
+                if !name.is_empty() && name != "_GoBack" {
+                    let id = child.attr_any_ns("id").unwrap_or_default();
+                    let offset = runs.iter().map(|run| run.text.chars().count() as u32).sum::<u32>();
+                    let block = context.current_block + blocks.len() as u32;
+                    context.bookmarks.push(Bookmark {
+                        id: if id.is_empty() { format!("bm{}", context.bookmarks.len() + 1) } else { id.to_string() },
+                        name: name.to_string(),
+                        block,
+                        offset,
+                    });
+                }
+            }
+            "commentRangeEnd" | "commentReference" | "bookmarkEnd" => {}
             "fldSimple" => {
                 let instruction = child.attr_any_ns("instr").unwrap_or_default().to_string();
                 match map_field_instruction(&instruction, "") {
@@ -1041,7 +1061,7 @@ fn read_body(
     part: &str,
     numbering: &Numbering,
     warnings: &mut Vec<String>,
-) -> (Vec<Block>, SectionPlan) {
+) -> (Vec<Block>, SectionPlan, Vec<Bookmark>) {
     let mut plan = SectionPlan {
         paragraph_sections: Vec::new(),
         paragraph_watermarks: Vec::new(),
@@ -1049,10 +1069,10 @@ fn read_body(
         body_watermark: None,
     };
     let Ok(text) = reader.read_text(part) else {
-        return (Vec::new(), plan);
+        return (Vec::new(), plan, Vec::new());
     };
     let Ok(root) = parse_xml(&text) else {
-        return (Vec::new(), plan);
+        return (Vec::new(), plan, Vec::new());
     };
     let rels = read_relationships(reader, part);
     let part_dir = part.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("word");
@@ -1062,6 +1082,7 @@ fn read_body(
     for child in &container.children {
         match child.local_name() {
             "p" => {
+                context.current_block = blocks.len() as u32;
                 blocks.extend(read_paragraph(child, &mut context, reader, numbering));
                 if let Some(sect) = child.child("pPr").and_then(|properties| properties.child("sectPr")) {
                     let mut watermark = None;
@@ -1083,17 +1104,30 @@ fn read_body(
                 for content in inner {
                     for node in &content.children {
                         if node.local_name() == "p" {
+                            context.current_block = blocks.len() as u32;
                             blocks.extend(read_paragraph(node, &mut context, reader, numbering));
                         }
                     }
                 }
             }
-            "bookmarkStart" | "bookmarkEnd" | "proofErr" | "commentRangeStart" | "commentRangeEnd" => {}
+            "bookmarkStart" => {
+                let name = child.attr_any_ns("name").unwrap_or_default();
+                if !name.is_empty() && name != "_GoBack" {
+                    let id = child.attr_any_ns("id").unwrap_or_default();
+                    context.bookmarks.push(Bookmark {
+                        id: if id.is_empty() { format!("bm{}", context.bookmarks.len() + 1) } else { id.to_string() },
+                        name: name.to_string(),
+                        block: blocks.len() as u32,
+                        offset: 0,
+                    });
+                }
+            }
+            "bookmarkEnd" | "proofErr" | "commentRangeStart" | "commentRangeEnd" => {}
             _ => {}
         }
     }
     warnings.extend(context.warnings);
-    (blocks, plan)
+    (blocks, plan, context.bookmarks)
 }
 
 /// Rebuilds the model's section list from the DOCX section plan.
@@ -1136,6 +1170,11 @@ fn apply_section_plan(document: &mut TextDocument, mut blocks: Vec<Block>, plan:
     for (position, props) in insertions.into_iter().rev() {
         let position = position.min(blocks.len());
         blocks.insert(position, Block::SectionBreak { section: props });
+        for bookmark in &mut document.bookmarks {
+            if bookmark.block as usize >= position {
+                bookmark.block += 1;
+            }
+        }
     }
     document.blocks = blocks;
 }
@@ -1265,7 +1304,8 @@ pub fn read_docx(bytes: &[u8]) -> OfficeResult<DocxRead> {
 
     document.styles = read_styles(&reader);
     let numbering = read_numbering(&reader);
-    let (blocks, plan) = read_body(&reader, &document_part, &numbering, &mut warnings);
+    let (blocks, plan, bookmarks) = read_body(&reader, &document_part, &numbering, &mut warnings);
+    document.bookmarks = bookmarks;
     apply_section_plan(&mut document, blocks, plan);
 
     document.footnotes = read_notes(&reader, "word/footnotes.xml", false, &numbering, &mut warnings);

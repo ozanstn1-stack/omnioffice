@@ -35,6 +35,7 @@
 
 #[cfg(not(target_os = "android"))]
 use std::io::Read;
+#[cfg(test)]
 use std::path::PathBuf;
 #[cfg(not(target_os = "android"))]
 use std::process::{Command, Stdio};
@@ -44,8 +45,10 @@ use std::time::{Duration, Instant};
 #[cfg(not(target_os = "android"))]
 mod containment;
 mod jobs;
+mod spec;
 
 pub use jobs::{decode_pdf_error, execute};
+pub use spec::Job;
 
 #[cfg(not(target_os = "android"))]
 use containment::{env_allowed, platform};
@@ -70,111 +73,6 @@ const MAX_OUTPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub fn worker_invocation(args: &[String]) -> Option<&[String]> {
     // `std::env::args()` puts the executable first.
     (args.get(1)? == "--worker").then(|| &args[2..])
-}
-
-/// One worker job.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Job {
-    /// Parse an office document into the editor model (`office::open_path`).
-    OfficeOpen { path: PathBuf },
-    /// Parse a UBL-TR invoice (XML or ZIP).
-    InvoiceOpen { path: PathBuf },
-    /// Parse a ZIP of UBL-TR invoices.
-    InvoicePackage { path: PathBuf },
-    /// Parse an `.eml` message.
-    EmlOpen { path: PathBuf },
-    /// Inspect PDF metadata, page count, and encryption status.
-    PdfInfo { path: PathBuf },
-    /// Extract the text layer of one page (unauthenticated).
-    PdfPageText { path: PathBuf, page: u32 },
-    /// Rasterize a single unauthenticated PDF page as a PNG or JPEG data URL.
-    PdfPageImage { path: PathBuf, page: u32, max_width: u32, dpi: u32, jpeg_quality: Option<u8> },
-    /// List annotations in display space for an unauthenticated PDF.
-    PdfListAnnotations { path: PathBuf },
-    /// Run structural/accessibility inspection on an unauthenticated PDF.
-    PdfInspect { path: PathBuf },
-    /// Repair a damaged PDF (qpdf when available, built-in rebuild otherwise).
-    Repair { input: PathBuf, output: PathBuf },
-}
-
-impl Job {
-    /// The arguments after `--worker` on the command line.
-    pub fn args(&self) -> Vec<String> {
-        let path = |value: &PathBuf| value.to_string_lossy().to_string();
-        match self {
-            Job::OfficeOpen { path: file } => vec!["office-open".into(), path(file)],
-            Job::InvoiceOpen { path: file } => vec!["invoice-open".into(), path(file)],
-            Job::InvoicePackage { path: file } => vec!["invoice-package".into(), path(file)],
-            Job::EmlOpen { path: file } => vec!["eml-open".into(), path(file)],
-            Job::PdfInfo { path: file } => vec!["pdf-info".into(), path(file)],
-            Job::PdfPageText { path: file, page } => vec!["pdf-page-text".into(), path(file), page.to_string()],
-            Job::PdfPageImage { path: file, page, max_width, dpi, jpeg_quality } => vec![
-                "pdf-page-image".into(),
-                path(file),
-                page.to_string(),
-                max_width.to_string(),
-                dpi.to_string(),
-                jpeg_quality.map(|q| q.to_string()).unwrap_or_else(|| "png".into()),
-            ],
-            Job::PdfListAnnotations { path: file } => vec!["pdf-list-annotations".into(), path(file)],
-            Job::PdfInspect { path: file } => vec!["pdf-inspect".into(), path(file)],
-            Job::Repair { input, output } => vec!["repair".into(), path(input), path(output)],
-        }
-    }
-
-    /// Parses the arguments that follow `--worker`.
-    pub fn parse(rest: &[String]) -> Result<Job, String> {
-        let operation = rest.first().ok_or("--worker needs an operation")?;
-        let path = |index: usize| -> Result<PathBuf, String> {
-            rest.get(index).map(PathBuf::from).ok_or_else(|| format!("{operation} needs a path"))
-        };
-        let num = |index: usize, label: &str| -> Result<u32, String> {
-            rest.get(index)
-                .ok_or_else(|| format!("{operation} needs {label}"))?
-                .parse::<u32>()
-                .map_err(|_| format!("{operation}: invalid {label}"))
-        };
-        match operation.as_str() {
-            "office-open" => Ok(Job::OfficeOpen { path: path(1)? }),
-            "invoice-open" => Ok(Job::InvoiceOpen { path: path(1)? }),
-            "invoice-package" => Ok(Job::InvoicePackage { path: path(1)? }),
-            "eml-open" => Ok(Job::EmlOpen { path: path(1)? }),
-            "pdf-info" => Ok(Job::PdfInfo { path: path(1)? }),
-            "pdf-page-text" => Ok(Job::PdfPageText { path: path(1)?, page: num(2, "a page number")? }),
-            "pdf-page-image" => {
-                let quality = match rest.get(5).map(String::as_str) {
-                    None | Some("png") => None,
-                    Some(raw) => Some(raw.parse::<u8>().map_err(|_| format!("{operation}: invalid jpeg quality"))?),
-                };
-                Ok(Job::PdfPageImage {
-                    path: path(1)?,
-                    page: num(2, "a page number")?,
-                    max_width: num(3, "max_width")?,
-                    dpi: num(4, "dpi")?,
-                    jpeg_quality: quality,
-                })
-            }
-            "pdf-list-annotations" => Ok(Job::PdfListAnnotations { path: path(1)? }),
-            "pdf-inspect" => Ok(Job::PdfInspect { path: path(1)? }),
-            "repair" => Ok(Job::Repair { input: path(1)?, output: path(2)? }),
-            other => Err(format!("unknown worker operation: {other}")),
-        }
-    }
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            Job::OfficeOpen { .. } => "office-open",
-            Job::InvoiceOpen { .. } => "invoice-open",
-            Job::InvoicePackage { .. } => "invoice-package",
-            Job::EmlOpen { .. } => "eml-open",
-            Job::PdfInfo { .. } => "pdf-info",
-            Job::PdfPageText { .. } => "pdf-page-text",
-            Job::PdfPageImage { .. } => "pdf-page-image",
-            Job::PdfListAnnotations { .. } => "pdf-list-annotations",
-            Job::PdfInspect { .. } => "pdf-inspect",
-            Job::Repair { .. } => "repair",
-        }
-    }
 }
 
 /// Why a worker run failed: the worker could not even start, or it started and
@@ -274,6 +172,13 @@ pub fn run_json_or_local(job: &Job) -> Result<String, String> {
 
 /// The in-process parse, contained by `catch_unwind` so a panicking
 /// third-party parser becomes a parse error instead of an aborted app.
+/// Runs `job` via [`run_json_or_local`], decodes worker errors into [`PdfError`],
+/// and deserializes the JSON result.
+pub fn run_json_decoded<T: serde::de::DeserializeOwned>(job: &Job) -> Result<T, pdfcore::error::PdfError> {
+    let json = run_json_or_local(job).map_err(decode_pdf_error)?;
+    serde_json::from_str(&json).map_err(|error| pdfcore::error::PdfError::Internal(error.to_string()))
+}
+
 fn run_in_process(job: &Job, spawn_error: Option<&str>) -> Result<String, String> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| execute(job))) {
         Ok(result) => result,

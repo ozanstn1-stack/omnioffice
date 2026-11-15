@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 7.51.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 8.0.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,12 +23,13 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new in 7.51.0
+## What's new in 8.0.0
 
-- **Worker isolation for PDF annotation listing & structural inspection:** moves passwordless `pdf_list_annotations` (`worker::Job::PdfListAnnotations`) and `inspect_document` (`worker::Job::PdfInspect`) into the contained `--worker` subprocess while keeping passworded calls out of `argv`.
-- **Shared `clamp` / `Thumb` & React hook hygiene:** consolidates duplicate `clamp` logic in `src/lib/redact-geometry.ts` onto `src/lib/format.ts`, reuses `Thumb` from `src/components/pages.tsx` inside `src/screens/Organize.tsx`, and eliminates `react-hooks/set-state-in-effect` suppressions across `CompatibilityDialog`, `AiLibrary`, `Annotate`, `Inspect`, `Vault`, and `Verify`.
+- **Interactive AcroForm Field Builder, Multi-Doc AI Matrix & Watched Folder Automation:** queue and write `/Tx`, `/Btn`, `/Ch`, and `/Sig` form fields directly in `PdfStudio` (`pdf_create_form_fields`), synthesize multi-document comparison matrices with CSV/Markdown export in `Ai`, and monitor watched-folder recipe runs live in `Recipes`.
+- **Office & UYAP `.udf` Fidelity:** round-trips DOCX bookmarks (`w:bookmarkStart`/`w:bookmarkEnd`), ODT `text:tracked-changes`, Calc hidden row/column sizes, UYAP `.udf` embedded images, and Redline Track-Changes `.docx` comparison exports.
+- **Worker Isolation, Viewport Virtualization & Zero Hook Suppressions:** isolates `pdf_list_form_fields`, `pdf_list_objects`, `pdf_list_text_runs`, `pdfa_validate`, `page_tile`, and `pdf_verify_signatures` into `--worker`, virtualizes `Reader` (`virtual-pages.ts`) and `Organize` (`ThumbGrid`), eliminates all `react-hooks/set-state-in-effect` suppressions, and enables `noImplicitReturns` + `noImplicitOverride`.
 
-Earlier in the 7.4x–7.5x series: worker page-image isolation, `office_roundtrip` fuzzer, and `fileBaseName` consolidation (7.50), guarded job liveness, version history deduplication, Writer-selection desk tasks, and WebDAV/AI fuzzing (7.49), `page_text` worker isolation, orphan annotation cleanup, and PDF fuzzing (7.48), hierarchical Tagged PDF tables/artifacts, desktop `PresendDialog`, and extended Office fidelity corpus (7.47), XLSX `t="shared"` export grouping and CI engine lock checks (7.46), unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info` worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42), Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40), Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
+Earlier in the 7.4x–7.5x series: worker annotation/inspection isolation and `clamp`/`Thumb` consolidation (7.51), worker page-image isolation, `office_roundtrip` fuzzer, and `fileBaseName` consolidation (7.50), guarded job liveness, version history deduplication, Writer-selection desk tasks, and WebDAV/AI fuzzing (7.49), `page_text` worker isolation, orphan annotation cleanup, and PDF fuzzing (7.48), hierarchical Tagged PDF tables/artifacts, desktop `PresendDialog`, and extended Office fidelity corpus (7.47), XLSX `t="shared"` export grouping and CI engine lock checks (7.46), unified `useJobs` store and modular `WriterRibbon` (7.45), `pdf_info` worker isolation and cross-platform `fetch-engines.mjs` (7.44), viewerless PDF markup flatten and annotation delete indexing fixes (7.43), batched AI embeddings and remembered AI data notice (7.42), Turkish religious holidays to 2050 and criminal-case judicial recess (7.41), ODP slide masters (7.40), Excel dynamic arrays (7.39), and editable Calc charts (7.38). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 
@@ -769,10 +770,10 @@ Next (architecture prepared, not implemented):
 | Project statistics | Count |
 | --- | --- |
 | Screens | 56 |
-| Tauri commands | 253 |
-| Rust tests | 1939 |
-| TypeScript test files | 265 |
-| TypeScript test cases (approx.) | 2773 |
+| Tauri commands | 255 |
+| Rust tests | 1947 |
+| TypeScript test files | 266 |
+| TypeScript test cases (approx.) | 2777 |
 <!-- stats:end -->
 
 ## License

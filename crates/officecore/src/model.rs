@@ -1602,6 +1602,12 @@ pub struct Sheet {
     pub cells: BTreeMap<String, Cell>,
     pub col_widths: BTreeMap<u32, f64>,
     pub row_heights: BTreeMap<u32, f64>,
+    /// Original pixel widths of hidden columns so Excel Unhide restores them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub hidden_col_widths: BTreeMap<u32, f64>,
+    /// Original pixel heights of hidden rows so Excel Unhide restores them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub hidden_row_heights: BTreeMap<u32, f64>,
     pub merges: Vec<MergeRange>,
     pub freeze_rows: u32,
     pub freeze_cols: u32,
@@ -1638,6 +1644,8 @@ impl Default for Sheet {
             cells: BTreeMap::new(),
             col_widths: BTreeMap::new(),
             row_heights: BTreeMap::new(),
+            hidden_col_widths: BTreeMap::new(),
+            hidden_row_heights: BTreeMap::new(),
             merges: Vec::new(),
             freeze_rows: 0,
             freeze_cols: 0,

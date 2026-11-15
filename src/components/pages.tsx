@@ -85,7 +85,7 @@ export function Thumb({
   );
 }
 
-export function ThumbGrid({
+export function ThumbGrid<T extends PageItem = PageItem>({
   path,
   pages,
   selected,
@@ -95,11 +95,13 @@ export function ThumbGrid({
   thumbWidth = 190,
   refreshedAt = 0,
   overlayFor,
+  renderThumb,
+  renderActions,
   onPageClick,
   onPageDoubleClick,
 }: {
   path: string;
-  pages: PageItem[];
+  pages: T[];
   selected: Set<number>;
   onSelectionChange: (next: Set<number>) => void;
   onReorder?: (from: number, to: number) => void;
@@ -107,6 +109,8 @@ export function ThumbGrid({
   thumbWidth?: number;
   refreshedAt?: number;
   overlayFor?: (index: number) => React.ReactNode;
+  renderThumb?: (page: T, index: number) => React.ReactNode;
+  renderActions?: (page: T, index: number) => React.ReactNode;
   onPageClick?: (index: number, event: React.MouseEvent) => void;
   onPageDoubleClick?: (index: number) => void;
 }) {
@@ -202,13 +206,17 @@ export function ThumbGrid({
             }}
             title={page.rotationDelta ? `${t("common.rotation")}: ${page.rotationDelta}°` : undefined}
           >
-            <Thumb
-              path={path}
-              page={page.sourcePage}
-              size={thumbWidth * 2}
-              password={password}
-              refreshedAt={refreshedAt}
-            />
+            {renderThumb ? (
+              renderThumb(page, index)
+            ) : (
+              <Thumb
+                path={path}
+                page={page.sourcePage}
+                size={thumbWidth * 2}
+                password={password}
+                refreshedAt={refreshedAt}
+              />
+            )}
             {overlayFor ? <div className="absolute inset-0 pointer-events-none">{overlayFor(index)}</div> : null}
             <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
               <span
@@ -217,7 +225,7 @@ export function ThumbGrid({
               >
                 {index + 1}
               </span>
-              {page.sourcePage !== index + 1 ? (
+              {page.sourcePage > 0 && page.sourcePage !== index + 1 ? (
                 <span
                   className="text-[10px] px-1.5 py-0.5 rounded-md"
                   style={{ background: "rgb(0 0 0 / 0.4)", color: "white" }}
@@ -237,6 +245,7 @@ export function ThumbGrid({
               ) : null}
             </div>
           </div>
+          {renderActions ? renderActions(page, index) : null}
         </div>
       ))}
     </div>

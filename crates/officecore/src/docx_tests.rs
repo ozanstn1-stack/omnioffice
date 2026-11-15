@@ -755,3 +755,32 @@ fn reads_the_run_language_for_hyphenation() {
     assert_eq!(run.lang.as_deref(), Some("tr-TR"));
     assert!(run.bold, "the other properties still parse");
 }
+
+#[test]
+fn roundtrip_bookmarks_and_filters_goback() {
+    let mut document = TextDocument::new_blank("Bookmarks");
+    document.blocks = vec![
+        Block::Paragraph {
+            props: ParaProps::default(),
+            runs: vec![
+                Run { text: "Hello ".into(), ..Default::default() },
+                Run { text: "world".into(), ..Default::default() },
+            ],
+        },
+        Block::paragraph("Second"),
+    ];
+    document.bookmarks = vec![
+        Bookmark { id: "1".into(), name: "Intro".into(), block: 0, offset: 0 },
+        Bookmark { id: "2".into(), name: "Mid".into(), block: 0, offset: 6 },
+        Bookmark { id: "3".into(), name: "_GoBack".into(), block: 1, offset: 0 },
+    ];
+    let bytes = write_docx(&document).unwrap();
+    let read = read_docx(&bytes).unwrap();
+    assert_eq!(read.document.bookmarks.len(), 2, "bookmarks: {:?}", read.document.bookmarks);
+    assert_eq!(read.document.bookmarks[0].name, "Intro");
+    assert_eq!(read.document.bookmarks[0].block, 0);
+    assert_eq!(read.document.bookmarks[0].offset, 0);
+    assert_eq!(read.document.bookmarks[1].name, "Mid");
+    assert_eq!(read.document.bookmarks[1].block, 0);
+    assert_eq!(read.document.bookmarks[1].offset, 6);
+}

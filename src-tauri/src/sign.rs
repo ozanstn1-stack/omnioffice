@@ -280,8 +280,8 @@ pub async fn pdf_archive_validation_data(
 pub async fn pdf_verify_signatures(path: String) -> Result<SignatureReport, PdfError> {
     let _permit = crate::concurrency::acquire().await;
     tauri::async_runtime::spawn_blocking(move || {
-        let bytes = crate::paths::read_input_file(&path, 2u64 * 1024 * 1024 * 1024)?;
-        Ok(sign::verify_signatures(&bytes))
+        let path = crate::paths::input_file(&path)?.into_path_buf();
+        crate::worker::run_json_decoded(&crate::worker::Job::PdfVerifySignatures { path })
     })
     .await
     .map_err(|error| PdfError::Internal(format!("worker thread failed: {error}")))?

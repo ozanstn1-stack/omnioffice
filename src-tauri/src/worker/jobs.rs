@@ -50,6 +50,44 @@ pub fn execute(job: &Job) -> Result<String, String> {
             let report = pdfcore::inspect::inspect_document(path, None).map_err(|error| error.to_string())?;
             to_json(&report)
         }
+        Job::PdfListFormFields { path } => {
+            let fields = pdfcore::forms::list_fields_in_file(path, None).map_err(|error| error.to_string())?;
+            to_json(&fields)
+        }
+        Job::PdfListObjects { path } => {
+            let objects = pdfcore::forms::list_page_objects_in_file(path, None).map_err(|error| error.to_string())?;
+            to_json(&objects)
+        }
+        Job::PdfListTextRuns { path } => {
+            let runs = pdfcore::content::list_text_runs_in_file(path, None).map_err(|error| error.to_string())?;
+            to_json(&runs)
+        }
+        Job::PdfaValidate { path, level } => {
+            let parsed = pdfcore::pdfa::PdfaLevel::parse(level).map_err(|error| error.to_string())?;
+            let report = pdfcore::pdfa::validate_pdfa(path, parsed).map_err(|error| error.to_string())?;
+            to_json(&report)
+        }
+        Job::PdfPageTile { path, page, scale_bits, x, y, width, height, jpeg_quality } => {
+            let scale = f32::from_bits(*scale_bits);
+            let region = pdfcore::render::PixelRegion { x: *x, y: *y, width: *width, height: *height };
+            let rendered = pdfcore::render::render_page_region(path, None, *page, scale, region)
+                .map_err(|error| error.to_string())?;
+            let (format, quality) = match jpeg_quality {
+                Some(q) => (Some("jpeg"), Some(*q)),
+                None => (None, None),
+            };
+            let thumb =
+                crate::commands::preview_data_url(&rendered, format, quality).map_err(|error| error.to_string())?;
+            to_json(&thumb)
+        }
+        Job::PdfVerifySignatures { path } => {
+            let meta = std::fs::metadata(path).map_err(|error| PdfError::from_io(error).to_string())?;
+            if meta.len() > 2u64 * 1024 * 1024 * 1024 {
+                return Err(PdfError::InvalidInput("file exceeds 2 GiB verification limit".into()).to_string());
+            }
+            let bytes = std::fs::read(path).map_err(|error| PdfError::from_io(error).to_string())?;
+            to_json(&pdfcore::sign::verify_signatures(&bytes))
+        }
         Job::Repair { input, output } => {
             let cancel = pdfcore::progress::CancelToken::new();
             let silent = |_| ();

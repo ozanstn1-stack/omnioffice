@@ -670,3 +670,27 @@ Android'de ölçüm, Type3, `/W` fuzz köprüsü.
   metin) N-up sentezleyicisiyle çizip sayfaya yakar. #755: not toplu düzenlemesinde silme sonraki
   düzenlemeleri kaydırıyordu (düzeltildi; silmeler en sonda); yorum silinince açılır notu ve
   yanıtları da gider. Sonrası: Aşama 4.6'nın kalanı (etiketli PDF tablo etiketleri) ya da Aşama 5.
+
+---
+
+## v7.51.0 → Faz F Yol Haritası (`PHASE-F-V8-PROPOSAL.md`) — 2026-11-14
+- **Onaylanan sıra:** Faz 1 (`v7.52.0` Worker izolasyonu) → Faz 2 (`v7.53.0` Hook/Bileşen/TS temizliği) →
+  Faz 3 (`v7.54.0` Sayfa sanallaştırma) → Faz 4 (`v7.55.0` Ofis sadakati) → Faz 5 (`v7.56.0` UYAP `.udf` & Redline DOCX) →
+  Faz 6 (`v8.0.0` AcroForm Builder, Belge Asistanı 3.0, İzlenen Klasör).
+- **Tamamlananlar:**
+  - **Faz 1 (Dilim 1.1 & 1.2):** `pdf_list_form_fields`, `pdf_list_objects`, `pdf_list_text_runs`, `pdfa_validate`, `page_tile` (parolasız) ve `pdf_verify_signatures` `--worker` sürecine alındı (`worker/spec.rs`, `worker/jobs.rs`, `pdf_v3.rs`, `commands.rs`, `sign.rs`, `worker_tests.rs`).
+  - **Faz 2 (Dilim 2.1, 2.2 & 2.3):** Kalan 7 `react-hooks/set-state-in-effect` bastırması **0**'a indirildi (`useTool.ts`, `PdfStudio.tsx`, `Ai.tsx`); `StudioGeometry.ts`, `SignaturesPanel.tsx`, `AiChatTab.tsx` ve `AiBatchTab.tsx` ayrıldı; `tsconfig.json` (`noImplicitReturns`, `noImplicitOverride`) sıkılaştırıldı.
+  - **Faz 3 (Dilim 3.1 & 3.2):** `src/lib/virtual-pages.ts` + `virtual-pages.test.ts` eklendi; `Reader.tsx` görünüm penceresi sanallaştırmasına geçirildi (`ReaderTextLayer.tsx` ayrıldı). `ThumbGrid` (`components/pages.tsx`) genelleştirildi ve `Organize.tsx`'teki yinelenen `OrganizeGrid` kaldırıldı.
+  - **Faz 4 (Dilim 4.1, 4.2 & 4.3 — Ofis sadakati):**
+    - DOCX yer imleri (`w:bookmarkStart`/`w:bookmarkEnd`, `_GoBack` filtresi) okuma/yazma + `roundtrip_bookmarks_and_filters_goback` testi.
+    - ODT izlenen değişiklikler (`text:tracked-changes`, `text:change-start`/`end`/`change`) + liste stili (`number`/`bullet`) çözünürlüğü + `compat.rs` güncellemesi + `odt_tracked_changes_and_list_kind_roundtrip` testi.
+    - Calc gizli satır/sütun boyutlarının (`hidden_col_widths`, `hidden_row_heights`) XLSX gidiş-dönüşünde korunması + `xlsx_round_trip_preserves_hidden_row_and_column_sizes` testi.
+  - **Faz 5 (Dilim 5.1 & 5.2 — UYAP `.udf` & Redline DOCX):**
+    - UYAP `.udf` gömülü görsel okuma/yazma (`read_udf_image`, `Block::Image`) + `sign.sgn` imza geçersizlik uyarısı + `compat.rs` güncellemesi + `udf_roundtrips_embedded_image_and_warns_on_signature` testi.
+    - Karşılaştırma çıktısını Track Changes (`trackChanges: true`) içeren Redline `.docx` olarak dışa aktarma (`compare.ts`, `office-compare.tsx`, `en.json`/`tr.json`).
+  - **Faz 6 (Dilim 6.1, 6.2 & 6.3 — v8.0.0 Özellikleri):**
+    - **Dilim 6.1:** Etkileşimli AcroForm Alan Oluşturucu (`crates/pdfcore/src/form_builder.rs`, `src-tauri/src/pdf_form_builder.rs`, `pdf_create_form_fields` Tauri komutu + ACL, `src/screens/studio/FormBuilderPanel.tsx`, `PdfStudio.tsx`).
+    - **Dilim 6.2:** Çoklu Belge AI Karşılaştırma Matrisi (`src-tauri/src/ai.rs` `"matrix"` toplu işlem eylemi, `src/screens/ai/AiMatrixPanel.tsx`, `AiBatchTab.tsx`, `Ai.tsx`, Markdown kopyalama & CSV dışa aktarma).
+    - **Dilim 6.3:** İzlenen Klasör Otomasyonu tamamlama (`src-tauri/src/recipes.rs` yeniden başlatma güvenli `output.exists()` koruması + `watched_folder_status` komutu + `"watched:status"` olayı, `src/screens/Recipes.tsx` canlı durum rozeti, tarama aralığı ve etkinlik günlüğü).
+- **Tam kapsam ve dilim detayları:** [`docs/plan/PHASE-F-V8-PROPOSAL.md`](./PHASE-F-V8-PROPOSAL.md).
+- **VM Ortam Kısıtları:** `node_modules` ve `libsoup-3.0` yokluğu nedeniyle `tsc`, `vitest`, `i18n:audit` ve `cargo test -p pdf-swiss-army-knife` CI / tam ortamda çalıştırılmalıdır.

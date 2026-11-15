@@ -54,13 +54,13 @@ interface ErrorBoundaryState {
  * or copy the details for a bug report.
  */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { error: null, componentStack: "", attempt: 0 };
+  override state: ErrorBoundaryState = { error: null, componentStack: "", attempt: 0 };
 
   static getDerivedStateFromError(error: unknown): Partial<ErrorBoundaryState> {
     return { error: toError(error) };
   }
 
-  componentDidCatch(error: unknown, info: ErrorInfo) {
+  override componentDidCatch(error: unknown, info: ErrorInfo) {
     const failure = toError(error);
     const componentStack = info.componentStack ?? "";
     this.setState({ componentStack });
@@ -76,7 +76,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.setState((state) => ({ error: null, componentStack: "", attempt: state.attempt + 1 }));
   };
 
-  render() {
+  override render() {
     const { error, componentStack, attempt } = this.state;
     if (error) {
       return (

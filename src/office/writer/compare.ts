@@ -222,6 +222,7 @@ export function diffDocuments(base: TextDocument, revised: TextDocument, author 
     revisedIndex = matchRevised + 1;
   }
   document.blocks = blocks;
+  document.trackChanges = true;
   document.showRevisions = true;
   return document;
 }

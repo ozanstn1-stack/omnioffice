@@ -285,3 +285,28 @@ fn hidden_columns_and_rows_do_not_draw_in_the_pdf() {
     let hidden = text_operations(&layout::workbook_to_pdf(&workbook, 1));
     assert_eq!(hidden + 4, shown, "hidden cells, labels and headers must not be drawn");
 }
+
+#[test]
+fn xlsx_round_trip_preserves_hidden_row_and_column_sizes() {
+    let mut workbook = Workbook::new_blank("HiddenSizes");
+    let sheet = &mut workbook.sheets[0];
+    sheet.set("A1", text_cell("keep"));
+    sheet.col_widths.insert(1, 0.0);
+    sheet.hidden_col_widths.insert(1, 180.0);
+    sheet.row_heights.insert(2, 0.0);
+    sheet.hidden_row_heights.insert(2, 48.0);
+
+    let bytes = xlsx::write_xlsx(&workbook).unwrap();
+    let sheet_xml = ZipReader::open(bytes.clone()).unwrap().read_text("xl/worksheets/sheet1.xml").unwrap();
+    assert!(sheet_xml.contains("hidden=\"1\""), "{sheet_xml}");
+    assert!(sheet_xml.contains("ht=\"36.00\""), "{sheet_xml}");
+
+    let read = xlsx::read_workbook_bytes(&bytes).unwrap();
+    let round = &read.workbook.sheets[0];
+    assert_eq!(round.col_widths.get(&1).copied(), Some(0.0));
+    assert_eq!(round.row_heights.get(&2).copied(), Some(0.0));
+    let saved_col = round.hidden_col_widths.get(&1).copied().expect("hidden_col_widths");
+    assert!((saved_col - 180.0).abs() < 2.0, "saved_col={saved_col}");
+    let saved_row = round.hidden_row_heights.get(&2).copied().expect("hidden_row_heights");
+    assert!((saved_row - 48.0).abs() < 1.0, "saved_row={saved_row}");
+}

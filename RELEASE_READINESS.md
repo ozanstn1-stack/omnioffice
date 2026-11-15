@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 7.51.0
+# Release Readiness — OmniOffice 8.0.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,32 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 8.0.0) - Phase F: worker isolation, virtualization, office/UDF fidelity, AcroForm builder & v8 tools
+
+- **Worker isolation for PDF Studio, PDF/A, page tiles & offline signature verification (`E2.1`):**
+  isolates passwordless `pdf_list_form_fields`, `pdf_list_objects`, `pdf_list_text_runs`,
+  `pdfa_validate`, `page_tile`, and `pdf_verify_signatures` into `--worker`.
+  `test:src-tauri/src/worker_tests.rs#parses_pdf_studio_and_pdfa_worker_jobs`
+  `test:src-tauri/src/worker_tests.rs#parses_pdf_tile_and_verify_signatures_worker_jobs`
+- **Reader viewport virtualization & Organize ThumbGrid consolidation (`E3.7`):**
+  adds `computeVirtualPageRange` (`src/lib/virtual-pages.ts`) to window large PDFs
+  and consolidates `Organize` onto the shared `ThumbGrid`.
+  `test:src/lib/virtual-pages.test.ts#mounts initial window with overscan and bottom spacer on a 100-page document`
+- **DOCX bookmarks, ODT tracked changes, Calc hidden sizes & UYAP `.udf` images (`E6.1`, `E6.4`):**
+  round-trips `w:bookmarkStart`/`w:bookmarkEnd`, ODT `text:tracked-changes`, Calc hidden
+  row/column dimensions, `.udf` embedded images, and Redline Track-Changes `.docx` exports.
+  `test:crates/officecore/src/docx_tests.rs#roundtrip_bookmarks_and_filters_goback`
+  `test:crates/officecore/tests/odf_rtf_comments.rs#odt_tracked_changes_and_list_kind_roundtrip`
+  `test:crates/officecore/tests/calc_hidden_test.rs#xlsx_round_trip_preserves_hidden_row_and_column_sizes`
+  `test:crates/officecore/tests/udf_fixture_test.rs#udf_roundtrips_embedded_image_and_warns_on_signature`
+- **Interactive AcroForm field builder (`pdfcore::form_builder`, `PdfStudio`):**
+  creates `/Tx`, `/Btn`, `/Ch`, and `/Sig` form fields with `/NeedAppearances` and `/AP` streams.
+  `test:crates/pdfcore/src/form_builder.rs#creates_text_checkbox_choice_and_signature_fields`
+- **Zero `react-hooks/set-state-in-effect` suppressions, `tsconfig` strictness, AI Matrix & Watched Folder (`E3.2`, `E3.4`, `E3.8`):**
+  eliminates all remaining hook suppressions, splits `PdfStudio` and `Ai`, adds
+  multi-document AI comparison matrix (`"matrix"`) and `watched_folder_status` live controls.
+  (no test: ESLint, `tsc --noEmit` with `noImplicitReturns`/`noImplicitOverride`, and 2,815 Vitest tests pass in CI)
 
 ## Implemented (this cycle, 7.51.0) - Worker annotation/inspection isolation, clamp deduplication & screen hook lint cleanup
 

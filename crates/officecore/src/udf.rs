@@ -30,7 +30,7 @@
 use crate::error::{OfficeError, OfficeResult};
 use crate::io::{read_bytes, write_atomic};
 use crate::model::{
-    Block, ListInfo, PageSetup, ParaProps, PreservedUdf, Run, TableCell, TableData, TableRow, TextDocument,
+    Block, ImageData, ListInfo, PageSetup, ParaProps, PreservedUdf, Run, TableCell, TableData, TableRow, TextDocument,
 };
 use crate::odf::TextRead;
 use crate::xml::{escape_attr, escape_text, parse_xml, XmlNode};
@@ -436,17 +436,57 @@ fn read_table(node: &XmlNode, warnings: &mut Vec<String>, preserved: &mut Vec<Pr
 const KNOWN_ELEMENTS: &[&str] =
     &["paragraph", "p", "table", "tabStops", "list", "listInfo", "content", "text", "span", "run"];
 
+fn read_udf_image(node: &XmlNode) -> Option<Block> {
+    let raw = attr_ci(node, "imageData")
+        .or_else(|| attr_ci(node, "data"))
+        .map(str::to_string)
+        .or_else(|| node.child("imageData").map(XmlNode::deep_text))?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(raw.trim()).ok()?;
+    if bytes.is_empty() {
+        return None;
+    }
+    let ext = if bytes.starts_with(b"\x89PNG") {
+        "png"
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        "jpg"
+    } else if bytes.starts_with(b"GIF8") {
+        "gif"
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        "webp"
+    } else {
+        "png"
+    };
+    let image = ImageData::from_bytes(&format!("udf-image.{ext}"), &bytes);
+    let width_pt = attr_f64(node, "width").or_else(|| attr_f64(node, "Width")).unwrap_or(240.0);
+    let height_pt = attr_f64(node, "height").or_else(|| attr_f64(node, "Height")).unwrap_or(160.0);
+    let align = match attr_ci(node, "Alignment").unwrap_or("0") {
+        "1" => "center",
+        "2" => "right",
+        _ => "left",
+    }
+    .to_string();
+    Some(Block::Image { image, width_pt, height_pt, align, caption: String::new(), wrap: "inline".into() })
+}
+
 fn read_blocks(children: &[XmlNode], warnings: &mut Vec<String>, preserved: &mut Vec<PreservedUdf>) -> Vec<Block> {
     let mut blocks = Vec::new();
     for child in children {
         match child.local_name() {
             "paragraph" | "p" => blocks.push(read_paragraph(child, warnings)),
             "table" => blocks.push(read_table(child, warnings, preserved)),
+            "image" => {
+                if let Some(block) = read_udf_image(child) {
+                    blocks.push(block);
+                } else {
+                    warnings.push("An embedded image in the UDF was kept but is not shown in the editor.".into());
+                    preserved.push(PreservedUdf { name: "image".into(), xml: node_to_xml(child) });
+                }
+            }
             // Whitespace and containers we descend into without a warning.
             "#text" => {}
             _ if KNOWN_ELEMENTS.contains(&child.local_name()) => {}
             other => {
-                if other == "image" || other == "picture" || other == "object" {
+                if other == "picture" || other == "object" {
                     warnings.push("An embedded image in the UDF was kept but is not shown in the editor.".into());
                 } else {
                     warnings.push(format!("An unrecognised UDF element <{other}> was kept as it is."));
@@ -536,6 +576,12 @@ pub fn read_udf(bytes: &[u8]) -> OfficeResult<TextRead> {
     }
     if document.blocks.is_empty() {
         document.blocks = vec![Block::paragraph("")];
+    }
+    if reader.contains("sign.sgn") {
+        warnings.push(
+            "This UDF package contains an electronic signature (sign.sgn); re-saving the document will invalidate the signature."
+                .into(),
+        );
     }
     document.preserved_udf = preserved;
     warnings.sort();
@@ -687,6 +733,22 @@ fn write_block(writer: &mut String, block: &Block, cursor: &mut usize) {
     match block {
         Block::Paragraph { props, runs } => write_paragraph(writer, props, runs, cursor),
         Block::Table { table } => write_table(writer, table, cursor),
+        Block::Image { image, width_pt, height_pt, align, .. } => {
+            let bytes = image.bytes();
+            if !bytes.is_empty() {
+                let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                let align_num = match align.as_str() {
+                    "center" => "1",
+                    "right" => "2",
+                    _ => "0",
+                };
+                writer.push_str(&format!(
+                    "<image imageData=\"{encoded}\" width=\"{}\" height=\"{}\" Alignment=\"{align_num}\"/>",
+                    trim_number(*width_pt),
+                    trim_number(*height_pt),
+                ));
+            }
+        }
         // A UDF has no model for these; they are reported by `write_udf`.
         _ => {}
     }

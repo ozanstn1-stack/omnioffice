@@ -295,10 +295,10 @@ pub fn scan_once(
             continue;
         }
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else { continue };
-        if !seen.insert(name.to_string()) {
+        let output = output_dir.join(name);
+        if !seen.insert(name.to_string()) || output.exists() {
             continue;
         }
-        let output = output_dir.join(name);
         let cancel = CancelToken::new();
         match run_recipe(&path, &output, recipe, password, &silent, &cancel) {
             Ok(applied) => results.push(WatchedResult {
@@ -434,6 +434,7 @@ pub async fn watched_folder_start(app: AppHandle, interval_seconds: Option<u64>)
     }
     let seconds = interval_seconds.unwrap_or(5).clamp(2, 3600);
     let generation = WATCH_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let _ = app.emit("watched:status", true);
     let app = Arc::new(app);
     let wake = watch_wake();
     tauri::async_runtime::spawn(async move {
@@ -481,11 +482,18 @@ pub async fn watched_folder_start(app: AppHandle, interval_seconds: Option<u64>)
 
 #[tauri::command]
 #[cfg_attr(feature = "bindings", specta::specta)]
-pub fn watched_folder_stop() -> Result<(), PdfError> {
+pub fn watched_folder_stop(app: AppHandle) -> Result<(), PdfError> {
     WATCH_ACTIVE.store(false, Ordering::SeqCst);
     WATCH_GENERATION.fetch_add(1, Ordering::SeqCst);
     watch_wake().notify_waiters();
+    let _ = app.emit("watched:status", false);
     Ok(())
+}
+
+#[tauri::command]
+#[cfg_attr(feature = "bindings", specta::specta)]
+pub fn watched_folder_status() -> bool {
+    WATCH_ACTIVE.load(Ordering::SeqCst)
 }
 
 #[cfg(test)]
@@ -629,5 +637,24 @@ mod tests {
         let results = scan_once(&folder, &folder, &recipe, None, &mut seen);
         assert!(results.is_empty(), "an overlapping folder must be skipped");
         assert_eq!(std::fs::read(&input).unwrap(), before, "the input must not change");
+    }
+
+    #[test]
+    fn a_watch_pass_skips_files_already_in_output_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("inbox");
+        let output_dir = dir.path().join("done");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::create_dir_all(&output_dir).unwrap();
+        blank_pdf(&folder.join("a.pdf"));
+        blank_pdf(&output_dir.join("a.pdf"));
+        let recipe = Recipe {
+            id: "r".into(),
+            name: "compress".into(),
+            steps: vec![RecipeStep::Compress { options: pdfcore::compress::CompressOptions::default() }],
+        };
+        let mut fresh_seen = HashSet::new();
+        let results = scan_once(&folder, &output_dir, &recipe, None, &mut fresh_seen);
+        assert!(results.is_empty(), "files already in output_dir must be skipped even with fresh seen set");
     }
 }
