@@ -1,0 +1,1 @@
+8.0.3: Okuma modu bir PDF'i okuyamadığında artık boş sayfa ve "1 / 0" göstermiyor, nedenini yazıyor.

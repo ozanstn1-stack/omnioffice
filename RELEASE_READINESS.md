@@ -12,6 +12,11 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.0.3) - Reader load errors are shown
+
+- **A PDF the reader could not load says why instead of showing an empty page:**
+  `test:src/screens/pdf-screens.test.tsx#says why a document could not be read instead of an empty page and 1 / 0`
+
 ## Implemented (this cycle, 8.0.2) - Windows launch files, Convert tab routing & Chrome extension 1.0.5
 
 - **Launch arguments are scanned leniently, logged and reported:** quotes, `file:` URIs and
