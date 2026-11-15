@@ -12,6 +12,13 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.0.1) - Recent files open PDFs on Android
+
+- **Opening a PDF from the recent files list (Android):** recent entries hand over an
+  opaque file token; `useTool` now checks the extension on the token's remembered
+  display name, so the reader opens the file instead of staying on the file picker.
+  `test:src/screens/Verify.test.tsx#accepts an opaque recent-file token whose remembered name is a PDF`
+
 ## Implemented (this cycle, 8.0.0) - Phase F: worker isolation, virtualization, office/UDF fidelity, AcroForm builder & v8 tools
 
 - **Worker isolation for PDF Studio, PDF/A, page tiles & offline signature verification (`E2.1`):**

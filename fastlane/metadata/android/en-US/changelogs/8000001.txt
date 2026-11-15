@@ -1,1 +1,1 @@
-8.0.1: Fixes opening a PDF from the recent files list on the phone: the reader now opens the file instead of staying on the file picker.
+8.0.1: Opening a PDF from the recent files list on Android: recent entries hand over an opaque file token, and the tools checked the .pdf extension on that token, so the reader rejected the file and stayed on the file picker. The recent store now remembers each token's display name (store.ts) and useTool checks the extension on that name; covered by a Vitest case in Verify.test.tsx.
