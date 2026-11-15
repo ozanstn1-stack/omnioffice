@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.2] - 2026-11-15
+
+### Fixed
+
+- **Opening a document from Windows Explorer, "Open with" or "Send to":** an argument that named no openable file left the app silently on Home. The command line is now scanned more leniently (surrounding quotes, `file:` URIs, and a path an unquoted `%1` split on its spaces are joined back), every launch is written to `launch.log` in the app log folder (argument count, documents found, skipped names with the reason; never full paths), and a document that still cannot be opened is reported in an error notice by name ([`launch.rs`](src-tauri/src/launch.rs), `office_take_launch_skipped`). Launched images, e-mails and XML invoices are routed like a dropped file instead of being ignored. A new E2E flow (`npm run e2e:launch-file`) starts the app the way Explorer does, cold and forwarded to a running window, on Linux and on the Windows WebView2 runner.
+- **Images opened from outside the app landed on the wrong Convert tab:** a dropped, launched or shared image routed to the image-to-PDF screen still showed the PDF-to-images tab, which refused it; routing now goes through the same navigation that selects the tab.
+- **Chrome extension 1.0.5:** right-clicking a page or selected text offers "Open as PDF with OmniOffice" (Turkish "OmniOffice ile PDF olarak aç"); selected text keeps its line breaks, a page without a selection is read from its article/main text, and the page title becomes the PDF's heading and file name. The page is read only on that click (activeTab + scripting; still no host permissions). The open OmniOffice tab is reused (`runtime.getContexts`; the tab query never matched extension pages). The release workflow now builds and attaches the extension zip.
+
 ## [8.0.1] - 2026-11-15
 
 ### Fixed
