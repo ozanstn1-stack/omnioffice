@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.1] - 2026-11-15
+
+### Fixed
+
+- **Opening a PDF from the recent files list on Android:** recent entries hand over an opaque file token, and the tools checked the `.pdf` extension on that token, so the reader rejected the file and stayed on the file picker. The recent store now remembers each token's display name ([`store.ts`](src/lib/store.ts)) and [`useTool`](src/lib/useTool.ts) checks the extension on that name; covered by a Vitest case in [`Verify.test.tsx`](src/screens/Verify.test.tsx).
+
 ## [8.0.0] - 2026-11-15
 
 ### Added

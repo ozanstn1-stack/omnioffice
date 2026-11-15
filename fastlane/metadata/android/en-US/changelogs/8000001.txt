@@ -1,0 +1,1 @@
+8.0.1: Fixes opening a PDF from the recent files list on the phone: the reader now opens the file instead of staying on the file picker.

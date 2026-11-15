@@ -1,0 +1,1 @@
+8.0.1: Telefonda son dosyalar listesinden bir PDF'e dokunulduğunda dosya artık açılıyor; okuma modu dosya seçme ekranında kalmıyor.
