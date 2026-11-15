@@ -99,7 +99,7 @@ async function evaluateOverCdp(port, expression) {
         if (message.id === 1) resolve(message.result?.result?.value);
       };
       socket.onerror = () => reject(new Error("DevTools socket failed"));
-      socket.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, returnByValue: true } }));
+      socket.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, returnByValue: true, awaitPromise: true } }));
     });
   } finally {
     socket.close();
