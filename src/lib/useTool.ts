@@ -131,7 +131,8 @@ export function useTool(options: ToolOptions): ToolSession {
 
   const addPaths = useCallback(
     async (paths: string[]) => {
-      const filtered = paths.filter(accepted);
+      // A recent/launch token is opaque: check the remembered display name, not the token.
+      const filtered = paths.filter((path) => accepted(fileBaseName(path)));
       if (!filtered.length) {
         if (paths.length) setError({ code: "unsupported", message: t("errors.unsupported") });
         return;

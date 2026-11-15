@@ -19,6 +19,13 @@ import {
   type Settings,
 } from "./types";
 import { paintAccent } from "./accent";
+import { rememberTokenRefs } from "./file-token-names";
+
+/** Recent entries are opaque tokens; remember their names so tools can tell a PDF from the rest. */
+function withNames(entries: RecentEntry[]): RecentEntry[] {
+  rememberTokenRefs(entries.map((entry) => ({ token: entry.token, name: entry.fileName })));
+  return entries;
+}
 
 interface SettingsState {
   settings: Settings;
@@ -164,12 +171,12 @@ export const useRecent = create<RecentState>((set) => ({
   entries: [],
   refresh: async () => {
     const entries = await loadRecent().catch(() => []);
-    set({ entries });
+    set({ entries: withNames(entries) });
   },
   add: async (entry) => {
     await apiAddRecent(entry).catch(() => undefined);
     const entries = await loadRecent().catch(() => []);
-    set({ entries });
+    set({ entries: withNames(entries) });
   },
   clear: async () => {
     await apiClearRecent().catch(() => undefined);
