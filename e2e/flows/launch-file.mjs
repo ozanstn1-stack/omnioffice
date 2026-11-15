@@ -12,8 +12,10 @@
  * rendered page, so the flow runs in the Linux job as well as on Windows.
  */
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
-import { executeAsync, exe, screenshot, sleep, waitForScript, withSession } from "../lib/driver.mjs";
+import { executeAsync, exe, killAppInstances, screenshot, sleep, waitForScript, withSession } from "../lib/driver.mjs";
 import { prepareWorkFile } from "../lib/files.mjs";
 
 const onScreen = (text) =>
@@ -52,6 +54,96 @@ function appCommandLines() {
   return (result.stdout ?? "").trim();
 }
 
+/** Newest DevToolsActivePort under the app's WebView2 data folder (E2E build). */
+function devToolsPort(since) {
+  const base = process.env.LOCALAPPDATA;
+  if (!base) return null;
+  const stack = [base];
+  let found = null;
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory() && !entry.isSymbolicLink() && dir.split(/[\\/]/).length < 12) stack.push(path);
+      else if (entry.name === "DevToolsActivePort") {
+        const mtime = statSync(path).mtimeMs;
+        if (mtime >= since && (!found || mtime > found.mtime)) found = { path, mtime };
+      }
+    }
+  }
+  if (!found || !existsSync(found.path)) return null;
+  const port = Number(readFileSync(found.path, "utf8").split(/\r?\n/)[0]);
+  return Number.isFinite(port) && port > 0 ? port : null;
+}
+
+/** Evaluates `expression` in the app page over the WebView2 DevTools port. */
+async function evaluateOverCdp(port, expression) {
+  const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+  const page = pages.find((entry) => entry.type === "page" && entry.webSocketDebuggerUrl);
+  if (!page) throw new Error("no page target");
+  const socket = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    socket.onopen = resolve;
+    socket.onerror = () => reject(new Error("DevTools socket failed"));
+  });
+  try {
+    return await new Promise((resolve, reject) => {
+      socket.onmessage = (event) => {
+        const message = JSON.parse(String(event.data));
+        if (message.id === 1) resolve(message.result?.result?.value);
+      };
+      socket.onerror = () => reject(new Error("DevTools socket failed"));
+      socket.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, returnByValue: true } }));
+    });
+  } finally {
+    socket.close();
+  }
+}
+
+/**
+ * Windows cold start exactly as Explorer does it: OmniOffice.exe "<file>",
+ * with no WebDriver in between (msedgedriver turns `args` into `--<arg>`
+ * switches, which the app rightly ignores). The page is read over the
+ * DevTools port the E2E build opens.
+ */
+async function windowsColdStart(pdfPath) {
+  killAppInstances();
+  await sleep(500);
+  const started = Date.now() - 1000;
+  const app = spawn(exe, [pdfPath], { stdio: "ignore" });
+  app.on("error", () => undefined);
+  try {
+    let port = null;
+    while (!port && Date.now() - started < 30000) {
+      await sleep(500);
+      port = devToolsPort(started);
+    }
+    if (!port) throw new Error("no DevTools port (is this the E2E build?)");
+    const check = `(${onScreen("sample-1.pdf").replace(/^return /, "() => ")})()`;
+    const files = `window.__TAURI_INTERNALS__?.invoke("office_startup_files").then((refs) => JSON.stringify(refs.map((r) => r.name)))`;
+    let last = "";
+    while (Date.now() - started < 60000) {
+      last = String(
+        await evaluateOverCdp(port, `(async () => (${check}) + " " + (await ${files}))()`).catch((e) => e.message),
+      );
+      if (last.startsWith("true")) {
+        console.log(`launch-file: cold start (Explorer) -> ${last}`);
+        return;
+      }
+      await sleep(1000);
+    }
+    throw new Error(`cold start stayed off the reader (last: ${last})`);
+  } finally {
+    killAppInstances();
+  }
+}
+
 async function attempt(label, run) {
   try {
     await run();
@@ -84,6 +176,15 @@ export async function launchFileFlow() {
     });
     if (failure) failures.push(failure);
   });
+
+  if (process.platform === "win32") {
+    const failure = await attempt("a PDF on the command line opens in the reader (Explorer cold start)", () =>
+      windowsColdStart(pdfPath),
+    );
+    if (failure) failures.push(failure);
+    if (failures.length) throw new Error(failures.join(" | "));
+    return;
+  }
 
   await withSession(
     "launch-cold",
