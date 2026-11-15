@@ -21,8 +21,9 @@ run the suites also verify the markers against the test output
 - **Chrome extension 1.0.4 right-click menu:** the PDF entry shows only on PDF links
   and pages; selected text opens in the reader as a PDF built with the bundled
   Unicode font; a repeated or same-screen hand-off is no longer dropped.
-  `test:chrome-extension/test/selection.test.ts#selected text becomes a PDF with the Unicode font`
-  (the headless-Chrome self test also checks "selected text opens in the reader")
+  (no test: covered outside the app's Vitest run, by the extension's own `node --test`
+  suite `chrome-extension/test/selection.test.ts` and the headless-Chrome self test check
+  "selected text opens in the reader", both in the Desktop workflow's Chrome extension job)
 
 ## Implemented (this cycle, 8.0.0) - Phase F: worker isolation, virtualization, office/UDF fidelity, AcroForm builder & v8 tools
 
