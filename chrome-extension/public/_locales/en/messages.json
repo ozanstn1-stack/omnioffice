@@ -1,0 +1,8 @@
+{
+  "extDescription": {
+    "message": "OmniOffice in your browser: read, merge, split, compress and convert PDFs, or open web text as a PDF. Works offline."
+  },
+  "menuOpenAsPdf": { "message": "Open as PDF with OmniOffice" },
+  "menuOpenPdf": { "message": "Open PDF with OmniOffice" },
+  "menuOpenApp": { "message": "Open OmniOffice" }
+}

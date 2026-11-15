@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "OmniOffice",
-  "version": "1.0.4",
-  "description": "OmniOffice in your browser: read, merge, split, compress and convert PDFs, or open selected web text as a PDF. Works offline.",
-  "minimum_chrome_version": "114",
+  "version": "1.0.5",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
+  "minimum_chrome_version": "116",
   "action": {
     "default_title": "OmniOffice",
     "default_icon": {
@@ -19,7 +20,7 @@
     "32": "icons/icon-32.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["contextMenus"],
+  "permissions": ["contextMenus", "activeTab", "scripting"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' data: blob: https: http:; img-src 'self' data: blob:"

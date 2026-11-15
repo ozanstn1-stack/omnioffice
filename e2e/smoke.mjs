@@ -24,6 +24,7 @@ import { aiPackFlow } from "./flows/ai-pack.mjs";
 import { calcScenario } from "./flows/calc.mjs";
 import { homeAndSettings } from "./flows/home.mjs";
 import { impressScenario } from "./flows/impress.mjs";
+import { launchFileFlow } from "./flows/launch-file.mjs";
 import { officeRoundtrip } from "./flows/office.mjs";
 import { mergeFlow, sanitizeFlow } from "./flows/pdf.mjs";
 import { accountantPersona, lawyerPersona, publicPersona, studentPersona } from "./flows/personas.mjs";
@@ -58,6 +59,7 @@ async function main() {
     ["--verify", verifyScenario],
     ["--scanner", scannerScenario],
     ["--vault", vaultScenario],
+    ["--launch-file", launchFileFlow],
   ];
   for (const [flag, run] of simple) {
     if (argv.includes(flag)) {

@@ -33,7 +33,7 @@ import { ConvertScreen } from "./screens/Convert";
 
 import { setPendingFiles } from "./lib/pending";
 import { openRemoteLink, parseRemoteLink, type RemoteLink } from "./lib/remotelink";
-import { parseSelectedText, selectionToPdf } from "./lib/selection";
+import { parseSelectedText, selectionError, selectionToPdf } from "./lib/selection";
 import { loadStampFonts } from "./lib/session";
 
 const THEME_KEY = "omnioffice-theme";
@@ -95,6 +95,13 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const read = () => {
+      if (selectionError(location.hash)) {
+        setRemoteLink(null);
+        setRemoteError(
+          "Chrome does not let extensions read this page (browser pages, the Web Store and the built-in PDF viewer). Select the text and try again.",
+        );
+        return;
+      }
       const selection = parseSelectedText(location.hash);
       if (selection) {
         setRemoteLink(null);
@@ -299,7 +306,7 @@ export default function App() {
           className="fixed bottom-4 right-4 max-w-sm rounded-lg border px-3 py-2 text-xs flex items-start gap-2"
           style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--danger, #b91c1c)" }}
         >
-          <span className="flex-1">Could not open the selected text: {remoteError}</span>
+          <span className="flex-1">Could not open the text as a PDF: {remoteError}</span>
           <button type="button" className="muted" aria-label="Dismiss" onClick={() => setRemoteError(null)}>
             ×
           </button>

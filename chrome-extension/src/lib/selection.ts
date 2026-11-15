@@ -1,18 +1,30 @@
-// Context-menu "open selected text": the service worker opens the app with
-// `app.html#text=<encoded selection>&src=<page URL>` and this module turns the
-// text into a PDF the reader can open. Nothing is fetched: the text came from
-// the page the user right-clicked, so no consent prompt or host permission is
-// needed.
+// Context-menu "Open as PDF": the service worker opens the app with
+// `app.html#text=<selection or page text>&title=<page title>&src=<page URL>`
+// and this module turns the text into a PDF the reader can open. Nothing is
+// fetched: the text came from the page the user right-clicked, so no consent
+// prompt or host permission is needed.
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 
 /** Longest selection kept (the service worker trims to the same length). */
-export const MAX_SELECTION_CHARS = 50_000;
+export const MAX_SELECTION_CHARS = 150_000;
 
 export interface SelectedText {
   text: string;
   /** Host of the page the text came from, when it was an http(s) page. */
   source: string | null;
+  /** The page title, shown as the heading and used for the file name. */
+  title?: string | null;
+}
+
+/** True when the service worker could not read the right-clicked page. */
+export function selectionError(hash: string): boolean {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  try {
+    return new URLSearchParams(raw).has("textError");
+  } catch {
+    return false;
+  }
 }
 
 /** Parses the `#text=` fragment; null when there is no usable text. */
@@ -37,12 +49,17 @@ export function parseSelectedText(hash: string): SelectedText | null {
       // A malformed source is just not shown.
     }
   }
-  return { text, source };
+  const title = (params.get("title") ?? "").replace(/\s+/g, " ").trim().slice(0, 200) || null;
+  return { text, source, title };
 }
 
-/** "example.com - selected text.pdf", safe as a download name. */
-export function fileNameForSelection(source: string | null): string {
-  const host = (source ?? "").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim();
+const unsafeName = /[\\/:*?"<>|\u0000-\u001f]/g;
+
+/** "<page title>.pdf", else "example.com - selected text.pdf"; safe as a download name. */
+export function fileNameForSelection(source: string | null, title?: string | null): string {
+  const named = (title ?? "").replace(unsafeName, "_").trim().slice(0, 120);
+  if (named) return `${named}.pdf`;
+  const host = (source ?? "").replace(unsafeName, "_").trim();
   return host ? `${host} - selected text.pdf` : "selected text.pdf";
 }
 
@@ -130,6 +147,17 @@ export async function selectionToPdf(selection: SelectedText, fontBytes?: Uint8A
     page.drawText(encodable(font, selection.source), { x: margin, y, size: 9, font, color: rgb(0.45, 0.45, 0.5) });
     y -= leading * 1.5;
   }
+  if (selection.title) {
+    const titleSize = 16;
+    const titleLines = wrapText(selection.title, usable, (value) =>
+      font.widthOfTextAtSize(encodable(font, value), titleSize),
+    );
+    for (const line of titleLines) {
+      page.drawText(encodable(font, line), { x: margin, y, size: titleSize, font, color: rgb(0.05, 0.05, 0.08) });
+      y -= titleSize * 1.35;
+    }
+    y -= leading * 0.5;
+  }
   for (const line of lines) {
     if (y < margin) {
       page = doc.addPage([pageWidth, pageHeight]);
@@ -139,8 +167,10 @@ export async function selectionToPdf(selection: SelectedText, fontBytes?: Uint8A
     y -= leading;
   }
 
-  doc.setTitle(selection.source ? `Selected text from ${selection.source}` : "Selected text");
+  doc.setTitle(selection.title || (selection.source ? `Selected text from ${selection.source}` : "Selected text"));
   doc.setCreator("OmniOffice");
   const bytes = await doc.save({ useObjectStreams: false });
-  return new File([bytes as BlobPart], fileNameForSelection(selection.source), { type: "application/pdf" });
+  return new File([bytes as BlobPart], fileNameForSelection(selection.source, selection.title), {
+    type: "application/pdf",
+  });
 }

@@ -550,6 +550,12 @@ jobs:
       # The vault indexes a scratch folder, searches it and previews a hit; the
       # hybrid search falls back to keyword without an embedding client, so no
       # engine or provider is involved.
+      # Documents on the command line (double-click / Open with / Send to),
+      # cold start and forwarded to a running instance. The single-instance
+      # plugin forwards over the session bus on Linux, hence dbus-run-session.
+      - name: Launch with a document (Xvfb)
+        timeout-minutes: 8
+        run: dbus-run-session -- xvfb-run -a npm run e2e:launch-file
       - name: Vault (Xvfb)
         timeout-minutes: 10
         run: xvfb-run -a npm run e2e:vault
@@ -683,6 +689,9 @@ jobs:
             Get-Content $probeLog | Sort-Object -Unique | Write-Host
           }
           exit $code
+      - name: Launch with a document (Explorer double-click path)
+        timeout-minutes: 8
+        run: npm run e2e:launch-file
       - name: Reader renders a real PDF (pdfium)
         timeout-minutes: 10
         run: npm run e2e:smoke:pdf
