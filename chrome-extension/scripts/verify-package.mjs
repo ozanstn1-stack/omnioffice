@@ -46,7 +46,10 @@ const manifest = JSON.parse(readFileSync(join(dist, "manifest.json"), "utf8"));
 if (manifest.manifest_version !== 3) fail("manifest_version must be 3");
 if (!manifest.name || !manifest.version) fail("name/version missing");
 if (manifest.host_permissions?.length) fail("host_permissions must stay empty (local-first guarantee)");
-if (manifest.permissions?.some((permission) => permission !== "contextMenus")) {
+// activeTab + scripting read the text of the page the user right-clicked, and
+// only on that click: neither grants standing access to any site.
+const ALLOWED_PERMISSIONS = ["contextMenus", "activeTab", "scripting"];
+if (manifest.permissions?.some((permission) => !ALLOWED_PERMISSIONS.includes(permission))) {
   fail(`unexpected permissions: ${manifest.permissions.join(", ")}`);
 }
 if (!manifest.background?.service_worker) fail("background service worker missing");

@@ -1,0 +1,1 @@
+8.0.2: Windows Gezgini, "Birlikte aç" veya "Gönder" ile açılan bir dosya açılamazsa uygulama artık ana sayfada sessizce kalmıyor, nedenini söylüyor; görseller resimden PDF'e aracında açılıyor. Chrome uzantısı 1.0.5: seçili yazı ya da tüm sayfa için "OmniOffice ile PDF olarak aç".

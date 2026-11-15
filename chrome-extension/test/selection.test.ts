@@ -12,6 +12,7 @@ import {
   MAX_SELECTION_CHARS,
   fileNameForSelection,
   parseSelectedText,
+  selectionError,
   selectionToPdf,
   wrapText,
 } from "../src/lib/selection";
@@ -27,7 +28,12 @@ test("selected text fragments are parsed", () => {
   assert.deepEqual(parseSelectedText(fragment("Merhaba dünya", "https://example.com/a?b=1")), {
     text: "Merhaba dünya",
     source: "example.com",
+    title: null,
   });
+  const titled = new URLSearchParams({ text: "Gövde", title: "  Haber\n başlığı  ", src: "https://example.com/" });
+  assert.equal(parseSelectedText(`#${titled}`)?.title, "Haber başlığı");
+  assert.equal(selectionError("#textError=unreadable&n=1"), true);
+  assert.equal(selectionError(fragment("x")), false);
   // Only an http(s) page is shown as the source.
   assert.equal(parseSelectedText(fragment("x", "javascript:alert(1)"))?.source, null);
   assert.equal(parseSelectedText(fragment("x", "not a url"))?.source, null);
@@ -41,6 +47,7 @@ test("selected text file names are safe", () => {
   assert.equal(fileNameForSelection("example.com"), "example.com - selected text.pdf");
   assert.equal(fileNameForSelection("localhost:8080"), "localhost_8080 - selected text.pdf");
   assert.equal(fileNameForSelection(null), "selected text.pdf");
+  assert.equal(fileNameForSelection("example.com", "Haber: \"son\" durum?"), "Haber_ _son_ durum_.pdf");
 });
 
 test("text wraps to the line width and breaks long words", () => {
@@ -59,6 +66,13 @@ test("selected text becomes a PDF with the Unicode font", async () => {
   const doc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()));
   assert.ok(doc.getPageCount() >= 3, `expected several pages, got ${doc.getPageCount()}`);
   assert.equal(doc.getTitle(), "Selected text from example.com");
+});
+
+test("a page title becomes the heading, document title and file name", async () => {
+  const file = await selectionToPdf({ text: "Paragraf bir.\n\nParagraf iki.", source: "example.com", title: "Günün haberi" });
+  assert.equal(file.name, "Günün haberi.pdf");
+  const doc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()));
+  assert.equal(doc.getTitle(), "Günün haberi");
 });
 
 test("without the font, letters Helvetica cannot encode do not fail the PDF", async () => {

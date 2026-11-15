@@ -1,0 +1,14 @@
+{
+  "extDescription": {
+    "message": "Tarayıcıda OmniOffice: PDF okuyun, birleştirin, bölün, sıkıştırın, dönüştürün ya da web yazısını PDF olarak açın. Çevrimdışı."
+  },
+  "menuOpenAsPdf": {
+    "message": "OmniOffice ile PDF olarak aç"
+  },
+  "menuOpenPdf": {
+    "message": "PDF'i OmniOffice ile aç"
+  },
+  "menuOpenApp": {
+    "message": "OmniOffice'i aç"
+  }
+}

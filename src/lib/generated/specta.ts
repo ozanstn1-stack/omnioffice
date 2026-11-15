@@ -442,6 +442,11 @@ export const commands = {
 	 */
 	logFrontend: (level: string, message: string) => __TAURI_INVOKE<void>("log_frontend", { level, message }),
 	officeTakeLaunchFiles: () => __TAURI_INVOKE<FileRef_Serialize[]>("office_take_launch_files"),
+	/**
+	 *  Names (with the reason) of launch arguments that could not be opened since
+	 *  the last call, so the app can say so instead of staying silently on Home.
+	 */
+	officeTakeLaunchSkipped: () => __TAURI_INVOKE<string[]>("office_take_launch_skipped"),
 	pdfInfo: (path: string, password: string | null) => typedError<PdfInfo, PdfError>(__TAURI_INVOKE("pdf_info", { path, password })),
 	pageThumbnail: (path: string, page: number, maxWidth: number | null, password: string | null) => typedError<Thumbnail, PdfError>(__TAURI_INVOKE("page_thumbnail", { path, page, maxWidth, password })),
 	pagePreview: (path: string, page: number, maxWidth: number | null, password: string | null, format: string | null, quality: number | null) => typedError<Thumbnail, PdfError>(__TAURI_INVOKE("page_preview", { path, page, maxWidth, password, format, quality })),

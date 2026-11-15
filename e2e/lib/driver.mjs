@@ -136,12 +136,13 @@ export async function waitForDriver(port) {
  * longer than the call timeout to start the native driver and the app, which
  * used to fail a whole release on the third scenario.
  */
-export async function createSession(port) {
+/** `args` is the app's own command line (a document, as Explorer passes it). */
+export async function createSession(port, args = []) {
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       return await webdriver(port, "/session", "POST", {
-        capabilities: { alwaysMatch: { "tauri:options": { application: exe } } },
+        capabilities: { alwaysMatch: { "tauri:options": { application: exe, ...(args.length ? { args } : {}) } } },
       });
     } catch (error) {
       lastError = error;
@@ -173,7 +174,7 @@ export function screenshot(session, name) {
 }
 
 /** Launches tauri-driver + one session, runs `steps`, and always tears down. */
-export async function withSession(name, env, steps) {
+export async function withSession(name, env, steps, args = []) {
   const port = basePort + withSession.index++;
   // A stale app from a previous scenario would win the single-instance race
   // and forward the new launch to itself; the session would then attach to the
@@ -195,7 +196,7 @@ export async function withSession(name, env, steps) {
   let session = null;
   try {
     await waitForDriver(port);
-    const created = await createSession(port);
+    const created = await createSession(port, args);
     session = { id: created.sessionId, port };
     try {
       return await steps(session);
@@ -234,12 +235,12 @@ export async function withSession(name, env, steps) {
  * start from blocking the release tag, while a real regression still fails
  * both attempts.
  */
-export async function withSessionRetry(name, env, steps) {
+export async function withSessionRetry(name, env, steps, args = []) {
   try {
-    return await withSession(name, env, steps);
+    return await withSession(name, env, steps, args);
   } catch (error) {
     console.warn(`RETRY: ${name} failed (${error.message}); relaunching once with a fresh session`);
-    return withSession(`${name}-retry`, env, steps);
+    return withSession(`${name}-retry`, env, steps, args);
   }
 }
 

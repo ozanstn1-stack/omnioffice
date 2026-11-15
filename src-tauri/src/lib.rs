@@ -77,15 +77,8 @@ fn focus_main_window(app: &tauri::AppHandle) {
 /// are queued for the frontend (launch.rs) and the running window is focused.
 #[cfg(desktop)]
 fn single_instance_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
-    use tauri::Emitter;
     tauri_plugin_single_instance::init(|app, argv, cwd| {
-        let files = launch::launch_files(argv, Some(std::path::Path::new(&cwd)));
-        if !files.is_empty() {
-            if let Some(queue) = app.try_state::<launch::LaunchQueue>() {
-                queue.push(files);
-            }
-            let _ = app.emit("launch:files-queued", ());
-        }
+        launch::forward(app, argv, &cwd);
         focus_main_window(app);
     })
 }
@@ -428,6 +421,7 @@ pub fn export_typed_bindings(path: &std::path::Path) -> Result<(), String> {
             commands::clear_operations,
             commands::log_frontend,
             launch::office_take_launch_files,
+            launch::office_take_launch_skipped,
             commands::pdf_info,
             commands::page_thumbnail,
             commands::page_preview,

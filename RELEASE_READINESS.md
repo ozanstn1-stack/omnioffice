@@ -12,6 +12,21 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.0.2) - Windows launch files, Convert tab routing & Chrome extension 1.0.5
+
+- **Launch arguments are scanned leniently, logged and reported:** quotes, `file:` URIs and
+  space-split paths are accepted; skipped arguments reach the UI as an error notice.
+  `test:src-tauri/src/launch.rs#a_path_split_on_spaces_is_joined_back`
+  `test:src-tauri/src/launch.rs#quotes_and_file_uris_are_accepted`
+  `test:src-tauri/src/launch.rs#missing_documents_are_reported_by_name_only`
+  `test:src/components/app-launch-files.test.tsx#says which launched file could not be opened instead of staying silent on Home`
+- **Launched images open on the image-to-PDF tab:**
+  `test:src/components/app-launch-files.test.tsx#opens a launched image in the image-to-PDF tool`
+- **Chrome extension 1.0.5 "Open as PDF" for selections and pages:**
+  (no test: covered outside the app's Vitest run, by the extension's own `node --test`
+  suite `chrome-extension/test/selection.test.ts` and its headless-Chrome self test, in the
+  Desktop workflow's Chrome extension job)
+
 ## Implemented (this cycle, 8.0.1) - Recent files open PDFs on Android
 
 - **Opening a PDF from the recent files list (Android):** recent entries hand over an

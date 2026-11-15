@@ -1,7 +1,7 @@
 {
   "name": "omnioffice-chrome-extension",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "description": "Chrome extension build of OmniOffice (offline, local-first)",
   "scripts": {

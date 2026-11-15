@@ -97,6 +97,7 @@ domain! {
         commands::clear_operations,
         commands::log_frontend,
         launch::office_take_launch_files,
+        launch::office_take_launch_skipped,
         person_cards::person_card_list,
         person_cards::person_card_save,
         person_cards::person_card_delete,
@@ -440,5 +441,5 @@ mod tests {
     }
 
     /// The number of entries in the domain lists, Android-only ones included.
-    const TOTAL: usize = 251;
+    const TOTAL: usize = 252;
 }
