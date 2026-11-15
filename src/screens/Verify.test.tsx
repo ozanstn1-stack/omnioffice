@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SignatureCertificateInfo, SignatureInfo, SignatureReport } from "../lib/api";
 import { useSettings } from "../lib/store";
+import { rememberTokenName } from "../lib/file-token-names";
 import { DEFAULT_SETTINGS } from "../lib/types";
 
 let report: SignatureReport = { signatures: [], warnings: [] };
@@ -72,6 +73,16 @@ describe("VerifyScreen (C9)", () => {
     onlineError = null;
     invoke.mockClear();
     useSettings.setState({ settings: { ...DEFAULT_SETTINGS }, loaded: true });
+  });
+
+  it("accepts an opaque recent-file token whose remembered name is a PDF", async () => {
+    // Home's recent list hands over tokens, not paths (the phone bug: the
+    // reader dropped them and showed the file picker instead).
+    rememberTokenName("0f3a9c1d2e4b5a6978", "sozlesme.pdf");
+    render(<VerifyScreen initialFiles={["0f3a9c1d2e4b5a6978"]} />);
+
+    expect(await screen.findByText("No digital signature")).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("pdf_verify_signatures", { path: "0f3a9c1d2e4b5a6978" });
   });
 
   it("verifies the handed-over PDF and reports an unsigned document", async () => {

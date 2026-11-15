@@ -33,18 +33,39 @@ import { ConvertScreen } from "./screens/Convert";
 
 import { setPendingFiles } from "./lib/pending";
 import { openRemoteLink, parseRemoteLink, type RemoteLink } from "./lib/remotelink";
+import { parseSelectedText, selectionToPdf } from "./lib/selection";
+import { loadStampFonts } from "./lib/session";
+
+const THEME_KEY = "omnioffice-theme";
+/** Key used before the rename; read once so the saved theme survives the update. */
+const LEGACY_THEME_KEY = "pdfsak-theme";
+
+function savedTheme(): string | null {
+  try {
+    return localStorage.getItem(THEME_KEY) ?? localStorage.getItem(LEGACY_THEME_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>("home");
-  const [dark, setDark] = useState(() => localStorage.getItem("pdfsak-theme") !== "light");
-  const [version, setVersion] = useState("1.0.1");
+  // Bumped on every hand-off so the target screen remounts and picks the
+  // pending file up even when it is already the open screen.
+  const [openSeq, setOpenSeq] = useState(0);
+  const [dark, setDark] = useState(() => savedTheme() !== "light");
+  const [version, setVersion] = useState("");
   const [remoteLink, setRemoteLink] = useState<RemoteLink | null>(null);
   const [remoteBusy, setRemoteBusy] = useState(false);
   const [remoteError, setRemoteError] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    localStorage.setItem("pdfsak-theme", dark ? "dark" : "light");
+    try {
+      localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+    } catch {
+      // Storage can be unavailable; the theme then just is not remembered.
+    }
   }, [dark]);
 
   useEffect(() => {
@@ -53,15 +74,43 @@ export default function App() {
   }, []);
 
   const navigate = (next: ScreenId, files?: File[]) => {
-    if (files?.length) setPendingFiles(files);
+    if (files?.length) {
+      setPendingFiles(files);
+      setOpenSeq((value) => value + 1);
+    }
     setScreen(next);
   };
 
-  // Context-menu deep link (`app.html#url=...`, written by background.js).
-  // The tab is often reused, so the hash can change without a reload: listen
-  // for both the initial value and later hashchange events.
+  /** Opens a handed-over document in the reader (remounting it if open). */
+  const openInReader = (file: File) => {
+    setPendingFiles([file]);
+    setOpenSeq((value) => value + 1);
+    setScreen("reader");
+  };
+
+  // Context-menu deep links (`app.html#url=...` for a PDF link, `#text=...`
+  // for selected text; written by background.js). The tab is often reused, so
+  // the hash can change without a reload: listen for both the initial value
+  // and later hashchange events.
   useEffect(() => {
+    let cancelled = false;
     const read = () => {
+      const selection = parseSelectedText(location.hash);
+      if (selection) {
+        setRemoteLink(null);
+        // The text is already here (no download), so it opens right away.
+        void loadStampFonts()
+          .then((fonts) => fonts.sans)
+          .catch(() => undefined)
+          .then((font) => selectionToPdf(selection, font))
+          .then((file) => {
+            if (!cancelled) openInReader(file);
+          })
+          .catch((error) => {
+            if (!cancelled) setRemoteError(error instanceof Error ? error.message : String(error));
+          });
+        return;
+      }
       const link = parseRemoteLink(location.hash);
       // A changed hash replaces the prompt: an invalid/removed link must never
       // leave a stale consent dialog for a different URL on screen.
@@ -70,7 +119,11 @@ export default function App() {
     };
     read();
     window.addEventListener("hashchange", read);
-    return () => window.removeEventListener("hashchange", read);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hashchange", read);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const requestOriginPermission = (origin: string): Promise<boolean> => {
@@ -90,9 +143,9 @@ export default function App() {
     setRemoteBusy(true);
     setRemoteError(null);
     try {
-      await openRemoteLink(remoteLink, { requestPermission: requestOriginPermission });
+      const file = await openRemoteLink(remoteLink, { requestPermission: requestOriginPermission });
       setRemoteLink(null);
-      setScreen("reader");
+      openInReader(file);
     } catch (error) {
       setRemoteError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -166,7 +219,7 @@ export default function App() {
           </div>
           <div className="min-w-0">
             <p className="font-bold text-[13.5px] leading-tight truncate">OmniOffice</p>
-            <p className="text-[11px] muted truncate">v{version} · browser</p>
+            <p className="text-[11px] muted truncate">{version ? `v${version} · ` : ""}browser</p>
           </div>
         </div>
 
@@ -198,7 +251,7 @@ export default function App() {
       </aside>
 
       <main className="flex-1 min-w-0 h-full relative">
-        <div key={screen} className="h-full">
+        <div key={`${screen}:${openSeq}`} className="h-full">
           {screens[screen]}
         </div>
       </main>
@@ -237,6 +290,20 @@ export default function App() {
             ) : null}
           </div>
         </Modal>
+      ) : null}
+
+      {remoteError && !remoteLink ? (
+        <div
+          role="alert"
+          data-testid="selection-error"
+          className="fixed bottom-4 right-4 max-w-sm rounded-lg border px-3 py-2 text-xs flex items-start gap-2"
+          style={{ background: "var(--bg)", borderColor: "var(--border)", color: "var(--danger, #b91c1c)" }}
+        >
+          <span className="flex-1">Could not open the selected text: {remoteError}</span>
+          <button type="button" className="muted" aria-label="Dismiss" onClick={() => setRemoteError(null)}>
+            ×
+          </button>
+        </div>
       ) : null}
     </div>
   );

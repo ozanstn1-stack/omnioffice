@@ -18,3 +18,12 @@ export function tokenName(token: string): string | undefined {
 export function rememberTokenRefs(refs: Array<{ token: string; name: string }>): void {
   for (const ref of refs) rememberTokenName(ref.token, ref.name);
 }
+
+/**
+ * Recent entries are opaque tokens: remember their names so a tool can tell a
+ * PDF from the rest (the reader used to drop a recent PDF as "unsupported").
+ */
+export function rememberRecentNames<T extends { token: string; fileName: string }>(entries: T[]): T[] {
+  if (Array.isArray(entries)) for (const entry of entries) rememberTokenName(entry.token, entry.fileName);
+  return entries;
+}

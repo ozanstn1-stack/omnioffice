@@ -19,6 +19,7 @@ import {
   type Settings,
 } from "./types";
 import { paintAccent } from "./accent";
+import { rememberRecentNames as withNames } from "./file-token-names";
 
 interface SettingsState {
   settings: Settings;
@@ -162,14 +163,11 @@ interface RecentState {
 
 export const useRecent = create<RecentState>((set) => ({
   entries: [],
-  refresh: async () => {
-    const entries = await loadRecent().catch(() => []);
-    set({ entries });
-  },
+  refresh: async () => set({ entries: withNames(await loadRecent().catch(() => [])) }),
   add: async (entry) => {
     await apiAddRecent(entry).catch(() => undefined);
     const entries = await loadRecent().catch(() => []);
-    set({ entries });
+    set({ entries: withNames(entries) });
   },
   clear: async () => {
     await apiClearRecent().catch(() => undefined);

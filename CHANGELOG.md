@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.1] - 2026-11-15
+
+### Fixed
+
+- **Opening a PDF from the recent files list on Android:** recent entries hand over an opaque file token, and the tools checked the `.pdf` extension on that token, so the reader rejected the file and stayed on the file picker. The recent store now remembers each token's display name ([`store.ts`](src/lib/store.ts)) and [`useTool`](src/lib/useTool.ts) checks the extension on that name; covered by a Vitest case in [`Verify.test.tsx`](src/screens/Verify.test.tsx).
+- **Chrome extension 1.0.4 (right-click menu):** "Open with OmniOffice" appeared on every web page and handed the HTML page to the PDF reader, so the app opened without the document; it now appears only on PDF links and PDF pages. Selected text gains its own "Open … in OmniOffice" entry that lays the text out as a PDF (bundled Unicode font, Turkish letters included) and opens it in the reader ([`selection.ts`](chrome-extension/src/lib/selection.ts)). A hand-off now also opens when the reader is already the open screen or the same link is opened twice. Internal names move from `pdfsak` to `omnioffice` (the saved theme is kept).
+
 ## [8.0.0] - 2026-11-15
 
 ### Added
