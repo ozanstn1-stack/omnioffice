@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.3] - 2026-11-15
+
+### Fixed
+
+- **The reader showed an empty page and "1 / 0" when a PDF could not be read:** the load error was only rendered next to the document information, which does not exist when the document failed to load, so the reader looked stuck. The reason is now shown in the page area and in the side panel ([`Reader.tsx`](src/screens/Reader.tsx)).
+
 ## [8.0.2] - 2026-11-15
 
 ### Fixed

@@ -25,6 +25,7 @@ import { detectEdevletVerification, type EdevletVerification } from "../lib/edev
 import { openExternalLink } from "../office/calc/open-link";
 import { Badge, Button, IconButton, Spinner, useDebounced } from "../components/ui";
 import { DropZone, InfoStrip } from "../components/files";
+import { LoadError } from "../components/load-error";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
@@ -1282,6 +1283,7 @@ export function Reader({
             {/* The notes are capped at the page width: the column is `w-max`,
                 so a wider unwrapped line widened it and a phone centred the
                 page partly off screen. */}
+            <LoadError loaded={Boolean(session.info)} error={session.infoError} />
             {session.info && !session.info.hasTextLayer ? (
               <div className="text-xs muted text-center" style={{ maxWidth: Math.min(620, renderWidth) }}>
                 {t("reader.noTextLayer")}
@@ -1398,7 +1400,7 @@ export function Reader({
         )}
 
         <div className="mt-auto pt-3">
-          {session.info ? (
+          {session.info || session.infoError ? (
             <div className="card-soft p-3">
               <InfoStrip info={session.info} error={session.infoError} />
             </div>

@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * matches, with a pending promise (for the scanning state) or rejects with an
  * invalid-input error, exactly like the backend.
  */
+let pdfInfoError: unknown = null;
 let redactionScanResult: unknown[] = [];
 let redactionScanError: unknown = null;
 let redactionScanPending: Promise<unknown> | null = null;
@@ -44,6 +45,7 @@ const invoke = vi.fn(async (command: string, payload?: { path?: string }) => {
     case "file_sizes":
       return [1024];
     case "pdf_info":
+      if (pdfInfoError) throw pdfInfoError;
       return {
         path: "C:/a.pdf",
         fileName: "a.pdf",
@@ -395,6 +397,19 @@ describe("PDF Studio object geometry", () => {
     expectDelta(displayDeltaToPage(0, 10, 90), [-10, 0]);
     expectDelta(displayDeltaToPage(10, 0, 180), [-10, 0]);
     expectDelta(displayDeltaToPage(10, 0, 270), [0, -10]);
+  });
+});
+
+describe("reader load errors", () => {
+  it("says why a document could not be read instead of an empty page and 1 / 0", async () => {
+    pdfInfoError = { code: "engine", message: "pdfium could not parse the document" };
+    try {
+      render(<Reader initialFiles={["C:/a.pdf"]} dragging={false} />);
+      const banner = await screen.findByTestId("reader-load-error");
+      expect(banner).toHaveTextContent("pdfium could not parse the document");
+    } finally {
+      pdfInfoError = null;
+    }
   });
 });
 
