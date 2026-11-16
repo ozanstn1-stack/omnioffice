@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.4] - 2026-11-16
+
+### Fixed
+
+- **Tapping a recent PDF on Home opened the reader's file picker (Android and desktop):** Home set the screen's file list and then navigated, and navigation replaced the list with an empty one, so the reader never received the file. Home now hands the file over with the navigation ([`Home.tsx`](src/screens/Home.tsx)); a whole-app test with the real Home screen covers it.
+
 ## [8.0.3] - 2026-11-15
 
 ### Fixed

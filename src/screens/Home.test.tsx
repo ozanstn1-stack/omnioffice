@@ -28,7 +28,7 @@ describe("home recommendations and pinning", () => {
 
   it("pins a tool and persists the choice", async () => {
     const user = userEvent.setup();
-    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} />);
     const pins = await screen.findAllByRole("button", { name: /Pin to the top/i });
     await user.click(pins[0]);
     expect(useSettings.getState().settings.pinnedTools?.length).toBe(1);
@@ -54,7 +54,7 @@ describe("profession desks on Home", () => {
   it("asks what you do on first run and turns Home into that desk", async () => {
     const user = userEvent.setup();
     const navigate = vi.fn();
-    render(<Home onNavigate={navigate} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    render(<Home onNavigate={navigate} onDropFiles={vi.fn()} dragging={false} />);
     expect(await screen.findByRole("heading", { name: /What do you do\?/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^Lawyer$/ }));
@@ -80,7 +80,7 @@ describe("profession desks on Home", () => {
   it("still finds every tool through search while a desk is shown", async () => {
     const user = userEvent.setup();
     useSettings.setState({ settings: { ...DEFAULT_SETTINGS, profession: "accountant" }, loaded: true });
-    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} />);
     expect(screen.getByRole("heading", { name: /Accountant's desk/ })).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: /Search tools/ }), "split");
     expect(screen.getByRole("button", { name: /^Split/ })).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe("profession desks on Home", () => {
 
   it("keeps the plain catalogue for the general choice", async () => {
     const user = userEvent.setup();
-    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} />);
     await user.click(await screen.findByRole("button", { name: /Show all tools/ }));
     expect(useSettings.getState().settings.profession).toBe("general");
     expect(screen.queryByRole("heading", { name: /desk/ })).not.toBeInTheDocument();
@@ -98,7 +98,7 @@ describe("profession desks on Home", () => {
   it("lets you change the desk from the desk itself", async () => {
     const user = userEvent.setup();
     useSettings.setState({ settings: { ...DEFAULT_SETTINGS, profession: "student" }, loaded: true });
-    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    render(<Home onNavigate={vi.fn()} onDropFiles={vi.fn()} dragging={false} />);
     await user.click(screen.getByRole("button", { name: /Change desk/ }));
     expect(screen.getByRole("heading", { name: /What do you do\?/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Public sector/ }));
