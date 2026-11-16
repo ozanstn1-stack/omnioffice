@@ -60,6 +60,7 @@ import {
   type TileSpec,
 } from "../lib/tiles";
 import type { PageGeometry, SearchResponse, TextMatch, Thumbnail } from "../lib/types";
+import { useImmersiveReader, useReaderImmersive } from "./reader/immersive";
 
 const PT_TO_CSS = 96 / 72;
 
@@ -409,7 +410,7 @@ const ReaderPage = memo(function ReaderPage({
         if (!entries.some((entry) => entry.isIntersecting)) return;
         if (requested.current) return;
         requested.current = true;
-        void pagePreview(path, page, requestedWidth, password, "jpeg", 90)
+        void pagePreview(path, page, requestedWidth, password, "jpeg", 95)
           .then((preview) => {
             if (cancelled) return;
             rememberPreview(cache, page, { width: requestedWidth, src: preview.dataUrl });
@@ -525,6 +526,8 @@ export function Reader({
   const pinchPreviewRef = useRef<ReaderPinchPreview | null>(null);
   const pinchFocalRef = useRef<ReaderFocal | null>(null);
   const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const immersive = useReaderImmersive((state) => state.immersive);
+  const { onSingleTap, onDoubleTap, onScroll: onImmersiveScroll } = useImmersiveReader();
   const [containerWidth, setContainerWidth] = useState(900);
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [currentPage, setCurrentPage] = useState(1);
@@ -600,6 +603,7 @@ export function Reader({
       framePending.current = false;
       const container = scrollRef.current;
       if (!container) return;
+      onImmersiveScroll(container.scrollTop);
       const vh = container.clientHeight || 900;
       setScrollMetrics((p) =>
         Math.abs(p.top - container.scrollTop) > 40 || p.height !== vh ? { top: container.scrollTop, height: vh } : p,
@@ -619,7 +623,7 @@ export function Reader({
         setCurrentPage(best);
       }
     });
-  }, []);
+  }, [onImmersiveScroll]);
 
   // New document: reset the view state and caches. The reset is derived from
   // the document identity so no stale search/query paints for the new file.
@@ -845,9 +849,11 @@ export function Reader({
       Math.abs(previous.y - event.clientY) < 40
     ) {
       lastTapRef.current = null;
+      onDoubleTap();
       setZoom((current) => doubleTapZoom(current));
     } else {
       lastTapRef.current = { x: event.clientX, y: event.clientY, time: now };
+      onSingleTap();
     }
   };
 
@@ -1090,9 +1096,10 @@ export function Reader({
 
   return (
     <div className="h-full flex min-h-0">
-      <div className="flex-1 min-w-0 flex flex-col min-h-0">
+      <div className="flex-1 min-w-0 flex flex-col min-h-0 relative">
+        {immersive ? <div className="reader-page-pill">{`${currentPage} / ${pageCount}`}</div> : null}
         <div
-          className="flex items-center gap-2 px-4 py-2.5 border-b shrink-0 flex-wrap"
+          className={`flex items-center gap-2 px-4 py-2.5 border-b shrink-0 flex-wrap${immersive ? " hidden" : ""}`}
           style={{ borderColor: "var(--border)", background: "var(--bg-soft)" }}
         >
           <BookOpen size={16} style={{ color: "var(--accent)" }} />

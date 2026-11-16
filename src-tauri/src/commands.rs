@@ -248,8 +248,8 @@ pub(crate) fn preview_data_url(
 const MAX_TILE_EDGE: u32 = 1024;
 
 /// Highest tile scale in output pixels per PDF point: the reader's 400 % zoom
-/// (96/72 CSS px per point at 100 %) at its 2.5 device pixel ratio cap.
-const MAX_TILE_SCALE: f32 = 4.0 * (96.0 / 72.0) * 2.5;
+/// (96/72 CSS px per point at 100 %) at its 3 device pixel ratio cap.
+const MAX_TILE_SCALE: f32 = 4.0 * (96.0 / 72.0) * 3.0;
 
 /// Safety cap for whole-document reads in the certificate commands.
 const MAX_DOCUMENT_BYTES: u64 = 2 * 1024 * 1024 * 1024;

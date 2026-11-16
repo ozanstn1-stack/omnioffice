@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.6] - 2026-11-16
+
+### Added
+
+- **Immersive reading on phones:** a single tap on the page hides the reader toolbar together with the phone shell's top bar and bottom navigation, and the next tap brings them back; scrolling down into a document hides them too. A small pill keeps the page number in view, the page area keeps clear of the status bar, and a double-tap zoom never also toggles ([`immersive.ts`](src/screens/reader/immersive.ts)).
+
+### Changed
+
+- **Sharper text in the reader:** pages are rendered for device pixel ratios up to 3 (was 2.5, so 2.6–3x phones got a slightly upscaled bitmap) and encoded at JPEG quality 95 (was 90); the high-zoom tile limit follows the new ratio on both sides.
+
 ## [8.0.5] - 2026-11-16
 
 ### Fixed

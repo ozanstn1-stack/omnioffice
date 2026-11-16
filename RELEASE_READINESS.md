@@ -12,6 +12,15 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.0.6) - Immersive reading and sharper pages on phones
+
+- **A tap hides and restores the reader toolbar and the phone shell's bars:**
+  `test:src/screens/pdf-screens.test.tsx#hides the toolbar on a single tap and brings it back on the next`
+  `test:src/screens/reader/immersive.test.ts#does not toggle when the tap turns into a double-tap zoom`
+  `test:src/screens/reader/immersive.test.ts#hides the chrome when a touch screen scrolls down, not on a mouse screen`
+- **Pages render for up to 3x displays:**
+  `test:src/lib/tiles.test.ts#keeps tiles within the backend bounds at the maximum zoom`
+
 ## Implemented (this cycle, 8.0.5) - Recent and launched PDFs load in the reader
 
 - **A recent PDF is loaded by its token and titled with its real name:**

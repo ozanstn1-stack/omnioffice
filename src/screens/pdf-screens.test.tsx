@@ -413,6 +413,30 @@ describe("reader load errors", () => {
   });
 });
 
+describe("reader immersive mode", () => {
+  it("hides the toolbar on a single tap and brings it back on the next", async () => {
+    const tap = (target: Element) => {
+      for (const type of ["pointerdown", "pointerup"]) {
+        const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 150, clientY: 150 });
+        Object.defineProperty(event, "pointerId", { value: 7 });
+        Object.defineProperty(event, "pointerType", { value: "touch" });
+        fireEvent(target, event);
+      }
+    };
+    render(<Reader initialFiles={["C:/a.pdf"]} dragging={false} />);
+    await waitFor(() => expect(document.querySelector(".reader-scroll")).not.toBeNull());
+    const zoomIn = await screen.findByRole("button", { name: "Zoom in" });
+    const toolbar = zoomIn.closest("div.border-b")!;
+    tap(document.querySelector(".reader-scroll")!);
+    await waitFor(() => expect(toolbar).toHaveClass("hidden"));
+    // While hidden, a small pill keeps the page number in view.
+    expect(document.querySelector(".reader-page-pill")).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    tap(document.querySelector(".reader-scroll")!);
+    await waitFor(() => expect(toolbar).not.toHaveClass("hidden"));
+  });
+});
+
 describe("reader touch zoom", () => {
   it("clamps zoom to the range the buttons produce", () => {
     expect(clampReaderZoom(9)).toBe(4);

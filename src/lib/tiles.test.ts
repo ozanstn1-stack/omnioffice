@@ -48,8 +48,8 @@ describe("tile grid", () => {
   });
 
   it("keeps tiles within the backend bounds at the maximum zoom", () => {
-    // 400 % at a 2.5x phone: the most the reader can ask for.
-    const grid = tileGrid(A4.width, A4.height, Math.round(A4.width * (96 / 72) * 4), 2.5)!;
+    // 400 % at a 3x phone: the most the reader can ask for.
+    const grid = tileGrid(A4.width, A4.height, Math.round(A4.width * (96 / 72) * 4), 3)!;
     expect(grid.scale).toBeLessThanOrEqual(MAX_TILE_SCALE);
     expect(grid.tileSize).toBeLessThanOrEqual(MAX_TILE_EDGE);
     for (let column = 0; column < grid.columns; column += 1) {

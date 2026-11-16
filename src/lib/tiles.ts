@@ -13,9 +13,9 @@ import { clamp, previewRasterWidth } from "./format";
 const PT_TO_CSS = 96 / 72;
 
 /** Highest tile scale (output pixels per PDF point) the backend renders: the
- *  reader's 400 % zoom at the 2.5 device pixel ratio cap. Mirrors
+ *  reader's 400 % zoom at the 3 device pixel ratio cap. Mirrors
  *  `MAX_TILE_SCALE` in src-tauri/src/commands.rs. */
-export const MAX_TILE_SCALE = 4 * PT_TO_CSS * 2.5;
+export const MAX_TILE_SCALE = 4 * PT_TO_CSS * 3;
 
 /** Largest tile edge the backend renders, in output pixels. */
 export const MAX_TILE_EDGE = 1024;
