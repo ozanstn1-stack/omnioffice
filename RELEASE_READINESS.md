@@ -12,6 +12,13 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.0.5) - Recent and launched PDFs load in the reader
+
+- **A recent PDF is loaded by its token and titled with its real name:**
+  `test:src/components/app-recent-open.test.tsx#opens the tapped PDF in the reader instead of its file picker`
+- **A double-clicked PDF is loaded, not left at "1 / 0":**
+  `test:src/components/app-launch-files.test.tsx#opens a launched PDF in the reader instead of staying on Home`
+
 ## Implemented (this cycle, 8.0.4) - Recent PDFs open from Home
 
 - **Tapping a recent PDF on Home opens it in the reader:**

@@ -5,6 +5,7 @@
  * mapping is unit-testable.
  */
 import { pickDocumentTokens, type FileToken } from "./file-tokens";
+import { tokenName } from "./file-token-names";
 import { fileBaseName, isImage, isOfficeDocument, isPdf, officeDocumentExtensions } from "./format";
 import type { SelectedFile } from "./types";
 
@@ -51,7 +52,9 @@ export function pathEntries(
 ): SelectedFile[] {
   return paths.map((path, index) => ({
     path,
-    name: names?.[index] ?? fileBaseName(path),
+    // A token's remembered name (the recent list's, the launch's) beats the
+    // on-disk name, which on Android is a cache copy such as "8F2B…-195….pdf".
+    name: tokenName(path) ?? names?.[index] ?? fileBaseName(path),
     sizeBytes: sizes[index] ?? 0,
   }));
 }
