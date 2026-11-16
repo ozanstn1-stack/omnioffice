@@ -15,7 +15,28 @@ const invoke = vi.fn(async (command: string, _payload?: unknown) => {
     case "file_sizes":
       return [2048];
     case "file_names":
-      return ["sözleşme.pdf"];
+      // Android keeps an opened document as a cache copy with a UUID name.
+      return ["8F2B5B96-3BDB-4E4B-B740-195A0C1D2E3F.pdf"];
+    case "pdf_info":
+      return {
+        path: "tok-recent-1",
+        fileName: "sözleşme.pdf",
+        fileSizeBytes: 2048,
+        pageCount: 3,
+        pdfVersion: "1.7",
+        encrypted: false,
+        hasTextLayer: true,
+        metadata: {},
+        pageGeometries: [1, 2, 3].map((page) => ({
+          page,
+          width_pt: 595,
+          height_pt: 842,
+          display_width_pt: 595,
+          display_height_pt: 842,
+          rotation: 0,
+        })),
+        outline: [],
+      };
     case "office_startup_files":
     case "office_take_launch_files":
     case "office_take_launch_skipped":
@@ -74,5 +95,17 @@ describe("opening a recent file from Home", () => {
     );
     // ... and does not offer to pick a file.
     expect(screen.queryByRole("button", { name: "Select files" })).not.toBeInTheDocument();
+    // It loads the document by its token (the extension check used to look at
+    // the token itself and skip the load: an empty page and "1 / 0") ...
+    await waitFor(() =>
+      expect(
+        invoke.mock.calls.some(
+          ([command, payload]) => command === "pdf_info" && JSON.stringify(payload).includes("tok-recent-1"),
+        ),
+      ).toBe(true),
+    );
+    // ... and shows the document's name, not the cache copy's.
+    expect((await screen.findAllByText("sözleşme.pdf")).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/8F2B5B96/)).not.toBeInTheDocument();
   });
 });

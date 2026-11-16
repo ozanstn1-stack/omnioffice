@@ -53,6 +53,14 @@ describe("files Windows hands to the app on launch", () => {
     render(<App />);
     await waitFor(() => expect(screen.queryByTestId("desktop-home")).not.toBeInTheDocument());
     expect((await screen.findAllByText("rapor.pdf")).length).toBeGreaterThan(0);
+    // The document is loaded by its token (it used to stop at "1 / 0").
+    await waitFor(() =>
+      expect(
+        invoke.mock.calls.some(
+          ([command, payload]) => command === "pdf_info" && JSON.stringify(payload).includes("3f2a9c1d"),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("says which launched file could not be opened instead of staying silent on Home", async () => {

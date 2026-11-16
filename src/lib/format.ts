@@ -61,8 +61,11 @@ export function joinPath(dir: string, name: string): string {
   return dir.endsWith(separator) ? `${dir}${name}` : `${dir}${separator}${name}`;
 }
 
+/** Extension of the display name, so a capability token is typed by its remembered file name. */
+const extensionOf = (path: string) => /\.([^.]+)$/.exec(fileBaseName(path))?.[1]?.toLowerCase() ?? "";
+
 export function isPdf(path: string): boolean {
-  return path.toLowerCase().endsWith(".pdf");
+  return extensionOf(path) === "pdf";
 }
 
 /**
@@ -112,24 +115,23 @@ export function officeDocumentExtensions(): readonly string[] {
 }
 
 export function isOfficeDocument(path: string): boolean {
-  return officeDocumentExtensions().includes((path.split(".").pop() ?? "").toLowerCase());
+  return officeDocumentExtensions().includes(extensionOf(path));
 }
 
 export const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"];
 
 export function isImage(path: string): boolean {
-  const lower = path.toLowerCase();
-  return IMAGE_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  return IMAGE_EXTENSIONS.includes(`.${extensionOf(path)}`);
 }
 
 /** File names the Calc editor and the spreadsheet launchers accept. */
 export function isSpreadsheetPath(path: string): boolean {
-  return ["xlsx", "xlsm", "xls", "ods", "csv", "tsv"].includes((path.split(".").pop() ?? "").toLowerCase());
+  return ["xlsx", "xlsm", "xls", "ods", "csv", "tsv"].includes(extensionOf(path));
 }
 
 /** File names the Impress editor accepts. */
 export function isPresentationPath(path: string): boolean {
-  return ["pptx", "pptm", "odp"].includes((path.split(".").pop() ?? "").toLowerCase());
+  return ["pptx", "pptm", "odp"].includes(extensionOf(path));
 }
 
 export function uid(prefix = "job"): string {

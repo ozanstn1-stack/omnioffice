@@ -1,0 +1,1 @@
+8.0.5: Son dosyalardan ya da çift tıklayarak açılan PDF artık okuma modunda yükleniyor; boş sayfa ve "1 / 0" kalmıyor, dosyanın gerçek adı görünüyor.

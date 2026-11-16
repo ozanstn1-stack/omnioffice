@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.5] - 2026-11-16
+
+### Fixed
+
+- **A recent or launched PDF reached the reader but stayed on an empty page and "1 / 0" (Android and Windows):** the reader decided whether to load document information with `isPdf(file.path)`, and a recent entry or a double-clicked document is an opaque capability token, so the load was skipped without an error. `isPdf`, `isImage`, `isOfficeDocument` and the spreadsheet/presentation checks now read the token's remembered name ([`format.ts`](src/lib/format.ts)), and the reader titles the document with that name instead of an Android cache copy's UUID name ([`tool-files.ts`](src/lib/tool-files.ts)).
+
 ## [8.0.4] - 2026-11-16
 
 ### Fixed
