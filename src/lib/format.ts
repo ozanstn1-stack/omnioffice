@@ -148,7 +148,7 @@ export function clamp(value: number, min: number, max: number): number {
  */
 export function previewPixelRatio(): number {
   const ratio = typeof window === "undefined" ? 1 : window.devicePixelRatio;
-  return clamp(Number.isFinite(ratio) ? ratio : 1, 1, 2.5);
+  return clamp(Number.isFinite(ratio) ? ratio : 1, 1, 3);
 }
 
 /** Widest raster a preview may request. The backend accepts up to 4000 px;

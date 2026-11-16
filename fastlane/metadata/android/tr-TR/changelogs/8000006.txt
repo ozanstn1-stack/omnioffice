@@ -1,0 +1,1 @@
+8.0.6: Telefonda tam ekran okuma: sayfaya dokununca araç çubukları gizlenir veya geri gelir (aşağı kaydırırken de gizlenir); yüksek çözünürlüklü ekranlarda daha net yazılar.

@@ -38,6 +38,7 @@ import {
 import { isOfficePath, openOfficePath, useOfficeTabs } from "./lib/office-store";
 import { routeForPath } from "./lib/open-route";
 import { useAndroidPendingOpen } from "./lib/android-open-with";
+import { useReaderImmersive } from "./screens/reader/immersive";
 import { recordOpenWith } from "./lib/open-with-diagnostics";
 
 type PageToolTab = PageToolsTab["tab"];
@@ -77,6 +78,8 @@ export default function App() {
   const presendOpen = usePresend((s) => s.request !== null);
 
   const [screen, setScreen] = useState<ScreenId>("home");
+  // Immersive reading (phones): the reader asked the shell to step aside.
+  const readerImmersive = useReaderImmersive((state) => state.immersive) && screen === "reader";
   const [files, setFiles] = useState<string[]>([]);
   const [selectionText, setSelectionText] = useState("");
   const [aiPack, setAiPack] = useState<TaskPackId | null>(null);
@@ -674,7 +677,7 @@ export default function App() {
   if (compactNav) {
     return (
       <div className="flex flex-col h-full" style={{ background: "var(--bg)" }}>
-        <header className="mobile-bar">
+        <header className={`mobile-bar${readerImmersive ? " hidden" : ""}`}>
           <IconButton label={t("app.name")} onClick={() => setNavOpen(true)} aria-expanded={navOpen}>
             <Menu size={18} />
           </IconButton>
@@ -712,16 +715,18 @@ export default function App() {
           </div>
         ) : null}
 
-        <main className="flex-1 min-w-0 relative overflow-hidden">
+        <main className={`flex-1 min-w-0 relative overflow-hidden${readerImmersive ? " immersive-main" : ""}`}>
           <div key={`${screen}-${files.join("|")}-${selectionText ?? ""}`} className="h-full">
             <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
           </div>
         </main>
 
         {/* Thumb-reach navigation on phones (C11); More opens the full drawer. */}
-        <React.Suspense fallback={<div className="bottom-nav bottom-nav-placeholder" aria-hidden />}>
-          <Screens.BottomNav screen={screen} onNavigate={navigate} onMore={() => setNavOpen(true)} />
-        </React.Suspense>
+        {readerImmersive ? null : (
+          <React.Suspense fallback={<div className="bottom-nav bottom-nav-placeholder" aria-hidden />}>
+            <Screens.BottomNav screen={screen} onNavigate={navigate} onMore={() => setNavOpen(true)} />
+          </React.Suspense>
+        )}
 
         <GlobalOverlays {...overlayProps} />
       </div>
