@@ -59,12 +59,10 @@ export function Home({
   onNavigate,
   onDropFiles,
   dragging,
-  onFileList,
 }: {
   onNavigate: Navigate;
   onDropFiles: (paths: string[]) => void;
   dragging: boolean;
-  onFileList: (paths: string[]) => void;
 }) {
   const t = useT();
   const recent = useRecent((s) => s.entries);
@@ -127,8 +125,10 @@ export function Home({
   // else (images, archives, outputs of other tools) goes to the system viewer.
   const openRecent = async (entry: RecentEntry) => {
     if (isPdf(entry.fileName)) {
-      onFileList([entry.token]);
-      onNavigate("reader");
+      // One call: navigate() sets the screen's files, so a separate file-list
+      // update before it was overwritten with an empty list (the reader then
+      // showed its file picker instead of the recent PDF).
+      onNavigate("reader", { files: [entry.token] });
       return;
     }
     if (isOfficePath(entry.fileName)) {

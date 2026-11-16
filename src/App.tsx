@@ -561,9 +561,7 @@ export default function App() {
 
   const screens: Record<ScreenId, React.ReactElement> = useMemo(
     () => ({
-      home: (
-        <Screens.HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} onFileList={setFiles} />
-      ),
+      home: <Screens.HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} />,
       reader: <Screens.Reader initialFiles={files} dragging={dragging} initialPage={readerPage} />,
       ai: <Screens.Ai initialFiles={files} dragging={dragging} onNavigate={navigate} />,
       aiLibrary: <Screens.AiLibrary onOpenAi={() => navigate("ai")} />,

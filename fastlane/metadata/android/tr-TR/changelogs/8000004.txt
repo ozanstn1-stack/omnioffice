@@ -1,0 +1,1 @@
+8.0.4: Ana sayfadaki son dosyalar listesinden bir PDF'e dokunulduğunda dosya artık okuma modunda açılıyor, dosya seçme ekranına düşmüyor.

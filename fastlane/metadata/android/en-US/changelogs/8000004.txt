@@ -1,0 +1,1 @@
+8.0.4: Tapping a recent PDF on Home opened the reader's file picker (Android and desktop): Home set the screen's file list and then navigated, and navigation replaced the list with an empty one, so the reader never received the file. Home now hands the file over with the navigation (Home.tsx); a whole-app test with the real Home screen covers it.

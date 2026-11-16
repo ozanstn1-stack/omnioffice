@@ -406,8 +406,7 @@ describe("History, Home and Settings act on the local stores", () => {
   it("filters the Home tool directory and opens a recent file in the Reader", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
-    const onFileList = vi.fn();
-    render(<Home onNavigate={onNavigate} onDropFiles={vi.fn()} dragging={false} onFileList={onFileList} />);
+    render(<Home onNavigate={onNavigate} onDropFiles={vi.fn()} dragging={false} />);
     expect(await screen.findByText("PDF & documents")).toBeInTheDocument();
     expect(screen.getByText("Productivity tools")).toBeInTheDocument();
 
@@ -418,14 +417,13 @@ describe("History, Home and Settings act on the local stores", () => {
     await user.clear(screen.getByLabelText("Search tools"));
     // The whole row opens the file (7.32 recent table).
     await user.click(await screen.findByRole("button", { name: /report\.pdf/ }));
-    expect(onFileList).toHaveBeenCalledWith(["C:/docs/report.pdf"]);
-    expect(onNavigate).toHaveBeenCalledWith("reader");
+    expect(onNavigate).toHaveBeenCalledWith("reader", { files: ["C:/docs/report.pdf"] });
   });
 
   it("opens a recent office document in its editor and keeps it in the recent list", async () => {
     const user = userEvent.setup();
     const onNavigate = vi.fn();
-    render(<Home onNavigate={onNavigate} onDropFiles={vi.fn()} dragging={false} onFileList={vi.fn()} />);
+    render(<Home onNavigate={onNavigate} onDropFiles={vi.fn()} dragging={false} />);
     expect(await screen.findByText("budget.xlsx")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /budget\.xlsx/ }));
     expect(onNavigate).toHaveBeenCalledWith("office");
