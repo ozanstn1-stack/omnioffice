@@ -192,9 +192,9 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
             }
         }
     }
-    while stack.len() > 1 {
-        let node = stack.pop().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))?;
-        current_element(&mut stack)?.children.push(node);
+    if stack.len() > 1 {
+        let unclosed = stack.last().map(|node| node.name.as_str()).unwrap_or("unknown");
+        return Err(OfficeError::corrupt(format!("Malformed XML: unclosed <{unclosed}> element at EOF")));
     }
     let mut root = stack.pop().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))?;
     // Quick single-child unwrap keeps call sites predictable.

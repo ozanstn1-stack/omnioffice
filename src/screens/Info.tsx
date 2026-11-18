@@ -1,5 +1,5 @@
 import { Badge, Card } from "../components/ui";
-import { InfoCard } from "../components/files";
+import { InfoCard, InfoStrip } from "../components/files";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { useTool } from "../lib/useTool";
@@ -52,6 +52,10 @@ export function InfoScreen({ initialFiles }: { initialFiles?: string[] }) {
                 {t("common.pages")} · {session.info.pdfVersion === "unknown" ? "PDF" : `PDF ${session.info.pdfVersion}`}
               </Card>
             </>
+          ) : session.infoError ? (
+            <Card className="p-5">
+              <InfoStrip info={session.info} error={session.infoError} />
+            </Card>
           ) : (
             <Card className="p-5 text-sm muted">{t("organize.empty")}</Card>
           )}
