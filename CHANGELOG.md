@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.7] - 2026-11-18
+
+### Fixed
+
+- **XML parser (`officecore`):** unclosed XML elements at EOF now return a corrupt-file error instead of silently auto-closing.
+- **Info & Reader screens:** `Info` renders `InfoStrip` when `session.infoError` is present; `Reader` falls back to `session.info?.pageCount` when page geometries are not yet populated.
+- **Recipes & Office workspace:** `Recipes` uses functional state updaters for folder watch settings; `OfficeWorkspace` surfaces `openOfficePath` errors as toast notifications.
+- **Calc formula bar & EmptyState:** pressing Enter in the Calc formula bar reads the live input value from `formulaInputRef`; `EmptyState` includes the semantic `empty` class.
+
 ## [8.0.6] - 2026-11-16
 
 ### Added

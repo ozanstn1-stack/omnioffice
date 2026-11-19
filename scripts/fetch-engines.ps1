@@ -185,7 +185,8 @@ if ($Force -or -not (Test-Path $qpdfExe)) {
     Download-File -Url $pinned.qpdfUrl -OutFile $zip
     $tmp = Join-Path $cacheDir 'qpdf-x'
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $tmp
-    Expand-Archive -Path $zip -DestinationPath $tmp -Force
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    tar -xf $zip -C $tmp
     $binDir = Get-ChildItem $tmp -Recurse -Directory -Filter 'bin' | Select-Object -First 1 -ExpandProperty FullName
     Copy-Item (Join-Path $binDir '*.exe') $qpdfDir -Force
     Copy-Item (Join-Path $binDir '*.dll') $qpdfDir -Force -ErrorAction SilentlyContinue

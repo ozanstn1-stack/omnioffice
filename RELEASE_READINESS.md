@@ -12,6 +12,13 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.0.7) - Audit bug fixes and stability
+
+- **Malformed XML with unclosed elements at EOF is rejected instead of silently auto-closed:**
+  `test:crates/officecore/src/xml.rs#rejects_unclosed_element_at_eof`
+- **Reader, Info, Recipes, Calc formula bar, and Office workspace UI bug fixes:**
+  (no test: UI state & toast wiring verified via TypeScript typecheck and existing suite)
+
 ## Implemented (this cycle, 8.0.6) - Immersive reading and sharper pages on phones
 
 - **A tap hides and restores the reader toolbar and the phone shell's bars:**

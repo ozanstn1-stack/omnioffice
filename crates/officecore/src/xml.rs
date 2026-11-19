@@ -437,4 +437,10 @@ mod tests {
         let root = parse_xml(&xml).expect("a realistic sheet must parse");
         assert_eq!(root.local_name(), "worksheet");
     }
+
+    #[test]
+    fn rejects_unclosed_element_at_eof() {
+        let error = parse_xml("<root><child>text").expect_err("unclosed XML must fail");
+        assert_eq!(error.code, "corrupt_document", "unexpected error: {error}");
+    }
 }
