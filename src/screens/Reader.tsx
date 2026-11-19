@@ -540,7 +540,7 @@ export function Reader({
 
   const debouncedZoom = useDebounced(zoom, 180);
   const geometries = useMemo(() => session.info?.pageGeometries ?? [], [session.info?.pageGeometries]);
-  const pageCount = geometries.length;
+  const pageCount = geometries.length || session.info?.pageCount || 0;
   const [verification, setVerification] = useState<EdevletVerification | null>(null);
 
   // e-Devlet "barkodlu belge" detection: scan the last page (where the block

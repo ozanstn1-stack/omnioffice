@@ -192,9 +192,9 @@ pub fn parse_xml(xml: &str) -> OfficeResult<XmlNode> {
             }
         }
     }
-    while stack.len() > 1 {
-        let node = stack.pop().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))?;
-        current_element(&mut stack)?.children.push(node);
+    if stack.len() > 1 {
+        let unclosed = stack.last().map(|node| node.name.as_str()).unwrap_or("unknown");
+        return Err(OfficeError::corrupt(format!("Malformed XML: unclosed <{unclosed}> element at EOF")));
     }
     let mut root = stack.pop().ok_or_else(|| OfficeError::corrupt("XML parser lost its root element"))?;
     // Quick single-child unwrap keeps call sites predictable.
@@ -436,5 +436,11 @@ mod tests {
         xml.push_str("</sheetData></worksheet>");
         let root = parse_xml(&xml).expect("a realistic sheet must parse");
         assert_eq!(root.local_name(), "worksheet");
+    }
+
+    #[test]
+    fn rejects_unclosed_element_at_eof() {
+        let error = parse_xml("<root><child>text").expect_err("unclosed XML must fail");
+        assert_eq!(error.code, "corrupt_document", "unexpected error: {error}");
     }
 }

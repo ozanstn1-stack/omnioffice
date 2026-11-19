@@ -1759,7 +1759,11 @@ export function CalcEditor({ tab }: { tab: CalcTab }) {
         // Typing straight into the formula bar and pressing Enter has to
         // commit the draft, not open the cell editor with a stale value.
         if (!editingRef.current)
-          setEditing({ row: selection.focus.row, col: selection.focus.col, value: formulaDraft });
+          setEditing({
+            row: selection.focus.row,
+            col: selection.focus.col,
+            value: formulaInputRef.current?.value ?? formulaDraft,
+          });
         commitEdit(shift ? "up" : "down");
         restoreGridFocusRef.current = true;
       }}

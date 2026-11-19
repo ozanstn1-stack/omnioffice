@@ -130,7 +130,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center text-center gap-3 py-14 px-6">
+    <div className="empty flex flex-col items-center justify-center text-center gap-3 py-14 px-6">
       {icon ? (
         <div
           className="w-14 h-14 rounded-2xl flex items-center justify-center"

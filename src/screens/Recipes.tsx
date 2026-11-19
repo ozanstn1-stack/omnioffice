@@ -272,12 +272,15 @@ export function Recipes() {
             </Badge>
           </div>
           <Field label={t("recipes.watchFolder")}>
-            <TextInput value={watch.folder} onChange={(event) => setWatch({ ...watch, folder: event.target.value })} />
+            <TextInput
+              value={watch.folder}
+              onChange={(event) => setWatch((prev) => ({ ...prev, folder: event.target.value }))}
+            />
           </Field>
           <Field label={t("recipes.watchOutput")}>
             <TextInput
               value={watch.outputDir}
-              onChange={(event) => setWatch({ ...watch, outputDir: event.target.value })}
+              onChange={(event) => setWatch((prev) => ({ ...prev, outputDir: event.target.value }))}
             />
           </Field>
           <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 160px" }}>
@@ -285,7 +288,7 @@ export function Recipes() {
               <select
                 className="input"
                 value={watch.recipeId}
-                onChange={(event) => setWatch({ ...watch, recipeId: event.target.value })}
+                onChange={(event) => setWatch((prev) => ({ ...prev, recipeId: event.target.value }))}
               >
                 <option value="">—</option>
                 {recipes.map((recipe) => (

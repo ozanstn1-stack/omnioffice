@@ -33,6 +33,7 @@ function saveRecoveryCopy(tabId: string) {
 
 export function OfficeWorkspace() {
   const t = useT();
+  const pushToast = useToasts((state) => state.push);
   const tabs = useOfficeTabs((state) => state.tabs);
   const activeId = useOfficeTabs((state) => state.activeId);
   const { create, activate, close } = useOfficeTabs();
@@ -44,6 +45,16 @@ export function OfficeWorkspace() {
   const [pendingClose, setPendingClose] = useState<{ tabId: string; title: string } | null>(null);
   const [historyFor, setHistoryFor] = useState<{ tabId: string; key: string } | null>(null);
 
+  const openWithToast = useCallback(
+    async (path: string) => {
+      const result = await openOfficePath(path);
+      if (!result.ok) {
+        pushToast({ kind: "error", title: t("errors.title"), detail: result.error });
+      }
+    },
+    [pushToast, t],
+  );
+
   // Automation hook (screenshots/tests) and external open requests.
   useEffect(() => {
     if (bootstrapped.current) return;
@@ -51,25 +62,25 @@ export function OfficeWorkspace() {
     if (dev.newTab === "writer" || dev.newTab === "calc" || dev.newTab === "impress") {
       bootstrapped.current = true;
       create(dev.newTab);
-      for (const path of requestedFiles) void openOfficePath(path);
+      for (const path of requestedFiles) void openWithToast(path);
       return;
     }
     if (requestedFiles.length > 0) {
       bootstrapped.current = true;
       void (async () => {
-        for (const path of requestedFiles) await openOfficePath(path);
+        for (const path of requestedFiles) await openWithToast(path);
       })();
     }
-  }, [create, dev.files, dev.newTab]);
+  }, [create, dev.files, dev.newTab, openWithToast]);
 
   useEffect(() => {
     const handler = (event: Event) => {
       const path = (event as CustomEvent<string>).detail;
-      if (typeof path === "string" && path) void openOfficePath(path);
+      if (typeof path === "string" && path) void openWithToast(path);
     };
     window.addEventListener("oswk-open-path", handler);
     return () => window.removeEventListener("oswk-open-path", handler);
-  }, []);
+  }, [openWithToast]);
 
   useEffect(() => {
     void recovery.refresh().then((records) => {
