@@ -1,0 +1,1 @@
+8.0.7: Hata düzeltmeleri ve kararlılık iyileştirmeleri: XML ayrıştırıcı doğrulaması, Okuyucu/Bilgi ekranı hata gösterimi, Tarifsiz klasör izleme durumu, Hesap Tablosu formül çubuğu ve Ofis çalışma alanı bildirimleri.
