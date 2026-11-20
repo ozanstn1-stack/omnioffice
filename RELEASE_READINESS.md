@@ -15,8 +15,8 @@ run the suites also verify the markers against the test output
 ## Implemented (this cycle, 8.1.0) - Full-screen reader and "ask this document" AI panel
 
 - **Reader page citations in AI answers become jump-to-page links, and summary turns are not resent as chat history:**
-  `test:src/screens/reader/ReaderAiPanel.test.ts#splitCitations`
-  `test:src/screens/reader/ReaderAiPanel.test.ts#chatHistory`
+  `test:src/screens/reader/ReaderAiPanel.test.ts#turns page markers with and without quotes into jumpable parts`
+  `test:src/screens/reader/ReaderAiPanel.test.ts#drops summary bubbles and empty turns`
 - **Reader focus (full-screen) mode hides the app sidebar and the side panel:**
   (no test: window full screen and layout verified via TypeScript typecheck, ESLint and the existing Reader Vitest suites)
 
