@@ -175,17 +175,6 @@ pub(crate) fn ensure_raw_path_allowed(path: &Path) -> Result<(), PdfError> {
     }
 }
 
-/// Refuses every raw path. Kept for commands whose raw branch is only ever
-/// used by debug builds (input/output file validators) and for exact parity
-/// with the previous policy.
-pub(crate) fn ensure_raw_allowed() -> Result<(), PdfError> {
-    if raw_paths_allowed() {
-        Ok(())
-    } else {
-        Err(PdfError::InvalidInput(RAW_PATH_ERROR.to_string()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

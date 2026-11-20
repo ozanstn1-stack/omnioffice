@@ -205,7 +205,7 @@ async fn download_apk(app: tauri::AppHandle, url: String, expected_sha256: Optio
 /// runs in `ApkInstallerPlugin.kt` through the mobile plugin bridge.
 #[cfg(target_os = "android")]
 #[tauri::command]
-pub fn update_install_apk(app: tauri::AppHandle, path: String) -> Result<(), pdfcore::error::PdfError> {
+pub async fn update_install_apk(app: tauri::AppHandle, path: String) -> Result<(), pdfcore::error::PdfError> {
     install_apk(app, path).map_err(pdfcore::error::PdfError::Internal)
 }
 

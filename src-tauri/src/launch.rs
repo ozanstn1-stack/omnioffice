@@ -27,7 +27,7 @@ pub struct LaunchScan {
 /// (some apps hand those to "Open with") turned into a local path.
 fn argument_path(argument: &str) -> PathBuf {
     let trimmed = argument.trim().trim_matches('"');
-    if trimmed.len() > 5 && trimmed[..5].eq_ignore_ascii_case("file:") {
+    if trimmed.len() > 5 && trimmed.get(..5).is_some_and(|prefix| prefix.eq_ignore_ascii_case("file:")) {
         if let Some(path) = url::Url::parse(trimmed).ok().and_then(|url| url.to_file_path().ok()) {
             return path;
         }

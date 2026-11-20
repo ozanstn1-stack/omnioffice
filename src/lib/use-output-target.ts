@@ -43,7 +43,7 @@ export function useOutputTarget(options: {
       return;
     }
     let cancelled = false;
-    const suggestedName = input.replace(/\.[^.\\]+$/, "") + suffix + ".pdf";
+    const suggestedName = input.replace(/\.[^./\\]+$/, "") + suffix + ".pdf";
     // Android stages inside the private data directory and publishes through
     // SAF afterwards; no token is needed for the intermediate file.
     if (isAndroid()) {
@@ -101,7 +101,10 @@ export function useOutputTarget(options: {
     outputToken: input ? outputToken : "",
     outputDir: input ? outputDir : "",
     outputDirToken: input ? outputDirToken : "",
-    setOutputPath,
+    setOutputPath: (value: string) => {
+      setOutputToken("");
+      setOutputPath(value);
+    },
     setOutputDir: (value: string) => {
       setOutputDirToken("");
       setOutputDir(value);

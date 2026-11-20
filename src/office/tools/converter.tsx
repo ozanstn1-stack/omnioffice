@@ -5,7 +5,7 @@ import { appCacheDir, join } from "@tauri-apps/api/path";
 import { Check, Plus, RefreshCw } from "lucide-react";
 import { useT } from "../../lib/i18n";
 import { PasswordField } from "../../components/password-field";
-import { fileBaseName } from "../../lib/format";
+import { dirName, fileBaseName, fileStem, joinPath } from "../../lib/format";
 import { pickDirectoryToken, pickDocumentTokens } from "../../lib/file-tokens";
 import { errorMessage } from "../../lib/store";
 import { toAppError } from "../../lib/api";
@@ -44,7 +44,7 @@ export function ConverterScreen() {
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<Array<{ input: string; output: string; ok: boolean; detail: string }>>([]);
 
-  const hasPdfInput = files.some((file) => /\.pdf$/i.test(file));
+  const hasPdfInput = files.some((file) => /\.pdf$/i.test(fileBaseName(file)));
   const showTablesHint = hasPdfInput && target === "docx";
 
   const pickFiles = async () => {
@@ -100,7 +100,7 @@ export function ConverterScreen() {
       return;
     }
     const target = await pickDirectoryToken().catch(() => null);
-    if (target) setOutputDir(target.token);
+    if (target) setOutputDir(target.path ?? target.token);
   };
 
   const run = async () => {
@@ -146,12 +146,9 @@ export function ConverterScreen() {
       }
     }
     for (const input of files) {
-      const base = input.replace(/\.[^.\\/]+$/, "");
-      const directory = isAndroid() ? stageDir : outputDir || input.replace(/[\\/][^\\/]+$/, "");
-      const output = `${base}.${effectiveTarget === "html" ? "html" : effectiveTarget}`.replace(
-        /^.*[\\/]/,
-        `${directory}/`,
-      );
+      const ext = effectiveTarget === "html" ? "html" : effectiveTarget;
+      const directory = isAndroid() ? stageDir : outputDir || dirName(input);
+      const output = joinPath(directory, `${fileStem(input)}.${ext}`);
       try {
         const info = await api.convertFile(input, output, password ? { password } : undefined);
         if (isAndroid()) {

@@ -146,8 +146,9 @@ pub fn input_file(raw: &str) -> Result<ValidatedPath, PdfError> {
         let path = resolved.map_err(PdfError::InvalidInput)?;
         return validate_input_path(&path);
     }
-    crate::paths_policy::ensure_raw_allowed()?;
-    validate_input_path(normalize(raw)?)
+    let path = normalize(raw)?;
+    crate::paths_policy::ensure_raw_path_allowed(path)?;
+    validate_input_path(path)
 }
 
 fn validate_input_path(path: &Path) -> Result<ValidatedPath, PdfError> {
@@ -186,8 +187,9 @@ pub fn output_file(raw: &str) -> Result<ValidatedPath, PdfError> {
         let path = resolved.map_err(PdfError::InvalidInput)?;
         return validate_output_path(&path);
     }
-    crate::paths_policy::ensure_raw_allowed()?;
-    validate_output_path(normalize(raw)?)
+    let path = normalize(raw)?;
+    crate::paths_policy::ensure_raw_path_allowed(path)?;
+    validate_output_path(path)
 }
 
 fn validate_output_path(path: &Path) -> Result<ValidatedPath, PdfError> {

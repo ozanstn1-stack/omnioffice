@@ -441,9 +441,10 @@ export function useOfficeSession(tab: OfficeTab) {
     // Android has no writable paths to hand out; callers use `save` instead.
     if (isAndroid()) return null;
     const extension = tab.kind === "writer" ? "docx" : tab.kind === "calc" ? "xlsx" : "pptx";
+    const allExtensions = (FILTERS[tab.kind] ?? []).flatMap((f) => f.extensions);
     const picked = await pickSaveToken(
       `${tab.title}.${extension}`,
-      FILTERS[tab.kind]?.[0]?.extensions ?? [extension],
+      allExtensions.length ? allExtensions : [extension],
     ).catch(() => null);
     return picked?.token ?? null;
   }, [tab]);
@@ -493,7 +494,7 @@ export function useEditorShortcuts(
       if (key === "p") {
         event.preventDefault();
         event.stopImmediatePropagation();
-        window.print();
+        void session.print();
         return;
       }
       if (key === "f" && onFind) {

@@ -732,11 +732,7 @@ pub fn invoice_to_document(invoice: &UblInvoice) -> TextDocument {
 
 /// The month (`YYYY-MM`) an invoice belongs to, for the summary grouping.
 pub fn invoice_month(invoice: &UblInvoice) -> String {
-    if invoice.issue_date.len() >= 7 {
-        invoice.issue_date[..7].to_string()
-    } else {
-        invoice.issue_date.clone()
-    }
+    invoice.issue_date.chars().take(7).collect()
 }
 
 fn text_cell(value: &str, style: CellStyle) -> Cell {

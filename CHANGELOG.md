@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.0.8] - 2026-11-20
+
+### Fixed
+
+- **Android single-output PDF tools & publishing (`useTool`, `use-output-target`, `Scanner`, `Batch`):** fixed `outputSpec()` sending an empty path when `outputToken` was `""`, fixed extension stripping inside dotted Android cache directories (`com.omnioffice.app`), surfaced `publishOutputs()` errors instead of silently ignoring them, stopped double-publishing multi-output results, and published Batch outputs on Android.
+- **Android APK installer deadlock & incoming file scan (`android_update.rs`, `IncomingFiles.kt`):** made `update_install_apk` async to prevent an Android main-thread deadlock when invoking the mobile plugin, and guarded `scanForMarker` against `ArrayIndexOutOfBoundsException` on short reads.
+- **Desktop release path policy & PDF page extraction (`paths.rs`, `commands.rs`):** allowed app-owned and backend-trusted raw paths in `paths::input_file` and `paths::output_file` (unblocking Print, Split/Convert open & reveal, AI Library, Vault, and EML attachment open in desktop release builds), and fixed `extract_pages` to pass the validated `selection` pages instead of an empty slice.
+- **Desktop capability token workflows (`useOfficeSession`, `office-store`, `converter`, `Batch`, `Sync`, `Ai`, `Redact`):** persisted the new write token on Office Save As so subsequent `Ctrl+S` writes to the new file, fixed external-conflict Reload to update the open tab model, expanded Save/Save As format filters, fixed Document Converter, Batch, and Cloud Sync `.oswk` picking for desktop tokens, and used display filenames instead of opaque tokens for AI/Redaction exports.
+- **Unicode safety, XML 1.0 escaping, EML & 32-bit ZIP safety (`launch.rs`, `ai.rs`, `ubl.rs`, `xml.rs`, `eml.rs`, `zip.rs`):** fixed UTF-8 byte-index slicing panics on Turkish/non-ASCII filenames, API keys, and invoice dates; stripped illegal XML 1.0 control characters on save; fixed MIME multipart boundary prefix collisions, duplicate attachment overwrites, and Windows reserved filenames in EML extraction; and used checked `usize` arithmetic in `ZipReader` for 32-bit Android.
+- **UI & reading polish (`App`, `Redact`, `Reader`, `useOfficeSession`):** fixed native window theme sync and `"midnight"` theme toggle, fixed Redact page clamping and unique box IDs, routed Office `Ctrl+P` through `session.print()`, and stopped Reader TTS on document switch.
+
 ## [8.0.7] - 2026-11-18
 
 ### Fixed

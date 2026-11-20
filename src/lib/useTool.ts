@@ -5,7 +5,16 @@ import { acceptsFile, pathEntries, pickDesktopFiles, tokenEntries } from "./tool
 import { useOutputTarget } from "./use-output-target";
 import { fileBaseName, isPdf, uid } from "./format";
 import { isAndroid, pickAndroidFiles, publishOutputs, type PublishTarget } from "./mobile";
-import { reportError, useDev, useDrop, useOverwritePrompt, usePasswordPrompt, useRecent, useSettings } from "./store";
+import {
+  reportError,
+  useDev,
+  useDrop,
+  useOverwritePrompt,
+  usePasswordPrompt,
+  useRecent,
+  useSettings,
+  useToasts,
+} from "./store";
 import { useJobProgress, useJobs } from "./jobs";
 import { useT } from "./i18n";
 import type { OpResult, OutputSpec, OverwriteMode, PdfInfo, ProgressPayload, SelectedFile } from "./types";
@@ -316,10 +325,20 @@ export function useTool(options: ToolOptions): ToolSession {
   // Android: copy finished documents to a visible location (Downloads by
   // default, or the destination the user picked) so they can be opened and
   // shared. No-op on desktop.
-  const publish = useCallback(async (paths: string[]) => {
-    if (!isAndroid() || !paths.length) return;
-    await publishOutputs(paths, androidTargetRef.current ?? undefined);
-  }, []);
+  const publish = useCallback(
+    async (paths: string[]) => {
+      if (!isAndroid() || !paths.length) return;
+      const failures = await publishOutputs(paths, androidTargetRef.current ?? undefined);
+      if (failures.length > 0) {
+        useToasts.getState().push({
+          kind: "error",
+          title: t("errors.title"),
+          detail: failures.map((f) => `${fileBaseName(f.path)}: ${f.error}`).join("; "),
+        });
+      }
+    },
+    [t],
+  );
 
   const run = useCallback(
     async (task: (jobId: string, overwrite: OverwriteMode) => Promise<OpResult | void>) => {
@@ -330,7 +349,7 @@ export function useTool(options: ToolOptions): ToolSession {
         try {
           const outcome = await task(jobId, mode);
           if (outcome) {
-            if (outcome.path) {
+            if (outcome.path && !isMultiOutput) {
               await publish([outcome.path]);
             }
             setResult(outcome);
@@ -383,7 +402,7 @@ export function useTool(options: ToolOptions): ToolSession {
       const [status, message] = await execute(overwrite);
       useJobs.getState().settle(jobId, status, message);
     },
-    [addRecentEntry, jobId, output.outputPath, overwrite, publish, suffix, t],
+    [addRecentEntry, isMultiOutput, jobId, output.outputPath, overwrite, publish, suffix, t],
   );
 
   const cancel = useCallback(() => {
@@ -394,7 +413,7 @@ export function useTool(options: ToolOptions): ToolSession {
     (mode?: OverwriteMode, path?: string): OutputSpec => ({
       // Single-output tools send the capability token; multi-output folders
       // (and Android staging) keep the path.
-      path: path ?? output.outputToken ?? output.outputPath,
+      path: path || output.outputToken || output.outputPath,
       overwrite: mode ?? overwrite,
     }),
     [output, overwrite],

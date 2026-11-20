@@ -281,10 +281,13 @@ fn load_settings_file(app: &AppHandle) -> AiSettingsFile {
 
 fn mask_key(key: &str) -> String {
     let trimmed = key.trim();
-    if trimmed.len() <= 8 {
-        return if trimmed.is_empty() { String::new() } else { "••••".into() };
+    let count = trimmed.chars().count();
+    if count <= 8 {
+        return if count == 0 { String::new() } else { "••••".into() };
     }
-    format!("{}••••{}", &trimmed[..4], &trimmed[trimmed.len() - 4..])
+    let prefix: String = trimmed.chars().take(4).collect();
+    let suffix: String = trimmed.chars().skip(count - 4).collect();
+    format!("{prefix}••••{suffix}")
 }
 
 fn view(app: &AppHandle) -> AiSettingsView {

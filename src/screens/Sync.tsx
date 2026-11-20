@@ -291,7 +291,7 @@ export function Sync() {
       // desktop dialog cannot open it); `.oswk` has no registered MIME type.
       const picked = isAndroid()
         ? await pickAndroidFilesWithMime(["application/octet-stream", "*/*"], true)
-        : await pickDocumentTokens(["oswk"], true).catch(() => []);
+        : (await pickDocumentTokens(["oswk"], true).catch(() => [])).map((file) => file.token);
       const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
       const documents = paths.filter(
         (path): path is string => typeof path === "string" && isOswkPath(fileBaseName(path)),

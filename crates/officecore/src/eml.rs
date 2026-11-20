@@ -111,13 +111,15 @@ pub fn read_eml_file(path: &Path, cache_dir: &Path) -> OfficeResult<EmlMessage> 
     let stem = crate::io::file_stem(path);
     let directory = cache_dir.join(format!("eml-{}", uuid::Uuid::new_v4().simple()));
     let mut wrote = false;
+    let mut used_names = std::collections::HashSet::new();
     for (index, attachment) in message.attachments.iter_mut().enumerate() {
         let data =
             base64::engine::general_purpose::STANDARD.decode(attachment.data_base64.as_bytes()).unwrap_or_default();
         if data.is_empty() {
             continue;
         }
-        let name = safe_file_name(&attachment.name, index);
+        let base_name = safe_file_name(&attachment.name, index);
+        let name = deduplicate_file_name(&base_name, &mut used_names);
         if !wrote {
             std::fs::create_dir_all(&directory).map_err(|error| OfficeError::from_io(error, &directory))?;
             wrote = true;
@@ -130,6 +132,51 @@ pub fn read_eml_file(path: &Path, cache_dir: &Path) -> OfficeResult<EmlMessage> 
         }
     }
     Ok(message)
+}
+
+fn deduplicate_file_name(name: &str, used: &mut std::collections::HashSet<String>) -> String {
+    if used.insert(name.to_ascii_lowercase()) {
+        return name.to_string();
+    }
+    let (stem, ext) = match name.rfind('.') {
+        Some(dot) if dot > 0 => (&name[..dot], &name[dot..]),
+        _ => (name, ""),
+    };
+    for suffix in 2.. {
+        let candidate = format!("{stem}-{suffix}{ext}");
+        if used.insert(candidate.to_ascii_lowercase()) {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
+fn is_windows_reserved_stem(stem: &str) -> bool {
+    matches!(
+        stem.to_ascii_lowercase().as_str(),
+        "con"
+            | "prn"
+            | "aux"
+            | "nul"
+            | "com1"
+            | "com2"
+            | "com3"
+            | "com4"
+            | "com5"
+            | "com6"
+            | "com7"
+            | "com8"
+            | "com9"
+            | "lpt1"
+            | "lpt2"
+            | "lpt3"
+            | "lpt4"
+            | "lpt5"
+            | "lpt6"
+            | "lpt7"
+            | "lpt8"
+            | "lpt9"
+    )
 }
 
 /// A file name that cannot escape the extraction directory.
@@ -147,7 +194,11 @@ fn safe_file_name(name: &str, index: usize) -> String {
         .collect();
     let cleaned = cleaned.trim_matches(['.', ' ']).to_string();
     if cleaned.is_empty() {
-        format!("ek-{}", index + 1)
+        return format!("ek-{}", index + 1);
+    }
+    let stem = cleaned.split('.').next().unwrap_or(&cleaned);
+    if is_windows_reserved_stem(stem) {
+        format!("_{cleaned}")
     } else {
         cleaned
     }
@@ -380,20 +431,25 @@ fn push_attachment(message: &mut EmlMessage, name: String, content_type: &str, d
 /// Splits a multipart body on its boundary.
 fn split_parts(body: &[u8], boundary: &str) -> Vec<Vec<u8>> {
     let delimiter = format!("--{boundary}");
+    let delim_bytes = delimiter.as_bytes();
     let mut parts: Vec<Vec<u8>> = Vec::new();
     let mut current: Option<Vec<u8>> = None;
     for line in split_keep_lines(body) {
         let trimmed = line.strip_suffix(b"\n").unwrap_or(&line);
         let trimmed = trimmed.strip_suffix(b"\r").unwrap_or(trimmed);
-        if trimmed.starts_with(delimiter.as_bytes()) {
-            if let Some(part) = current.take() {
-                parts.push(trim_body(part));
+        if let Some(rest) = trimmed.strip_prefix(delim_bytes) {
+            let is_closing = rest.strip_prefix(b"--").is_some_and(|tail| tail.iter().all(|&b| b == b' ' || b == b'\t'));
+            let is_boundary = is_closing || rest.iter().all(|&b| b == b' ' || b == b'\t');
+            if is_boundary {
+                if let Some(part) = current.take() {
+                    parts.push(trim_body(part));
+                }
+                if is_closing {
+                    break;
+                }
+                current = Some(Vec::new());
+                continue;
             }
-            if trimmed.starts_with(format!("{delimiter}--").as_bytes()) {
-                break;
-            }
-            current = Some(Vec::new());
-            continue;
         }
         if let Some(part) = current.as_mut() {
             part.extend_from_slice(&line);
@@ -648,5 +704,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn boundary_prefix_does_not_split_inner_multipart() {
+        let eml = concat!(
+            "Subject: prefix\r\n",
+            "Content-Type: multipart/mixed; boundary=\"----=_Part_1\"\r\n\r\n",
+            "------=_Part_1\r\n",
+            "Content-Type: multipart/alternative; boundary=\"----=_Part_10\"\r\n\r\n",
+            "------=_Part_10\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n\r\n",
+            "Inner body text\r\n",
+            "------=_Part_10--\r\n",
+            "------=_Part_1--\r\n",
+        );
+        let message = parse_eml(eml.as_bytes()).unwrap();
+        assert!(message.body_text.contains("Inner body text"), "body was: {:?}", message.body_text);
+    }
+
+    #[test]
+    fn sanitizes_windows_reserved_and_deduplicates_names() {
+        assert_eq!(safe_file_name("CON.txt", 0), "_CON.txt");
+        assert_eq!(safe_file_name("nul", 0), "_nul");
+        let mut used = std::collections::HashSet::new();
+        assert_eq!(deduplicate_file_name("imza.p7s", &mut used), "imza.p7s");
+        assert_eq!(deduplicate_file_name("IMZA.P7S", &mut used), "IMZA-2.P7S");
     }
 }

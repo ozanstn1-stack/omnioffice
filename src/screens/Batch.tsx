@@ -60,7 +60,7 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
   // Monotonic per-run job counter (Date.now is impure and may collide).
   const jobCounter = useRef(0);
 
-  const outputDir = session.outputDirToken || session.outputDir || session.outputPath.replace(/[^\\/]*$/, "");
+  const outputDir = session.outputDir || session.outputPath.replace(/[^\\/]*$/, "");
 
   const start = async () => {
     if (!session.files.length) return;
@@ -68,6 +68,7 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
     const items: QueueItem[] = session.files.map((file) => ({ path: file.path, name: file.name, status: "pending" }));
     setQueue(items);
     setResult(null);
+    const produced: string[] = [];
 
     for (const [index, item] of items.entries()) {
       setQueue((previous) => previous.map((entry, i) => (i === index ? { ...entry, status: "processing" } : entry)));
@@ -76,6 +77,7 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
       try {
         const stem = item.name.replace(/\.[^.]+$/, "");
         const output = await runOne(jobId, item.path, stem);
+        if (output) produced.push(output);
         setQueue((previous) =>
           previous.map((entry, i) =>
             i === index ? { ...entry, status: "completed", output: output ?? undefined } : entry,
@@ -91,6 +93,9 @@ export function Batch({ initialFiles, dragging }: { initialFiles?: string[]; dra
         );
         if (cancelled) break;
       }
+    }
+    if (produced.length > 0) {
+      await session.publish(produced);
     }
     currentJobRef.current = null;
     setRunning(false);
