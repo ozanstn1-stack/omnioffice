@@ -13,12 +13,31 @@ import { create } from "zustand";
 interface ImmersiveState {
   immersive: boolean;
   set: (immersive: boolean) => void;
+  /**
+   * Desktop focus mode: the app sidebar and the reader's side panel step
+   * aside and the window goes full screen, so the page gets the whole display.
+   */
+  focus: boolean;
+  setFocus: (focus: boolean) => void;
 }
 
 export const useReaderImmersive = create<ImmersiveState>((set) => ({
   immersive: false,
   set: (immersive) => set({ immersive }),
+  focus: false,
+  setFocus: (focus) => set({ focus }),
 }));
+
+/** Puts the native window in (or out of) full screen; a no-op outside Tauri. */
+export async function setWindowFullscreen(on: boolean): Promise<void> {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().setFullscreen(on);
+  } catch {
+    // Browser preview, Android, or the permission is missing: the layout
+    // change alone still gives the page the whole window.
+  }
+}
 
 /** Waits out a possible second tap, so a double-tap zoom never also toggles. */
 export const SINGLE_TAP_DELAY_MS = 320;

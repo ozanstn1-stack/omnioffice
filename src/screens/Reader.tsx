@@ -8,11 +8,14 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Maximize2,
+  Minimize2,
   Pause,
   Play,
   Search,
   Share2,
   ShieldCheck,
+  Sparkles,
   Square,
   Volume2,
   X,
@@ -24,7 +27,7 @@ import { shareWithCheck } from "../lib/presend-gate";
 import { detectEdevletVerification, type EdevletVerification } from "../lib/edevlet";
 import { openExternalLink } from "../office/calc/open-link";
 import { Badge, Button, IconButton, Spinner, useDebounced } from "../components/ui";
-import { DropZone, InfoStrip } from "../components/files";
+import { DropZone } from "../components/files";
 import { LoadError } from "../components/load-error";
 import { Screen } from "../components/layout";
 import { useT } from "../lib/i18n";
@@ -60,7 +63,9 @@ import {
   type TileSpec,
 } from "../lib/tiles";
 import type { PageGeometry, SearchResponse, TextMatch, Thumbnail } from "../lib/types";
-import { useImmersiveReader, useReaderImmersive } from "./reader/immersive";
+import { setWindowFullscreen, useImmersiveReader, useReaderImmersive } from "./reader/immersive";
+import { ReaderSidePanel, type ReaderSideTab } from "./reader/ReaderSidePanel";
+import type { Navigate } from "../lib/nav";
 
 const PT_TO_CSS = 96 / 72;
 
@@ -495,10 +500,12 @@ export function Reader({
   initialFiles,
   dragging,
   initialPage,
+  onNavigate,
 }: {
   initialFiles?: string[];
   dragging: boolean;
   initialPage?: number;
+  onNavigate?: Navigate;
 }) {
   const t = useT();
   const session = useTool({ suffix: "_reader", accept: "pdf", loadInfo: true, initialPaths: initialFiles });
@@ -528,6 +535,14 @@ export function Reader({
   const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const immersive = useReaderImmersive((state) => state.immersive);
   const { onSingleTap, onDoubleTap, onScroll: onImmersiveScroll } = useImmersiveReader();
+  const setImmersive = useReaderImmersive((state) => state.set);
+  // Desktop focus mode (full screen without the sidebar and side panel).
+  const focus = useReaderImmersive((state) => state.focus);
+  const setFocus = useReaderImmersive((state) => state.setFocus);
+  // Side panel: document info or the "ask this document" AI chat. On narrow
+  // windows, in focus mode and on phones it opens as an overlay on demand.
+  const [sideTab, setSideTab] = useState<ReaderSideTab>("info");
+  const [sideOpen, setSideOpen] = useState(false);
   const [containerWidth, setContainerWidth] = useState(900);
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [currentPage, setCurrentPage] = useState(1);
@@ -1028,6 +1043,38 @@ export function Reader({
   // Stop speech when the document changes or the screen unmounts.
   useEffect(() => () => stopSpeaking(), [docKey, stopSpeaking]);
 
+  const toggleFocus = useCallback(() => {
+    if (isAndroid()) {
+      // Phones already have immersive reading; the button just enters it.
+      setImmersive(!useReaderImmersive.getState().immersive);
+      return;
+    }
+    const next = !useReaderImmersive.getState().focus;
+    setFocus(next);
+    if (next) setSideOpen(false);
+    void setWindowFullscreen(next);
+  }, [setFocus, setImmersive]);
+
+  // Leaving the reader always restores the window and the shell.
+  useEffect(
+    () => () => {
+      if (useReaderImmersive.getState().focus) {
+        useReaderImmersive.getState().setFocus(false);
+        void setWindowFullscreen(false);
+      }
+    },
+    [],
+  );
+
+  const toggleAiPanel = () => {
+    if (sideTab === "ai" && sideOpen) {
+      setSideOpen(false);
+      return;
+    }
+    setSideTab("ai");
+    setSideOpen(true);
+  };
+
   // Reading keyboard shortcuts.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1054,6 +1101,16 @@ export function Reader({
         applyZoom("fit");
         return;
       }
+      if (event.key === "F11") {
+        event.preventDefault();
+        toggleFocus();
+        return;
+      }
+      if (event.key === "Escape" && useReaderImmersive.getState().focus && !typing) {
+        event.preventDefault();
+        toggleFocus();
+        return;
+      }
       if (typing) return;
       if (event.key === "PageDown") {
         event.preventDefault();
@@ -1072,7 +1129,7 @@ export function Reader({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageCount, scrollToPage, zoom]);
+  }, [pageCount, scrollToPage, toggleFocus, zoom]);
 
   const matchesByPage = useMemo(() => {
     const map = new Map<number, TextMatch[]>();
@@ -1095,7 +1152,7 @@ export function Reader({
   const zoomLabel = typeof zoom === "number" ? `${Math.round(zoom * 100)}%` : t("reader.fitWidth");
 
   return (
-    <div className="h-full flex min-h-0">
+    <div className="h-full flex min-h-0 relative">
       <div className="flex-1 min-w-0 flex flex-col min-h-0 relative">
         {immersive ? <div className="reader-page-pill">{`${currentPage} / ${pageCount}`}</div> : null}
         <div
@@ -1185,6 +1242,16 @@ export function Reader({
             </Button>
           ) : null}
           <div className="flex items-center gap-1 ml-auto">
+            <IconButton
+              label={t("reader.aiAssistant")}
+              onClick={toggleAiPanel}
+              aria-pressed={sideOpen && sideTab === "ai"}
+            >
+              <Sparkles size={15} style={sideOpen && sideTab === "ai" ? { color: "var(--accent)" } : undefined} />
+            </IconButton>
+            <IconButton label={focus ? t("reader.exitFullscreen") : t("reader.fullscreen")} onClick={toggleFocus}>
+              {focus ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </IconButton>
             <IconButton
               label={showTextLayer ? t("reader.hideTextLayer") : t("reader.showTextLayer")}
               onClick={() => setShowTextLayer((value) => !value)}
@@ -1339,86 +1406,24 @@ export function Reader({
         </div>
       </div>
 
-      <aside
-        className="w-[300px] shrink-0 border-l overflow-y-auto hidden xl:flex flex-col gap-3 p-3"
-        style={{ borderColor: "var(--border)", background: "var(--bg-soft)" }}
-      >
-        <p className="group-label">{t("reader.jumpTo")}</p>
-        <div className="flex items-center gap-2">
-          <input
-            className="input input-sm"
-            type="number"
-            min={1}
-            max={Math.max(1, pageCount)}
-            value={currentPage}
-            onChange={(event) => {
-              const next = clamp(Number(event.target.value) || 1, 1, Math.max(1, pageCount));
-              scrollToPage(next);
-            }}
-          />
-          <span className="text-xs muted shrink-0">/ {pageCount}</span>
-        </div>
-
-        <p className="group-label mt-2">{t("reader.bookmarks")}</p>
-        {session.info?.outline?.length ? (
-          <div className="flex flex-col gap-0.5 max-h-[260px] overflow-y-auto">
-            {session.info.outline.map((entry, index) => (
-              <button
-                key={`${entry.title}-${index}`}
-                type="button"
-                className="text-left text-[12.5px] truncate px-2 py-1 rounded hover:bg-[var(--surface-2)] disabled:opacity-50"
-                style={{ paddingLeft: 8 + Math.min(entry.depth, 8) * 12 }}
-                disabled={entry.page < 1}
-                title={entry.title}
-                onClick={() => {
-                  if (entry.page > 0) scrollToPage(entry.page);
-                }}
-              >
-                {entry.title || t("reader.untitledBookmark")}
-                {entry.page > 0 ? <span className="muted text-xs"> · {entry.page}</span> : null}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs muted">{t("reader.noBookmarks")}</p>
-        )}
-
-        <p className="group-label mt-2">{t("reader.search")}</p>
-        {searchResult ? (
-          searchResult.matches.length ? (
-            <div className="flex flex-col gap-1.5">
-              {searchResult.matches.slice(0, 80).map((match, index) => (
-                <button
-                  key={`${match.page}-${index}`}
-                  className="text-left card-soft px-2.5 py-2 text-[12.5px] hover:border-[var(--accent)]"
-                  onClick={() => scrollToPage(match.page)}
-                  title={match.snippet}
-                >
-                  <span className="badge badge-accent mr-2">{match.page}</span>
-                  <span className="muted">{match.snippet || t("common.page")}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs muted">{t("reader.noMatches")}</p>
-          )
-        ) : (
-          <p className="text-xs muted">{t("reader.searchPlaceholder")}</p>
-        )}
-
-        <div className="mt-auto pt-3">
-          {session.info || session.infoError ? (
-            <div className="card-soft p-3">
-              <InfoStrip info={session.info} error={session.infoError} />
-            </div>
-          ) : null}
-          {copiedPage ? (
-            <p className="text-xs mt-2" style={{ color: "var(--ok)" }}>
-              {t("reader.copied", { page: copiedPage })}
-            </p>
-          ) : null}
-        </div>
-      </aside>
+      <ReaderSidePanel
+        tab={sideTab}
+        onTab={setSideTab}
+        open={sideOpen}
+        onClose={() => setSideOpen(false)}
+        focus={focus}
+        docId={docId}
+        path={session.primary.path}
+        password={session.password || undefined}
+        pageCount={pageCount}
+        currentPage={currentPage}
+        scrollToPage={scrollToPage}
+        onNavigate={onNavigate}
+        info={session.info}
+        infoError={session.infoError}
+        searchResult={searchResult}
+        copiedPage={copiedPage}
+      />
     </div>
   );
 }

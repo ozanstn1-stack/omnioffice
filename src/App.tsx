@@ -80,6 +80,8 @@ export default function App() {
   const [screen, setScreen] = useState<ScreenId>("home");
   // Immersive reading (phones): the reader asked the shell to step aside.
   const readerImmersive = useReaderImmersive((state) => state.immersive) && screen === "reader";
+  // Desktop focus mode: the reader asked for the whole window.
+  const readerFocus = useReaderImmersive((state) => state.focus) && screen === "reader";
   const [files, setFiles] = useState<string[]>([]);
   const [selectionText, setSelectionText] = useState("");
   const [aiPack, setAiPack] = useState<TaskPackId | null>(null);
@@ -564,7 +566,9 @@ export default function App() {
   const screens: Record<ScreenId, React.ReactElement> = useMemo(
     () => ({
       home: <Screens.HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} />,
-      reader: <Screens.Reader initialFiles={files} dragging={dragging} initialPage={readerPage} />,
+      reader: (
+        <Screens.Reader initialFiles={files} dragging={dragging} initialPage={readerPage} onNavigate={navigate} />
+      ),
       ai: <Screens.Ai initialFiles={files} dragging={dragging} onNavigate={navigate} />,
       aiLibrary: <Screens.AiLibrary onOpenAi={() => navigate("ai")} />,
       // A desk task (D13) navigates with its pack; the key remounts the screen so the
@@ -734,20 +738,22 @@ export default function App() {
 
   return (
     <div className="flex h-full" style={{ background: "var(--bg)" }}>
-      <React.Suspense fallback={<aside className="sidebar shrink-0" style={{ width: sidebarCompact ? 68 : 252 }} />}>
-        <Screens.DesktopSidebar
-          icons={NAV_ICONS}
-          screen={screen}
-          compact={sidebarCompact}
-          version={packageJson.version}
-          backgroundJobs={backgroundJobs}
-          isDark={isDark}
-          onNavigate={pickNav}
-          onSearch={() => setSearchOpen(true)}
-          onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}
-          onToggleCompact={() => setSidebarCompact((previous) => !previous)}
-        />
-      </React.Suspense>
+      {readerFocus ? null : (
+        <React.Suspense fallback={<aside className="sidebar shrink-0" style={{ width: sidebarCompact ? 68 : 252 }} />}>
+          <Screens.DesktopSidebar
+            icons={NAV_ICONS}
+            screen={screen}
+            compact={sidebarCompact}
+            version={packageJson.version}
+            backgroundJobs={backgroundJobs}
+            isDark={isDark}
+            onNavigate={pickNav}
+            onSearch={() => setSearchOpen(true)}
+            onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}
+            onToggleCompact={() => setSidebarCompact((previous) => !previous)}
+          />
+        </React.Suspense>
+      )}
 
       {/* Main area */}
       <main className="app-main flex-1 min-w-0 relative">
