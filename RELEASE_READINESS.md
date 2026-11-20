@@ -12,6 +12,14 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.1.0) - Full-screen reader and "ask this document" AI panel
+
+- **Reader page citations in AI answers become jump-to-page links, and summary turns are not resent as chat history:**
+  `test:src/screens/reader/ReaderAiPanel.test.ts#turns page markers with and without quotes into jumpable parts`
+  `test:src/screens/reader/ReaderAiPanel.test.ts#drops summary bubbles and empty turns`
+- **Reader focus (full-screen) mode hides the app sidebar and the side panel:**
+  (no test: window full screen and layout verified via TypeScript typecheck, ESLint and the existing Reader Vitest suites)
+
 ## Implemented (this cycle, 8.0.8) - Cross-platform (Android & Windows) audit bug fixes
 
 - **Illegal XML 1.0 control characters are stripped during XML text and attribute escaping:**

@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.1.0] - 2026-11-20
+
+### Added
+
+- **Full-screen reading (`Reader`, `App`):** a new toolbar button (and `F11`) puts the PDF reader in focus mode: the left navigation and the right side panel step aside and the window goes full screen, so the page fills the display. `Esc` or the same button brings everything back; on Android the button enters immersive reading.
+- **Ask this document (`Reader` side panel):** the reader's right panel now has an AI tab. One click summarizes the open PDF, and you can ask follow-up questions that are answered strictly from that document, with clickable page citations that jump to the cited page. It uses the configured AI provider and the same data-consent notice as the AI screen; on narrow windows and phones the panel opens from the toolbar's AI button.
+
 ## [8.0.8] - 2026-11-20
 
 ### Fixed
