@@ -501,8 +501,10 @@ object IncomingFiles {
       filled += read
       if (indexOfBytes(buffer, needle, filled) >= 0) return true
       if (keep > 0) {
-        System.arraycopy(buffer, filled - keep, buffer, 0, keep)
-        filled = keep
+        if (filled >= keep) {
+          System.arraycopy(buffer, filled - keep, buffer, 0, keep)
+          filled = keep
+        }
       } else {
         filled = 0
       }

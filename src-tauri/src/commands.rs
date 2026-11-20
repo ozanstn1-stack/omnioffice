@@ -478,15 +478,10 @@ pub async fn extract_pages(
     operation_with_progress(app, registry, request.job_id.clone(), move |progress, cancel| {
         let (output, policy) = request.output.resolve()?;
         let input = crate::paths::input_file(&request.input)?;
-        validate_pages(input.as_path(), &request)?;
+        let pages = validate_pages(input.as_path(), &request)?;
         emit_progress_simple(progress, "extract", 0, 1);
-        let path = pdfcore::organize::extract_pages(
-            input.as_path(),
-            &request.pages,
-            &output,
-            policy,
-            request.password.as_deref(),
-        )?;
+        let path =
+            pdfcore::organize::extract_pages(input.as_path(), &pages, &output, policy, request.password.as_deref())?;
         cancel.check()?;
         let pages = pdfcore::info::pdf_info(&path, None).map(|i| i.page_count).unwrap_or(0);
         emit_progress_simple(progress, "extract", 1, 1);

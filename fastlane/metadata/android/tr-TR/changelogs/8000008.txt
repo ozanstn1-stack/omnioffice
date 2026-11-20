@@ -1,0 +1,1 @@
+Android ve Windows hata düzeltmeleri: tek çıktılı PDF araçları ve yayınlama düzeltmeleri, APK kurucu kilitlenme düzeltmesi, masaüstü dosya politikası ve sayfa çıkarma düzeltmeleri, Office Farklı Kaydet/Yeniden Yükle, Dönüştürücü/Toplu İşlem/Bulut Eşitleme token düzeltmeleri, Türkçe/UTF-8 güvenliği, XML 1.0 ve EML düzeltmeleri.

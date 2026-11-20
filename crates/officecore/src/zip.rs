@@ -56,13 +56,15 @@ pub struct ZipReader {
 }
 
 fn rd_u16(data: &[u8], at: usize) -> OfficeResult<u16> {
-    data.get(at..at + 2)
+    let end = at.checked_add(2).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?;
+    data.get(at..end)
         .map(|b| u16::from_le_bytes([b[0], b[1]]))
         .ok_or_else(|| OfficeError::corrupt("Truncated ZIP structure"))
 }
 
 fn rd_u32(data: &[u8], at: usize) -> OfficeResult<u32> {
-    data.get(at..at + 4)
+    let end = at.checked_add(4).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?;
+    data.get(at..end)
         .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
         .ok_or_else(|| OfficeError::corrupt("Truncated ZIP structure"))
 }
@@ -95,17 +97,33 @@ impl ZipReader {
             if rd_u32(&data, cursor)? != CENTRAL_SIG {
                 return Err(OfficeError::corrupt("Damaged ZIP central directory"));
             }
-            let flags = rd_u16(&data, cursor + 8)?;
-            let method = rd_u16(&data, cursor + 10)?;
-            let crc = rd_u32(&data, cursor + 16)?;
-            let compressed_size = rd_u32(&data, cursor + 20)? as u64;
-            let uncompressed_size = rd_u32(&data, cursor + 24)? as u64;
-            let name_len = rd_u16(&data, cursor + 28)? as usize;
-            let extra_len = rd_u16(&data, cursor + 30)? as usize;
-            let comment_len = rd_u16(&data, cursor + 32)? as usize;
-            let local_offset = rd_u32(&data, cursor + 42)? as u64;
-            let name = read_entry_name(&data, cursor + 46, name_len);
-            cursor = cursor.saturating_add(46 + name_len + extra_len + comment_len);
+            let flags =
+                rd_u16(&data, cursor.checked_add(8).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?;
+            let method =
+                rd_u16(&data, cursor.checked_add(10).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?;
+            let crc =
+                rd_u32(&data, cursor.checked_add(16).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?;
+            let compressed_size =
+                rd_u32(&data, cursor.checked_add(20).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?
+                    as u64;
+            let uncompressed_size =
+                rd_u32(&data, cursor.checked_add(24).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?
+                    as u64;
+            let name_len =
+                rd_u16(&data, cursor.checked_add(28).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?
+                    as usize;
+            let extra_len =
+                rd_u16(&data, cursor.checked_add(30).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?
+                    as usize;
+            let comment_len =
+                rd_u16(&data, cursor.checked_add(32).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?
+                    as usize;
+            let local_offset =
+                rd_u32(&data, cursor.checked_add(42).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?)?
+                    as u64;
+            let name_at = cursor.checked_add(46).ok_or_else(|| OfficeError::corrupt("ZIP offset overflow"))?;
+            let name = read_entry_name(&data, name_at, name_len);
+            cursor = name_at.saturating_add(name_len).saturating_add(extra_len).saturating_add(comment_len);
             entries.push(CentralEntry { name, method, crc, compressed_size, uncompressed_size, local_offset, flags });
         }
         let mut index = HashMap::new();
@@ -153,9 +171,17 @@ impl ZipReader {
         if rd_u32(&self.data, at)? != LOCAL_SIG {
             return Err(OfficeError::corrupt("Damaged ZIP local header"));
         }
-        let name_len = rd_u16(&self.data, at + 26)? as usize;
-        let extra_len = rd_u16(&self.data, at + 28)? as usize;
-        let start = at + 30 + name_len + extra_len;
+        let name_len =
+            rd_u16(&self.data, at.checked_add(26).ok_or_else(|| OfficeError::corrupt("ZIP entry offset overflow"))?)?
+                as usize;
+        let extra_len =
+            rd_u16(&self.data, at.checked_add(28).ok_or_else(|| OfficeError::corrupt("ZIP entry offset overflow"))?)?
+                as usize;
+        let start = at
+            .checked_add(30)
+            .and_then(|v| v.checked_add(name_len))
+            .and_then(|v| v.checked_add(extra_len))
+            .ok_or_else(|| OfficeError::corrupt("ZIP entry offset overflow"))?;
         let end = start
             .checked_add(entry.compressed_size as usize)
             .ok_or_else(|| OfficeError::corrupt("ZIP entry offset overflow"))?;

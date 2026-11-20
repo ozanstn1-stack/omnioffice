@@ -18,7 +18,7 @@ import { PageCanvas, type Rect } from "../components/pages";
 import { OptionCard, Screen, TwoColumn } from "../components/layout";
 import { useT } from "../lib/i18n";
 import { fileBaseName, uid } from "../lib/format";
-import { isAndroid } from "../lib/mobile";
+import { isAndroid, saveTextOnAndroid } from "../lib/mobile";
 import { reportError, useJobProgress, useToasts } from "../lib/store";
 import { useTool } from "../lib/useTool";
 import {
@@ -74,12 +74,16 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
 
   const patch = (values: Partial<RedactionOptions>) => setOptions((previous) => ({ ...previous, ...values }));
   const pageCount = session.info?.pageCount ?? 0;
+  // Keep the current page inside the (possibly shrunken) document instead of
+  // clamping in an effect.
+  const shownPage = pageCount && page > pageCount ? pageCount : page;
+
   // render::PageGeometry is serialized without rename_all, so the widths are
   // width_pt/height_pt. normalizePageSize is the single place that knows it.
   const geometry = useMemo(() => {
-    const found = session.info?.pageGeometries.find((entry) => entry.page === page);
+    const found = session.info?.pageGeometries.find((entry) => entry.page === shownPage);
     return found ? normalizePageSize(found) : null;
-  }, [session.info, page]);
+  }, [session.info, shownPage]);
 
   // Boxes belong to the page they were drawn on; a new document starts clean.
   // The reset is derived from the document identity during render instead of an
@@ -95,10 +99,6 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setPatternCount(null);
   }
 
-  // Keep the current page inside the (possibly shrunken) document instead of
-  // clamping in an effect.
-  const shownPage = pageCount && page > pageCount ? pageCount : page;
-
   /**
    * The canvas reports a rectangle normalized to the rendered image with the
    * origin top-left, but PDF user space has its origin bottom-left, so the
@@ -110,7 +110,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
       if (!geometry) return;
       const area = rectToUserSpace(rect, geometry);
       if (!area) return;
-      setBoxes((previous) => [...previous, { ...area, page: shownPage, id: `box-${shownPage}-${previous.length}` }]);
+      setBoxes((previous) => [...previous, { ...area, page: shownPage, id: `box-${shownPage}-${uid()}` }]);
     },
     [geometry, shownPage],
   );
@@ -150,7 +150,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
     setDetecting(true);
     setScanError(null);
     try {
-      const found = await detectSensitiveText(session.primary.path, page, session.password || undefined);
+      const found = await detectSensitiveText(session.primary.path, shownPage, session.password || undefined);
       const rows = found.map((match, index) => matchRow("auto", match, index));
       // The detector replaces only its own rows/boxes; keyword/pattern results
       // and the boxes the user drew stay.
@@ -307,11 +307,17 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
       const md = renderCertificateMarkdown(displayCertificate(certificate, verification, session.primary.name));
       void navigator.clipboard?.writeText(md);
 
-      if (saveToFile && !isAndroid()) {
-        const defaultPath = session.primary.path.replace(/\.pdf$/i, "-karartma-sertifikasi.md");
-        const outPath = await pickSaveToken(fileBaseName(defaultPath), ["md"]).catch(() => null);
-        if (outPath) {
-          await aiSaveOutput(outPath.token, md, "overwrite");
+      let saved = false;
+      if (saveToFile) {
+        const defaultName = session.primary.name.replace(/\.pdf$/i, "") + "-karartma-sertifikasi.md";
+        if (isAndroid()) {
+          saved = await saveTextOnAndroid(md, fileBaseName(defaultName)).catch(() => false);
+        } else {
+          const outPath = await pickSaveToken(fileBaseName(defaultName), ["md"]).catch(() => null);
+          if (outPath) {
+            await aiSaveOutput(outPath.token, md, "overwrite");
+            saved = true;
+          }
         }
       }
 
@@ -322,7 +328,7 @@ export function Redact({ initialFiles, dragging }: { initialFiles?: string[]; dr
           id: certificate.id,
           verified: verification.contentMatches,
           count: certificate.items.length,
-          saved: saveToFile,
+          saved,
         }),
       });
     } catch (error) {

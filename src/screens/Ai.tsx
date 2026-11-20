@@ -955,7 +955,7 @@ export function Ai({
   const saveOutput = async () => {
     if (!output.trim()) return;
     const extension = "md";
-    const base = session.primary ? session.primary.path.replace(/\.[^.\\/]+$/, "") : "ai-output";
+    const base = session.primary ? session.primary.name.replace(/\.[^.\\/]+$/, "") : "ai-output";
     const defaultName = `${base}${tab === "translate" ? "_translated" : tab === "cleanup" ? "_clean" : "_ai"}.${extension}`;
     if (isAndroid()) {
       try {

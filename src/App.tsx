@@ -216,8 +216,7 @@ export default function App() {
   // Keep the native window chrome in sync with the selected theme (the
   // "system" theme follows the OS live, see applyTheme in lib/store).
   useEffect(() => {
-    const resolved: "dark" | "light" =
-      settings.theme === "system" ? (appliedDark ? "dark" : "light") : settings.theme === "paper" ? "light" : "dark";
+    const resolved: "dark" | "light" = appliedDark ? "dark" : "light";
     void import("@tauri-apps/api/window")
       .then(({ getCurrentWindow }) => getCurrentWindow().setTheme(resolved))
       .catch(() => undefined);
@@ -649,7 +648,7 @@ export default function App() {
   // Flag-gated routes are closed, not just hidden: a deep link to a disabled
   // route renders Home instead of the unfinished screen.
   const effectiveScreen = routeEnabled(screen) ? screen : "home";
-  const isDark = settings.theme === "dark" || (settings.theme === "system" && appliedDark);
+  const isDark = appliedDark;
   const pickNav = (id: ScreenId) => {
     navigate(id);
     setNavOpen(false);

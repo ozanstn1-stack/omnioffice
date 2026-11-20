@@ -231,6 +231,10 @@ fn node_from_start(start: &BytesStart<'_>) -> OfficeResult<XmlNode> {
 // Writing
 // ---------------------------------------------------------------------------
 
+fn is_xml10_char(ch: char) -> bool {
+    matches!(ch, '\t' | '\n' | '\r' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}')
+}
+
 pub fn escape_text(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);
     for ch in value.chars() {
@@ -238,7 +242,8 @@ pub fn escape_text(value: &str) -> String {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
-            _ => out.push(ch),
+            _ if is_xml10_char(ch) => out.push(ch),
+            _ => {}
         }
     }
     out
@@ -253,7 +258,8 @@ pub fn escape_attr(value: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&apos;"),
-            _ => out.push(ch),
+            _ if is_xml10_char(ch) => out.push(ch),
+            _ => {}
         }
     }
     out
@@ -442,5 +448,12 @@ mod tests {
     fn rejects_unclosed_element_at_eof() {
         let error = parse_xml("<root><child>text").expect_err("unclosed XML must fail");
         assert_eq!(error.code, "corrupt_document", "unexpected error: {error}");
+    }
+
+    #[test]
+    fn strips_illegal_xml10_control_characters() {
+        let raw = "Merhaba\x00\x0B\x0C\u{FFFE}\t\n\rDünya <&>\"'";
+        assert_eq!(escape_text(raw), "Merhaba\t\n\rDünya &lt;&amp;&gt;\"'");
+        assert_eq!(escape_attr(raw), "Merhaba\t\n\rDünya &lt;&amp;&gt;&quot;&apos;");
     }
 }

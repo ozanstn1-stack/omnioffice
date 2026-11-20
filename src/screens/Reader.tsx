@@ -1026,7 +1026,7 @@ export function Reader({
   }, []);
 
   // Stop speech when the document changes or the screen unmounts.
-  useEffect(() => () => stopSpeaking(), [stopSpeaking]);
+  useEffect(() => () => stopSpeaking(), [docKey, stopSpeaking]);
 
   // Reading keyboard shortcuts.
   useEffect(() => {

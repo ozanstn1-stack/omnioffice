@@ -12,6 +12,16 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.0.8) - Cross-platform (Android & Windows) audit bug fixes
+
+- **Illegal XML 1.0 control characters are stripped during XML text and attribute escaping:**
+  `test:crates/officecore/src/xml.rs#strips_illegal_xml10_control_characters`
+- **EML multipart boundary prefixes do not split inner parts, Windows reserved names are sanitized, and duplicate attachment names are deduplicated:**
+  `test:crates/officecore/src/eml.rs#boundary_prefix_does_not_split_inner_multipart`
+  `test:crates/officecore/src/eml.rs#sanitizes_windows_reserved_and_deduplicates_names`
+- **Android outputSpec/publishing/APK-installer deadlock, Desktop release path policy, Office Save As/Reload, and capability-token screen fixes:**
+  (no test: cross-platform Tauri/Android/UI integration fixes verified via TypeScript typecheck, ESLint, officecore tests, and existing Vitest suite)
+
 ## Implemented (this cycle, 8.0.7) - Audit bug fixes and stability
 
 - **Malformed XML with unclosed elements at EOF is rejected instead of silently auto-closed:**

@@ -145,6 +145,7 @@ export function Scanner({ onNavigate, initialFiles }: ScannerProps = {}) {
   const build = async () => {
     if (!pages.length) return;
     let outputPath: string | null = null;
+    let displayOutput = "";
     let androidTarget: Awaited<ReturnType<typeof pickAndroidSaveTarget>> = null;
 
     if (isAndroid()) {
@@ -160,6 +161,7 @@ export function Scanner({ onNavigate, initialFiles }: ScannerProps = {}) {
       const target = await pickSaveToken("Tarama.pdf", ["pdf"]).catch(() => null);
       if (!target) return;
       outputPath = target.token;
+      displayOutput = target.path ?? target.name;
     }
 
     setBusy(true);
@@ -171,14 +173,22 @@ export function Scanner({ onNavigate, initialFiles }: ScannerProps = {}) {
       }));
       const result = await scanPages(request, outputPath);
       if (isAndroid() && androidTarget) {
-        await publishOutputs([outputPath], { file: androidTarget });
+        const failures = await publishOutputs([outputPath], { file: androidTarget });
+        if (failures.length > 0) {
+          useToasts.getState().push({
+            kind: "error",
+            title: t("errors.title"),
+            detail: failures.map((f) => f.error).join("; "),
+          });
+          return;
+        }
       }
       setLastOutput(outputPath);
       setLastResult({ pages: result.pages, corrected: result.corrected });
       useToasts.getState().push({
         kind: "success",
         title: t("scanner.done", { pages: result.pages }),
-        detail: androidTarget ? androidTarget.name : outputPath,
+        detail: androidTarget ? androidTarget.name : displayOutput || outputPath,
       });
       for (const warning of result.warnings) {
         useToasts.getState().push({ kind: "info", title: t("scanner.warnings"), detail: warning });

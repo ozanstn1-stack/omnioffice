@@ -43,7 +43,7 @@ interface OfficeTabsState {
   tabs: OfficeTab[];
   activeId: string | null;
   create: (kind: OfficeKind, title?: string, model?: OfficeModel) => string;
-  open: (tab: Omit<OfficeTab, "id" | "openedAt" | "dirty" | "lastSavedAt">) => string;
+  open: (tab: Omit<OfficeTab, "id" | "openedAt" | "dirty" | "lastSavedAt">, options?: { reload?: boolean }) => string;
   activate: (id: string) => void;
   close: (id: string) => void;
   closeOthers: (id: string) => void;
@@ -51,7 +51,7 @@ interface OfficeTabsState {
   /** Mutates the model and marks the tab dirty. */
   edit: (id: string, mutate: (model: OfficeModel) => OfficeModel) => void;
   setDirty: (id: string, dirty: boolean) => void;
-  markSaved: (id: string, path: string, fingerprint?: string | null) => void;
+  markSaved: (id: string, path: string, fingerprint?: string | null, token?: string | null) => void;
   /** Records the hash captured when a file was opened. */
   setFingerprint: (id: string, fingerprint: string | null) => void;
 }
@@ -85,10 +85,30 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
     set({ tabs: [...get().tabs, tab], activeId: id });
     return id;
   },
-  open: (tab) => {
+  open: (tab, options) => {
     const existing = get().tabs.find((candidate) => candidate.path && candidate.path === tab.path);
     if (existing) {
-      set({ activeId: existing.id });
+      if (options?.reload) {
+        set({
+          tabs: get().tabs.map((candidate) =>
+            candidate.id === existing.id
+              ? {
+                  ...candidate,
+                  kind: tab.kind,
+                  title: tab.title,
+                  token: tab.token ?? candidate.token,
+                  model: tab.model,
+                  warnings: tab.warnings,
+                  dirty: false,
+                  lastSavedAt: new Date().toISOString(),
+                }
+              : candidate,
+          ),
+          activeId: existing.id,
+        });
+      } else {
+        set({ activeId: existing.id });
+      }
       return existing.id;
     }
     const id = uid();
@@ -118,7 +138,7 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
       tabs: get().tabs.map((tab) => (tab.id === id ? { ...tab, model: mutate(tab.model), dirty: true } : tab)),
     }),
   setDirty: (id, dirty) => set({ tabs: get().tabs.map((tab) => (tab.id === id ? { ...tab, dirty } : tab)) }),
-  markSaved: (id, path, fingerprint) =>
+  markSaved: (id, path, fingerprint, token) =>
     set({
       tabs: get().tabs.map((tab) =>
         tab.id === id
@@ -128,6 +148,7 @@ export const useOfficeTabs = create<OfficeTabsState>((set, get) => ({
               dirty: false,
               lastSavedAt: new Date().toISOString(),
               ...(fingerprint !== undefined ? { fingerprint } : {}),
+              ...(token !== undefined ? { token: token ?? undefined } : {}),
             }
           : tab,
       ),
@@ -565,20 +586,23 @@ export function rememberOfficePath(path: string): void {
 }
 
 /** Opens a document file and adds it as an editor tab. */
-export async function openOfficePath(path: string): Promise<OpenPathResult> {
+export async function openOfficePath(path: string, options?: { reload?: boolean }): Promise<OpenPathResult> {
   try {
     const result = await api.openDocument(path);
     rememberOfficePath(result.path);
-    const id = useOfficeTabs.getState().open({
-      kind: result.kind,
-      title: result.title || fileBaseName(path) || "Document",
-      // A legacy binary document is imported, never edited in place: an empty
-      // path makes the first Ctrl+S ask for a modern (DOCX/PPTX/OSWK) target.
-      path: result.legacy ? "" : result.path,
-      token: result.legacy ? undefined : result.token,
-      model: result.model as OfficeModel,
-      warnings: result.warnings,
-    });
+    const id = useOfficeTabs.getState().open(
+      {
+        kind: result.kind,
+        title: result.title || fileBaseName(path) || "Document",
+        // A legacy binary document is imported, never edited in place: an empty
+        // path makes the first Ctrl+S ask for a modern (DOCX/PPTX/OSWK) target.
+        path: result.legacy ? "" : result.path,
+        token: result.legacy ? undefined : result.token,
+        model: result.model as OfficeModel,
+        warnings: result.warnings,
+      },
+      options,
+    );
     // Capture the file's hash now so a later save can tell whether another
     // program changed it (a missing fingerprint simply skips the check).
     if (result.legacy) {
