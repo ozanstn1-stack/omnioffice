@@ -3,15 +3,18 @@
  * the "ask this document" AI chat. Wide windows show it beside the pages; on
  * narrow windows, phones and in focus mode it opens as an overlay on demand.
  */
-import type { ComponentProps } from "react";
+import { lazy, Suspense, useState, type ComponentProps } from "react";
 import { BookOpen, Sparkles, X } from "lucide-react";
-import { IconButton } from "../../components/ui";
+import { IconButton, Spinner } from "../../components/ui";
 import { InfoStrip } from "../../components/files";
 import { useT } from "../../lib/i18n";
 import { clamp } from "../../lib/format";
 import type { Navigate } from "../../lib/nav";
 import type { SearchResponse } from "../../lib/types";
-import { ReaderAiPanel } from "./ReaderAiPanel";
+
+// The AI chat is its own chunk: most reading sessions never open it, and the
+// Reader route has a 12 KB gzip budget (scripts/check-bundle-budget.mjs).
+const ReaderAiPanel = lazy(() => import("./ReaderAiPanel").then((module) => ({ default: module.ReaderAiPanel })));
 
 export type ReaderSideTab = "info" | "ai";
 
@@ -52,6 +55,9 @@ export function ReaderSidePanel({
   copiedPage: number | null;
 }) {
   const t = useT();
+  // Mounted on first use, then kept mounted so the conversation survives.
+  const [aiUsed, setAiUsed] = useState(tab === "ai");
+  if (tab === "ai" && !aiUsed) setAiUsed(true);
   return (
     <aside
       className={`shrink-0 border-l overflow-y-auto flex-col gap-3 p-3 ${
@@ -93,17 +99,20 @@ export function ReaderSidePanel({
         ) : null}
       </div>
 
-      {/* Kept mounted while the info tab shows, so the conversation survives. */}
-      <div className={tab === "ai" ? "flex flex-col flex-1 min-h-0" : "hidden"}>
-        <ReaderAiPanel
-          key={docId}
-          path={path}
-          password={password}
-          pageCount={pageCount}
-          onJumpToPage={scrollToPage}
-          onNavigate={onNavigate}
-        />
-      </div>
+      {aiUsed ? (
+        <div className={tab === "ai" ? "flex flex-col flex-1 min-h-0" : "hidden"}>
+          <Suspense fallback={<Spinner size={14} />}>
+            <ReaderAiPanel
+              key={docId}
+              path={path}
+              password={password}
+              pageCount={pageCount}
+              onJumpToPage={scrollToPage}
+              onNavigate={onNavigate}
+            />
+          </Suspense>
+        </div>
+      ) : null}
       {tab === "ai" ? null : (
         <>
           <p className="group-label">{t("reader.jumpTo")}</p>

@@ -123,7 +123,10 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 548 in 8.0.0 (Phase F): FormBuilderPanel, AiMatrixPanel, Watched
 // Folder live status/log, and Reader 3D/BIM controls add ~5.9 KB gzip across
 // lazy chunks (total measured at 544.2 KB); entry and per-route caps hold.
-const TOTAL_BUDGET_KB = 548;
+// Raised to 551 in 8.1.0: the reader's "ask this document" AI panel (its own
+// lazy chunk, loaded on first use) and the side-panel/focus-mode wiring add
+// about 1.5 KB gzip; the entry and the Reader route cap hold.
+const TOTAL_BUDGET_KB = 551;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);
