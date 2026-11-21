@@ -12,6 +12,12 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.1.3) - Local dates and phone layout fixes
+
+- **Calendar and default dates use the local day, not the UTC one:**
+  `test:src/lib/local-date.test.ts#uses the local day, not the UTC one`
+  `test:src/office/tools-screens.test.tsx#adds a task to the planner`
+
 ## Implemented (this cycle, 8.1.2) - Writer ribbon formatting and reader recents
 
 - **Alignment, font size, font and line spacing apply after focus moves to the ribbon:**

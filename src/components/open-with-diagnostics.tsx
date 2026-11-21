@@ -8,6 +8,7 @@ import { diagnosticsReport } from "../lib/api";
 import { isAndroid, saveFileBytes } from "../lib/mobile";
 import { openWithDiagnosticsText } from "../lib/open-with-diagnostics";
 import { ReportProblem } from "./report-problem";
+import { localIsoDate } from "../lib/local-date";
 
 /**
  * Diagnostics UI.
@@ -30,7 +31,7 @@ export function DiagnosticsExport() {
     setBusy(true);
     try {
       const report = await diagnosticsReport();
-      const stamp = new Date().toISOString().slice(0, 10);
+      const stamp = localIsoDate();
       const saved = await saveFileBytes(new TextEncoder().encode(report), `omnioffice-diagnostics-${stamp}.txt`, {
         name: "Text",
         extensions: ["txt"],

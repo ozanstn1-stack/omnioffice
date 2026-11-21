@@ -1099,11 +1099,14 @@ mod tests {
 
     #[test]
     fn tracked_remote_name_accepts_only_oswk_documents() {
-        assert_eq!(tracked_remote_name(Path::new("C:\\docs\\report.oswk")).unwrap(), "report.oswk");
+        // Built with the platform separator: a `C:\\docs\\...` literal is one
+        // file name on Linux/macOS, where this suite also runs.
+        let docs = std::env::temp_dir().join("docs");
+        assert_eq!(tracked_remote_name(&docs.join("report.oswk")).unwrap(), "report.oswk");
         // Case-insensitive extension, like `validate_local_file`.
-        assert_eq!(tracked_remote_name(Path::new("C:\\docs\\REPORT.OSWK")).unwrap(), "REPORT.OSWK");
-        assert!(tracked_remote_name(Path::new("C:\\docs\\report.pdf")).is_err());
-        assert!(tracked_remote_name(Path::new("C:\\docs\\")).is_err());
+        assert_eq!(tracked_remote_name(&docs.join("REPORT.OSWK")).unwrap(), "REPORT.OSWK");
+        assert!(tracked_remote_name(&docs.join("report.pdf")).is_err());
+        assert!(tracked_remote_name(Path::new("")).is_err());
     }
 
     #[test]

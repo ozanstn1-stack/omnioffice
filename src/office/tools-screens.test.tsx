@@ -48,7 +48,8 @@ import {
   PdfFormsScreen,
 } from "./ToolsScreens";
 import { TEMPLATES } from "./templates";
-import { useNotes, useOfficeTabs } from "../lib/office-store";
+import { useNotes, useOfficeTabs, usePlanner } from "../lib/office-store";
+import { localIsoDate } from "../lib/local-date";
 import { useSettings } from "../lib/store";
 
 describe("local productivity tools render and act on their stores", () => {
@@ -79,6 +80,11 @@ describe("local productivity tools render and act on their stores", () => {
     // The planner can show the task in more than one panel (day cell + agenda),
     // so require at least one rendered occurrence rather than an exact match.
     expect((await screen.findAllByText("Write the release notes")).length).toBeGreaterThan(0);
+    // Keyed by the local calendar day (not the UTC one, which is a day early
+    // in Turkey after midnight), and shown under today's highlighted cell.
+    const task = usePlanner.getState().tasks.find((item) => item.title === "Write the release notes");
+    expect(task?.date).toBe(localIsoDate());
+    expect(document.querySelector(".planner-day.is-today span")?.textContent).toBe(String(new Date().getDate()));
   });
 
   it("renders the data grid and adds rows and columns", async () => {
