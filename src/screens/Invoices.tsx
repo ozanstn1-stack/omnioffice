@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
-import { fileBaseName } from "../lib/format";
+import { fileBaseName, localIsoDate } from "../lib/format";
 import { pickDocumentTokens } from "../lib/file-tokens";
 import {
   AlertTriangle,
@@ -248,7 +248,7 @@ export function Invoices({ initialFiles = [] }: { initialFiles?: string[] }) {
       .filter((e): e is Entry & { kind: "ubl" } => e.kind === "ubl")
       .map((e) => e.document.invoice);
     if (!ublInvoices.length) return;
-    const dateSlug = new Date().toISOString().slice(0, 10);
+    const dateSlug = localIsoDate();
     const defaultName = `${software.toUpperCase()}-Aktarim-${dateSlug}.csv`;
     setBusy(true);
     try {

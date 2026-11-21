@@ -4,7 +4,7 @@ import { appCacheDir, join } from "@tauri-apps/api/path";
 import { Badge, Button, Card, TextArea, TextInput } from "../components/ui";
 import { Screen } from "../components/layout";
 import { pickSaveToken } from "../lib/file-tokens";
-import { uid } from "../lib/format";
+import { localIsoDate, uid } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { isAndroid, pickAndroidSaveTarget, publishOutputs } from "../lib/mobile";
 import type { ViewId } from "../lib/nav";
@@ -64,7 +64,7 @@ function saveProfile(profile: LetterProfile) {
 }
 
 const lines = (value: string) => value.split("\n");
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localIsoDate();
 const letterDate = (iso: string) => {
   const [year, month, day] = iso.split("-");
   return year && month && day ? `${day}.${month}.${year}` : iso;

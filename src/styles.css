@@ -432,6 +432,11 @@ body {
 
 .seg {
   display: inline-flex;
+  /* On a phone a row of options can be wider than the card; it wraps
+     instead of pushing its last buttons off screen where they cannot be
+     tapped. Wide windows fit on one line and look unchanged. */
+  flex-wrap: wrap;
+  max-width: 100%;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1633,6 +1638,20 @@ body {
 }
 .ribbon.is-narrow .ribbon-tab {
   flex: 0 0 auto;
+}
+/* A single group wider than the phone (Writer's Font group: font, size,
+   bold, italic, colours...) wraps its own items too; with nowrap the
+   buttons past the screen edge were clipped and could not be reached even
+   after "More". */
+.ribbon.is-narrow .ribbon-group {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+}
+.ribbon.is-narrow .ribbon-group-items {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 .ribbon.is-narrow .ribbon-body {
   flex-wrap: wrap;
@@ -3340,6 +3359,21 @@ body {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 12px;
+}
+/* Phones: the task panel goes under the calendar instead of being cut off
+   beside it, and the day cells shrink to fit seven across. */
+@media (max-width: 900px) {
+  .planner-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .planner-grid .planner-day {
+    min-height: 44px;
+    min-width: 0;
+  }
+}
+.planner-side .row > .text-input {
+  min-width: 0;
+  flex: 1;
 }
 .planner-calendar {
   padding: 12px;

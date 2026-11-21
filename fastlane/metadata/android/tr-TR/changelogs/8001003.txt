@@ -1,0 +1,1 @@
+Planlayıcı düzeltmeleri: görevler Türkiye saatinde artık doğru güne kaydediliyor, gün ve ay adları Türkçe, telefonda görev paneli takvimin altında. Telefonda Writer yazı tipi düğmelerine ve ekran dışına taşan seçeneklere artık erişilebiliyor. Resmî yazı tarihi ve Writer tarih/saat alanı yerel saati kullanıyor.

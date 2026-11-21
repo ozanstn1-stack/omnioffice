@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.1.3] - 2026-11-21
+
+### Fixed
+
+- **Planner put tasks on the wrong day in Turkey (`PlannerScreen`):** calendar days were keyed with the UTC date, so east of Greenwich (Turkey is UTC+3) every cell was keyed one day early: a task added on the 21st was saved under the 20th, the "today" highlight moved to the wrong cell after midnight, and today's tasks dropped out of "Upcoming" west of Greenwich. Days now use the local calendar date, and the weekday and month names follow the interface language instead of being hard-coded English.
+- **Planner was cut off on phones:** the task panel sat beside the calendar at any width, so on a phone it was pushed off screen and tasks could not be added. It now goes under the calendar on narrow screens.
+- **Writer font controls could not be reached on phones (`Ribbon`):** a ribbon group wider than the screen (the Font group: font, size, bold, italic, colours) kept its buttons on one line, and everything past the screen edge was clipped, even after tapping "More". Groups now wrap their own buttons on narrow screens.
+- **Option rows ran off the screen on phones (`Segmented`):** button rows such as Settings > Theme, the number format, Split's modes, OCR's outputs and Page Tools' tabs pushed their last options past the screen edge where they could not be tapped. They now wrap. Organize's selection toolbar and the AI settings buttons wrap the same way.
+- **Dates and times were UTC (`localIsoDate`):** the official letter's default date (the previous day between 00:00 and 03:00 in Turkey), Writer's inserted date and time fields (three hours behind in Turkey), and the date in exported VAT summary and diagnostics file names now use the local date and time.
+- **Writer restored the caret to the wrong place after a ribbon command:** the caret offset of the previous paragraph was reused in a newly clicked one, and a caret moved by clicking (without typing) was not remembered. The caret now goes back exactly where it was.
+- **Cloud sync test ran only on Windows (`tracked_remote_name`):** the test used Windows paths, which are a single file name on Linux and macOS; it now builds paths with the platform separator.
+
 ## [8.1.2] - 2026-11-21
 
 ### Fixed

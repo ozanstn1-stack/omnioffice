@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useT } from "../../lib/i18n";
 import { usePlanner } from "../../lib/office-store";
+import { useSettings } from "../../lib/store";
 import { Screen } from "../../components/layout";
+import { localIsoDate } from "../../lib/format";
 
 // ---------------------------------------------------------------------------
 // Planner
@@ -14,7 +16,14 @@ export function PlannerScreen() {
   const { tasks, loaded, load, add, update, remove } = usePlanner();
   const [month, setMonth] = useState(() => new Date());
   const [draft, setDraft] = useState("");
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const language = useSettings((state) => state.settings.language);
+  // Monday-first short weekday names in the interface language (2026-01-05
+  // is a Monday); they used to be hard-coded English.
+  const weekdays = useMemo(() => {
+    const format = new Intl.DateTimeFormat(language === "tr" ? "tr-TR" : "en-GB", { weekday: "short" });
+    return Array.from({ length: 7 }, (_, index) => format.format(new Date(2026, 0, 5 + index)));
+  }, [language]);
+  const [selectedDate, setSelectedDate] = useState(() => localIsoDate());
 
   useEffect(() => {
     if (!loaded) void load();
@@ -33,11 +42,15 @@ export function PlannerScreen() {
     return list;
   }, [month]);
 
+  const today = localIsoDate();
   const tasksFor = (date: string) => tasks.filter((task) => task.date === date);
   const weekAhead = useMemo(() => {
-    const today = new Date();
+    // Task dates are local `YYYY-MM-DD` strings, which sort chronologically;
+    // `new Date("YYYY-MM-DD")` would be UTC midnight and drop today's tasks
+    // west of Greenwich.
+    const today = localIsoDate();
     return tasks
-      .filter((task) => new Date(task.date) >= new Date(today.getFullYear(), today.getMonth(), today.getDate()))
+      .filter((task) => task.date >= today)
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 12);
   }, [tasks]);
@@ -55,7 +68,9 @@ export function PlannerScreen() {
           >
             ‹
           </button>
-          <strong>{month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</strong>
+          <strong>
+            {month.toLocaleDateString(language === "tr" ? "tr-TR" : "en-GB", { month: "long", year: "numeric" })}
+          </strong>
           <button
             type="button"
             className="btn btn-soft"
@@ -69,20 +84,20 @@ export function PlannerScreen() {
       <div className="planner-layout">
         <div className="card planner-calendar">
           <div className="planner-weekdays">
-            {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((day) => (
+            {weekdays.map((day) => (
               <span key={day}>{day}</span>
             ))}
           </div>
           <div className="planner-grid">
             {days.map((date) => {
-              const iso = date.toISOString().slice(0, 10);
+              const iso = localIsoDate(date);
               const isCurrentMonth = date.getMonth() === month.getMonth();
               const dayTasks = tasksFor(iso);
               return (
                 <button
                   key={iso}
                   type="button"
-                  className={`planner-day${isCurrentMonth ? "" : " is-outside"}${iso === new Date().toISOString().slice(0, 10) ? " is-today" : ""}${selectedDate === iso ? " is-selected" : ""}`}
+                  className={`planner-day${isCurrentMonth ? "" : " is-outside"}${iso === today ? " is-today" : ""}${selectedDate === iso ? " is-selected" : ""}`}
                   onClick={() => setSelectedDate(iso)}
                 >
                   <span>{date.getDate()}</span>

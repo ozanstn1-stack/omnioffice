@@ -343,7 +343,7 @@ export function Organize({ initialFiles, dragging }: { initialFiles?: string[]; 
             <>
               <Card className="p-4 flex flex-wrap items-center gap-3">
                 <InfoStrip info={session.info} error={session.infoError} />
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex flex-wrap items-center gap-2">
                   <Badge tone={selected.size ? "accent" : "default"}>
                     {t("organize.selectedCount", { count: selected.size })}
                   </Badge>

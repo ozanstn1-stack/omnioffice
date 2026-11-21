@@ -16,6 +16,7 @@ import { X } from "lucide-react";
 import type { OfficeTab, TextDocument } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useToasts, reportError, useSettings } from "../lib/store";
+import { localIsoDate, localIsoTime } from "../lib/format";
 import { useT } from "../lib/i18n";
 import {
   uid,
@@ -253,6 +254,22 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // handlers: a ribbon button or dropdown takes focus before its handler runs,
   // so `document.activeElement` no longer points at the paragraph.
   const lastParagraphRef = useRef<{ index: number; caret: number } | null>(null);
+  // Clicking or arrowing inside a paragraph moves the caret without an input
+  // event; record it so a ribbon command puts the caret back where it was.
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const active = window.document.activeElement as HTMLElement | null;
+      const index = active?.dataset?.blockIndex;
+      if (!active || index === undefined) return;
+      try {
+        lastParagraphRef.current = { index: Number(index), caret: caretOffset(active) };
+      } catch {
+        // No layout (tests): keep the last known caret.
+      }
+    };
+    window.document.addEventListener("selectionchange", onSelectionChange);
+    return () => window.document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
 
   const document = tab.model;
   // New comments and tracked changes carry the name from Settings when it is
@@ -676,7 +693,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const focused = focusedIndex();
     if (focused !== null) {
       setActiveBlockIndex(focused);
-      lastParagraphRef.current = { index: focused, caret: lastParagraphRef.current?.caret ?? 0 };
+      // The caret offset belongs to the paragraph it was measured in; moving to
+      // another paragraph must not carry it over (a ribbon command would then
+      // put the caret at the old paragraph's offset in the new one).
+      const previous = lastParagraphRef.current;
+      lastParagraphRef.current = { index: focused, caret: previous?.index === focused ? previous.caret : 0 };
     }
     const painter = formatPainter;
     if (painter) {
@@ -1554,9 +1575,9 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         : kind === "pages"
           ? "1"
           : kind === "date"
-            ? new Date().toISOString().slice(0, 10)
+            ? localIsoDate()
             : kind === "time"
-              ? new Date().toISOString().slice(11, 19)
+              ? localIsoTime()
               : kind === "title"
                 ? document.title
                 : kind === "author"
