@@ -1,8 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { appCacheDir, join } from "@tauri-apps/api/path";
 import { pickSaveToken } from "../lib/file-tokens";
-import { fileBaseName } from "../lib/format";
-import { localIsoDate } from "../lib/local-date";
+import { fileBaseName, localIsoDate } from "../lib/format";
 import { pickDocumentTokens } from "../lib/file-tokens";
 import {
   AlertTriangle,

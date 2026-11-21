@@ -207,3 +207,15 @@ export function summarisePages(pages: number[]): string {
   ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
   return ranges.join(", ");
 }
+
+const pad2 = (value: number) => String(value).padStart(2, "0");
+
+/** Local `YYYY-MM-DD`; `toISOString()` is the UTC day (a day early in Turkey after midnight). */
+export function localIsoDate(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/** Local `HH:MM:SS`. */
+export function localIsoTime(date: Date = new Date()): string {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}

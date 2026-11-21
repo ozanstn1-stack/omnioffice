@@ -8,7 +8,7 @@ import { diagnosticsReport } from "../lib/api";
 import { isAndroid, saveFileBytes } from "../lib/mobile";
 import { openWithDiagnosticsText } from "../lib/open-with-diagnostics";
 import { ReportProblem } from "./report-problem";
-import { localIsoDate } from "../lib/local-date";
+import { localIsoDate } from "../lib/format";
 
 /**
  * Diagnostics UI.

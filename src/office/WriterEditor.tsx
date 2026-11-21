@@ -16,7 +16,7 @@ import { X } from "lucide-react";
 import type { OfficeTab, TextDocument } from "../lib/office-store";
 import { useOfficeTabs } from "../lib/office-store";
 import { useToasts, reportError, useSettings } from "../lib/store";
-import { localIsoDate, localIsoTime } from "../lib/local-date";
+import { localIsoDate, localIsoTime } from "../lib/format";
 import { useT } from "../lib/i18n";
 import {
   uid,

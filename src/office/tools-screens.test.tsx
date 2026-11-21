@@ -49,7 +49,7 @@ import {
 } from "./ToolsScreens";
 import { TEMPLATES } from "./templates";
 import { useNotes, useOfficeTabs, usePlanner } from "../lib/office-store";
-import { localIsoDate } from "../lib/local-date";
+import { localIsoDate } from "../lib/format";
 import { useSettings } from "../lib/store";
 
 describe("local productivity tools render and act on their stores", () => {

@@ -5,7 +5,7 @@ import { useT } from "../../lib/i18n";
 import { usePlanner } from "../../lib/office-store";
 import { useSettings } from "../../lib/store";
 import { Screen } from "../../components/layout";
-import { localIsoDate } from "../../lib/local-date";
+import { localIsoDate } from "../../lib/format";
 
 // ---------------------------------------------------------------------------
 // Planner

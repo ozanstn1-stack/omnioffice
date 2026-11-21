@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localIsoDate, localIsoTime } from "./local-date";
+import { localIsoDate, localIsoTime } from "./format";
 
 describe("local calendar dates", () => {
   it("uses the local day, not the UTC one", () => {

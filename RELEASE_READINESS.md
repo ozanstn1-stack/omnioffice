@@ -15,7 +15,7 @@ run the suites also verify the markers against the test output
 ## Implemented (this cycle, 8.1.3) - Local dates and phone layout fixes
 
 - **Calendar and default dates use the local day, not the UTC one:**
-  `test:src/lib/local-date.test.ts#uses the local day, not the UTC one`
+  `test:src/lib/format-local-date.test.ts#uses the local day, not the UTC one`
   `test:src/office/tools-screens.test.tsx#adds a task to the planner`
 
 ## Implemented (this cycle, 8.1.2) - Writer ribbon formatting and reader recents
