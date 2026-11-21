@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.1.2] - 2026-11-21
+
+### Fixed
+
+- **Writer alignment, font size and line spacing did nothing (`WriterEditor`):** clicking an alignment button or choosing a size or line spacing moved focus to the ribbon before the command ran, and the command looked for the focused paragraph, found none, and silently did nothing. Ribbon commands now apply to the last paragraph you were in, update the ribbon, and put the caret back so you can keep typing. Bullets, numbering, indent and paragraph styles use the same fix.
+- **Writer had no font choice (`WriterRibbonTabs`):** the Home tab now has a font dropdown (Calibri, Arial, Times New Roman, Cambria, Georgia and more), and line spacing adds 2.5 and 3.
+- **A size or font chosen on an empty line was lost while typing (`inheritParagraphFormat`):** text typed after choosing a size or font on a blank paragraph now keeps it.
+- **Recent files showed only old entries (`Reader`):** a PDF opened in the reader is now added to Recent; before, only tool results and office documents were listed, so the list never showed what you had just read.
+
 ## [8.1.1] - 2026-11-21
 
 ### Fixed

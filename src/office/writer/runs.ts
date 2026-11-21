@@ -31,6 +31,31 @@ function formatOf(run: Run): string {
   return JSON.stringify(format);
 }
 
+/**
+ * Keeps paragraph-wide run formatting across a DOM sync.
+ *
+ * The ribbon's font and size controls set the same `font` / `sizePt` on every
+ * run of the paragraph. In an empty paragraph that run has no text, and what
+ * the user then types lands outside its styled span, so the synced runs came
+ * back without the size or font and the paragraph fell back to 11 pt Calibri.
+ * A value every previous run shared is copied onto new runs that have none.
+ */
+export function inheritParagraphFormat(previous: Run[], next: Run[]): Run[] {
+  if (previous.length === 0 || next.length === 0) return next;
+  const shared = <K extends "font" | "sizePt">(key: K): Run[K] | null => {
+    const value = previous[0][key];
+    return value != null && previous.every((run) => run[key] === value) ? value : null;
+  };
+  const font = shared("font");
+  const sizePt = shared("sizePt");
+  if (font == null && sizePt == null) return next;
+  return next.map((run) => ({
+    ...run,
+    font: run.font ?? font,
+    sizePt: run.sizePt ?? sizePt,
+  }));
+}
+
 export function sameFormat(a: Run, b: Run): boolean {
   return formatOf(a) === formatOf(b);
 }

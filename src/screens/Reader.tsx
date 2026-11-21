@@ -65,6 +65,7 @@ import {
 import type { PageGeometry, SearchResponse, TextMatch, Thumbnail } from "../lib/types";
 import { setWindowFullscreen, useImmersiveReader, useReaderImmersive } from "./reader/immersive";
 import { ReaderSidePanel, type ReaderSideTab } from "./reader/ReaderSidePanel";
+import { useRememberReaderDocument } from "./reader/remember-recent";
 import type { Navigate } from "../lib/nav";
 
 const PT_TO_CSS = 96 / 72;
@@ -509,6 +510,7 @@ export function Reader({
 }) {
   const t = useT();
   const session = useTool({ suffix: "_reader", accept: "pdf", loadInfo: true, initialPaths: initialFiles });
+  useRememberReaderDocument(session.primary?.path, session.primary?.name, Boolean(session.info));
   const pushToast = useToasts((s) => s.push);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);

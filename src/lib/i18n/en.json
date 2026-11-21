@@ -1242,6 +1242,7 @@
   "writer.styleQuote": "Quote",
   "templates.turkish": "Turkish template",
   "writer.style": "Style",
+  "writer.fontFamily": "Font",
   "writer.fontSize": "Size",
   "writer.bold": "Bold",
   "writer.italic": "Italic",

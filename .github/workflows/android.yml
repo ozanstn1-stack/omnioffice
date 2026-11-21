@@ -55,6 +55,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Gradle's own downloads (Kotlin, the Android Gradle plugin) come from
+          # Maven Central, which answers 429 Too Many Requests when several
+          # jobs fetch them at once (v8.1.1 Android release, PR #781). The
+          # cache restores them, so a run only downloads after a Gradle change.
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle*
+            src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Install Android NDK and platform
         run: |
@@ -196,6 +204,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Gradle's own downloads (Kotlin, the Android Gradle plugin) come from
+          # Maven Central, which answers 429 Too Many Requests when several
+          # jobs fetch them at once (v8.1.1 Android release, PR #781). The
+          # cache restores them, so a run only downloads after a Gradle change.
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle*
+            src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Install Android NDK and platform
         run: |
@@ -309,6 +325,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Gradle's own downloads (Kotlin, the Android Gradle plugin) come from
+          # Maven Central, which answers 429 Too Many Requests when several
+          # jobs fetch them at once (v8.1.1 Android release, PR #781). The
+          # cache restores them, so a run only downloads after a Gradle change.
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle*
+            src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
 
       # apksigner and aapt come from build-tools; the identity check reads them.
       - name: Install Android build-tools
