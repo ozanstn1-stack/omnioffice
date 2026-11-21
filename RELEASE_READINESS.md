@@ -12,6 +12,19 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.1.2) - Writer ribbon formatting and reader recents
+
+- **Alignment, font size, font and line spacing apply after focus moves to the ribbon:**
+  `test:src/office/WriterRibbonFormatting.test.tsx#centres the paragraph from the alignment button`
+  `test:src/office/WriterRibbonFormatting.test.tsx#sets the font size from the size dropdown`
+  `test:src/office/WriterRibbonFormatting.test.tsx#sets the font from the font dropdown`
+  `test:src/office/WriterRibbonFormatting.test.tsx#sets the line spacing from the line spacing dropdown`
+- **A size and font chosen on a blank paragraph survive typing:**
+  `test:src/office/WriterRibbonFormatting.test.tsx#keeps a size and font chosen on a blank paragraph for the text typed next`
+  `test:src/office/writer/runs.test.ts#gives typed text the size and font set on an empty paragraph`
+- **A PDF opened in the reader is listed under Recent:**
+  `test:src/screens/reader/remember-recent.test.tsx#lists a PDF opened in the reader under Recent once it has loaded`
+
 ## Implemented (this cycle, 8.1.1) - Reader AI covers the whole document and answers in the user's language
 
 - **A whole-document question is answered from every page, not only page 1:**

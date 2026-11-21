@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { defaultParaProps, type Run } from "../../lib/office-types";
 import {
   emptyRun,
+  inheritParagraphFormat,
   formatAtOffset,
   insertText,
   joinRuns,
@@ -542,5 +543,23 @@ describe("Turkish hyphenation in the rendered runs", () => {
     expect(runsToHtml([run("danışmanlık")])).not.toContain("\u00ad");
     // The editor strips the soft hyphens, so the model stays clean.
     expect(runsText(domToRuns(toDom(html)))).toBe("danışmanlık");
+  });
+});
+
+describe("inheritParagraphFormat", () => {
+  it("gives typed text the size and font set on an empty paragraph", () => {
+    const previous = [{ ...emptyRun(""), sizePt: 20, font: "Georgia" }];
+    const next = inheritParagraphFormat(previous, [emptyRun("Title")]);
+    expect(next).toEqual([{ ...emptyRun("Title"), sizePt: 20, font: "Georgia" }]);
+  });
+
+  it("leaves mixed formatting alone and never overrides a run's own value", () => {
+    const previous = [
+      { ...emptyRun("a"), sizePt: 12 },
+      { ...emptyRun("b"), sizePt: 18 },
+    ];
+    expect(inheritParagraphFormat(previous, [emptyRun("ab")])).toEqual([emptyRun("ab")]);
+    const kept = inheritParagraphFormat([{ ...emptyRun("x"), sizePt: 20 }], [{ ...emptyRun("y"), sizePt: 9 }]);
+    expect(kept[0].sizePt).toBe(9);
   });
 });

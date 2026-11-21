@@ -60,7 +60,15 @@ import {
   undo as undoHistory,
   type HistoryState,
 } from "./writer/history";
-import { joinRuns, nextListLevel, nextParagraphProps, replaceRange, runsText, splitRuns } from "./writer/runs";
+import {
+  inheritParagraphFormat,
+  joinRuns,
+  nextListLevel,
+  nextParagraphProps,
+  replaceRange,
+  runsText,
+  splitRuns,
+} from "./writer/runs";
 import {
   caretOffset,
   paragraphAtPoint,
@@ -241,6 +249,10 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // Last paragraph that received focus: the ruler and the format painter target
   // it because clicking a ruler or ribbon control moves focus off the editable.
   const [activeBlockIndex, setActiveBlockIndex] = useState<number | null>(null);
+  // The same paragraph plus its caret, readable synchronously from the ribbon
+  // handlers: a ribbon button or dropdown takes focus before its handler runs,
+  // so `document.activeElement` no longer points at the paragraph.
+  const lastParagraphRef = useRef<{ index: number; caret: number } | null>(null);
 
   const document = tab.model;
   // New comments and tracked changes carry the name from Settings when it is
@@ -661,8 +673,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 
   const handleParagraphFocus = (block: Extract<Block, { type: "paragraph" }>) => {
     setSelection({ paragraph: block.props, run: block.runs[0] ?? emptyRun() });
-    const focused = activeIndex();
-    if (focused !== null) setActiveBlockIndex(focused);
+    const focused = focusedIndex();
+    if (focused !== null) {
+      setActiveBlockIndex(focused);
+      lastParagraphRef.current = { index: focused, caret: lastParagraphRef.current?.caret ?? 0 };
+    }
     const painter = formatPainter;
     if (painter) {
       // One-shot policy: the painter applies to exactly one target paragraph
@@ -688,10 +703,39 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     });
   };
 
-  const activeIndex = (): number | null => {
+  /** The focused paragraph's index, or null when focus is elsewhere. */
+  const focusedIndex = (): number | null => {
     const active = window.document.activeElement as HTMLElement | null;
     if (active?.dataset?.blockIndex) return Number(active.dataset.blockIndex);
     return null;
+  };
+
+  /**
+   * The paragraph a formatting command applies to: the focused one, or else the
+   * last one the user was in. Clicking an alignment button or opening the font
+   * size, font or line spacing dropdown moves focus to the ribbon first; these
+   * commands used to find no paragraph then and silently did nothing.
+   */
+  const activeIndex = (): number | null => {
+    const focused = focusedIndex();
+    if (focused !== null) return focused;
+    const last = lastParagraphRef.current;
+    return last && last.index < currentBlocks().length ? last.index : null;
+  };
+
+  /** Puts focus and the caret back into the paragraph after a ribbon command. */
+  const refocusParagraph = (index: number) => {
+    const caret = lastParagraphRef.current?.index === index ? lastParagraphRef.current.caret : 0;
+    window.setTimeout(() => {
+      const element = window.document.querySelector<HTMLElement>(`[data-block-index="${index}"]`);
+      if (!element || window.document.activeElement === element) return;
+      element.focus();
+      try {
+        setCaretOffset(element, caret);
+      } catch {
+        // No layout (tests) or the paragraph changed shape: focus is enough.
+      }
+    }, 0);
   };
 
   const activeParagraph = (): Extract<Block, { type: "paragraph" }> | null => {
@@ -777,7 +821,12 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     if (index === null) return;
     const block = currentBlocks()[index];
     if (block?.type !== "paragraph") return;
-    updateBlock(index, { ...block, props: { ...block.props, ...patch } });
+    const props = { ...block.props, ...patch };
+    updateBlock(index, { ...block, props });
+    // The ribbon shows the paragraph's state from `selection`; no focus event
+    // refreshes it while the ribbon holds focus.
+    setSelection((current) => (current ? { ...current, paragraph: props } : current));
+    refocusParagraph(index);
   };
 
   /** Paragraph patch for a specific block (the ruler targets the last one). */
@@ -801,6 +850,8 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     if (block?.type !== "paragraph") return;
     const runs = (block.runs.length > 0 ? block.runs : [emptyRun()]).map((run) => ({ ...run, ...patch }));
     updateBlock(index, { ...block, runs });
+    setSelection((current) => (current ? { ...current, run: { ...current.run, ...patch } } : current));
+    refocusParagraph(index);
   };
 
   const exec = (command: string, value?: string) => {
@@ -823,10 +874,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // -------------------------------------------------------------------------
 
   const syncParagraph = (index: number, element: HTMLElement) => {
+    try {
+      lastParagraphRef.current = { index, caret: caretOffset(element) };
+    } catch {
+      lastParagraphRef.current = { index, caret: 0 };
+    }
     const block = currentBlocks()[index];
     if (!block) return;
     if (block.type === "paragraph") {
-      let runs = domToRuns(element);
+      let runs = inheritParagraphFormat(block.runs, domToRuns(element));
       // Suggest mode: text that changed since the last sync is recorded as a
       // tracked insertion/deletion instead of being applied silently.
       if (document.trackChanges && !editingHeader) {
@@ -889,8 +945,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   // -------------------------------------------------------------------------
 
   const setParagraphStyle = (styleId: string) => {
-    const active = window.document.activeElement as HTMLElement | null;
-    const index = active?.dataset?.blockIndex ? Number(active.dataset.blockIndex) : null;
+    const index = activeIndex();
     if (index === null) {
       const blocks = [...currentBlocks()];
       const first = blocks[0];
@@ -921,8 +976,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   };
 
   const toggleList = (kind: "bullet" | "number") => {
-    const active = window.document.activeElement as HTMLElement | null;
-    const index = active?.dataset?.blockIndex ? Number(active.dataset.blockIndex) : null;
+    const index = activeIndex();
     if (index === null) return;
     const block = currentBlocks()[index];
     if (block?.type !== "paragraph") return;
@@ -935,8 +989,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   };
 
   const changeListLevel = (delta: number) => {
-    const active = window.document.activeElement as HTMLElement | null;
-    const index = active?.dataset?.blockIndex ? Number(active.dataset.blockIndex) : null;
+    const index = activeIndex();
     if (index === null) return;
     const block = currentBlocks()[index];
     if (block?.type !== "paragraph" || !block.props.list) return;

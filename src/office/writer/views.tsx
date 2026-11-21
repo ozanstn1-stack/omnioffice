@@ -35,6 +35,12 @@ function effectiveFontSize(block: Extract<Block, { type: "paragraph" }>): number
   return block.runs.find((run) => run.sizePt)?.sizePt ?? null;
 }
 
+/** The paragraph's font when its runs carry one, so newly typed text uses it too. */
+function effectiveFontFamily(block: Extract<Block, { type: "paragraph" }>): string | undefined {
+  const font = block.runs.find((run) => run.font)?.font;
+  return font && /^[A-Za-z0-9 ,_-]+$/.test(font) ? `'${font}'` : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Static (read-only) rendering for the paginated pages and the layout probe
 // ---------------------------------------------------------------------------
@@ -142,6 +148,7 @@ const StaticParagraph = memo(function StaticParagraph({
           marginTop: props.spaceBeforePt,
           textIndent: props.firstLinePt,
           fontSize: `${(effectiveFontSize(block) ?? 11) * zoom}pt`,
+          fontFamily: effectiveFontFamily(block),
         }}
         dangerouslySetInnerHTML={{
           __html: runsToHtml(substituteTokens(block.runs, page, pages), {
@@ -667,6 +674,7 @@ function PageEditableParagraph({
           marginTop: props.spaceBeforePt,
           textIndent: props.firstLinePt,
           fontSize: `${(effectiveFontSize(block) ?? 11) * zoom}pt`,
+          fontFamily: effectiveFontFamily(block),
         }}
       />
     </div>
@@ -1131,6 +1139,7 @@ function ParagraphView({
           marginTop: props.spaceBeforePt,
           textIndent: props.firstLinePt,
           fontSize: `${(effectiveFontSize(block) ?? 11) * zoom}pt`,
+          fontFamily: effectiveFontFamily(block),
         }}
       />
     </div>

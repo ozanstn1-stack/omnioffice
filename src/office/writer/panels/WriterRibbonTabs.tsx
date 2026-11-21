@@ -38,6 +38,7 @@ import {
   Undo2,
   Wand2,
 } from "lucide-react";
+import { fontOptions } from "../fonts";
 import { useT } from "../../../lib/i18n";
 import type { ParaProps, Run, TextDocument } from "../../../lib/office-types";
 import { RibbonGroup, ToolButton, ToolColor, ToolSelect } from "../../office-ui";
@@ -146,11 +147,12 @@ const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48].map((s
   label: `${size}`,
 }));
 
-const LINE_SPACINGS = [1, 1.15, 1.5, 2].map((value) => ({ value: String(value), label: `${value}` }));
+const LINE_SPACINGS = [1, 1.15, 1.5, 2, 2.5, 3].map((value) => ({ value: String(value), label: `${value}` }));
 
 export function WriterHomeTab({ state, actions }: { state: WriterRibbonState; actions: WriterRibbonActions }) {
   const t = useT();
   const { document, selection, activeStyle, activeRun, styleOptions, historyDepth, busy, aiConfigured } = state;
+  const activeFont = activeRun?.font ?? document.styles.find((style) => style.id === activeStyle)?.font ?? "Calibri";
 
   return (
     <>
@@ -175,6 +177,13 @@ export function WriterHomeTab({ state, actions }: { state: WriterRibbonState; ac
           options={styleOptions}
           title={t("writer.style")}
           width={132}
+        />
+        <ToolSelect
+          value={activeFont}
+          onChange={(value) => actions.applyRunChange({ font: value })}
+          options={fontOptions(activeFont)}
+          title={t("writer.fontFamily")}
+          width={124}
         />
         <ToolSelect
           value={String(activeRun?.sizePt ?? document.styles.find((style) => style.id === activeStyle)?.sizePt ?? 11)}

@@ -1,0 +1,1 @@
+Writer düzeltmeleri: ortalama, yazı boyutu ve satır aralığı artık çalışıyor; yazı tipi seçimi eklendi; boş satırda seçilen boyut ve yazı tipi yazarken korunuyor. Okuyucuda açılan PDF'ler artık Son dosyalar listesinde görünüyor.
