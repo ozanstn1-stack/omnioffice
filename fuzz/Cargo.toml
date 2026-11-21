@@ -13,7 +13,7 @@ aicore = { path = "../crates/aicore" }
 officecore = { path = "../crates/officecore" }
 pdfcore = { path = "../crates/pdfcore" }
 synccore = { path = "../crates/synccore" }
-lopdf = "0.46.0"
+lopdf = "0.47.0"
 
 [[bin]]
 name = "zip_archive"

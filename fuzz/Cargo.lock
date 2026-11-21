@@ -1473,6 +1473,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "lopdf"
+version = "0.47.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6ad532ff9262dd4bfd6e085400cbb39959d48cb8d08518b01b68f77bdf6feca"
+dependencies = [
+ "aes 0.9.3",
+ "bitflags",
+ "brotli-decompressor",
+ "cbc 0.2.1",
+ "chrono",
+ "ecb",
+ "encoding_rs",
+ "flate2",
+ "getrandom 0.4.3",
+ "indexmap",
+ "itoa",
+ "log",
+ "md-5",
+ "nom",
+ "rand 0.10.3",
+ "rangemap",
+ "rayon",
+ "sha2 0.11.0",
+ "stringprep",
+ "thiserror",
+ "weezl 0.2.1",
+]
+
+[[package]]
 name = "lru-slab"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1724,7 +1753,7 @@ dependencies = [
  "crc32fast",
  "flate2",
  "image",
- "lopdf",
+ "lopdf 0.46.0",
  "quick-xml",
  "serde",
  "serde_json",
@@ -1777,7 +1806,7 @@ version = "0.0.0"
 dependencies = [
  "aicore",
  "libfuzzer-sys",
- "lopdf",
+ "lopdf 0.47.0",
  "officecore",
  "pdfcore",
  "synccore",
@@ -1797,7 +1826,7 @@ dependencies = [
  "hmac",
  "image",
  "imageproc",
- "lopdf",
+ "lopdf 0.46.0",
  "p256",
  "pdfium-render",
  "pkcs12",
