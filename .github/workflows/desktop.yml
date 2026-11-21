@@ -235,6 +235,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Gradle's own downloads (Kotlin, the Android Gradle plugin) come from
+          # Maven Central, which answers 429 Too Many Requests when several
+          # jobs fetch them at once (v8.1.1 Android release, PR #781). The
+          # cache restores them, so a run only downloads after a Gradle change.
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle*
+            src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
       - name: Set up Node
         if: steps.changed.outputs.run == '1'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
