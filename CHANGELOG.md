@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.1.1] - 2026-11-21
+
+### Fixed
+
+- **Reader AI answers only saw the first page (`aicore::prompts::select_relevant_pages`):** a question that shared no keyword with the document (for example "tüm 16 sayfa için bir özet yap" on an English report) was answered from page 1 alone, so the assistant replied that it could not find the answer. A document that fits the model's context is now sent whole; a larger one is ranked by keywords and the rest of the budget is filled in page order. The AI screen's ask feature benefits too.
+- **Reader AI replied in English (`DOC_CHAT_SYSTEM`, `ReaderAiPanel`):** answers now follow the language of the question, and the one-click summary is written in the app's language instead of the document's.
+- **Reader summary focused on the first page (`summarize_prompt`, `ReaderAiPanel`):** summaries now cover the whole document, are longer, and cite the page each point comes from.
+
 ## [8.1.0] - 2026-11-20
 
 ### Added

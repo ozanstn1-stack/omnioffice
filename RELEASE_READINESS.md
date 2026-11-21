@@ -12,6 +12,18 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.1.1) - Reader AI covers the whole document and answers in the user's language
+
+- **A whole-document question is answered from every page, not only page 1:**
+  `test:crates/aicore/tests/client_test.rs#retrieval_sends_every_page_when_the_document_fits`
+  `test:crates/aicore/tests/client_test.rs#retrieval_without_keyword_hits_fills_the_budget_in_document_order`
+- **Document chat replies in the language of the question, and summaries cover every page:**
+  `test:crates/aicore/tests/client_test.rs#doc_chat_prompt_answers_in_the_question_language_and_covers_all_pages`
+  `test:crates/aicore/tests/client_test.rs#summary_prompt_asks_for_the_whole_document`
+- **The reader summary is requested in the app language with page citations:**
+  `test:src/screens/reader/ReaderAiPanel.test.ts#summarizes in the app language, not the document's`
+  `test:src/screens/reader/ReaderAiPanel.test.ts#asks for every page with page citations`
+
 ## Implemented (this cycle, 8.1.0) - Full-screen reader and "ask this document" AI panel
 
 - **Reader page citations in AI answers become jump-to-page links, and summary turns are not resent as chat history:**

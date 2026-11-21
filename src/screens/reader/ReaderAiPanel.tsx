@@ -47,6 +47,27 @@ export function splitCitations(text: string): AnswerPart[] {
   return parts;
 }
 
+/** The model is told the language by name; the app has two UI languages. */
+export function summaryLanguage(uiLanguage: string): string {
+  return uiLanguage === "tr" ? "Turkish" : "English";
+}
+
+/**
+ * The reader's one-click summary: in the app's language (not the document's,
+ * so an English report is summarized in Turkish for a Turkish user), long
+ * enough to span every page, and with page citations the panel turns into
+ * jump links.
+ */
+export function readerSummaryOptions(uiLanguage: string, pageCount: number) {
+  const pages = pageCount > 1 ? `pages 1-${pageCount}` : "the page";
+  return {
+    language: summaryLanguage(uiLanguage),
+    length: "detailed" as const,
+    style: "bullets" as const,
+    focus: `every part of the document (${pages}), not only the first page; end each bullet with the page it comes from as [page N]`,
+  };
+}
+
 /** Chat history for the backend: real question/answer turns only. */
 export function chatHistory(entries: readonly ReaderChatEntry[]): DocChatMessage[] {
   return entries
@@ -179,7 +200,7 @@ export function ReaderAiPanel({
     void run({ role: "user", content: t("reader.aiSummarizeRequest"), summary: true }, async () => {
       const result = await aiSummarize({
         path,
-        options: { language: "auto", length: "medium", style: "bullets", focus: "" },
+        options: readerSummaryOptions(appSettings.language, pageCount),
         password: password || undefined,
         jobId: jobId.current,
         consent,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatHistory, splitCitations } from "./ReaderAiPanel";
+import { chatHistory, readerSummaryOptions, splitCitations, summaryLanguage } from "./ReaderAiPanel";
 import { useReaderImmersive } from "./immersive";
 
 describe("splitCitations", () => {
@@ -42,5 +42,20 @@ describe("reader focus mode", () => {
     useReaderImmersive.getState().setFocus(true);
     expect(useReaderImmersive.getState().focus).toBe(true);
     useReaderImmersive.getState().setFocus(false);
+  });
+});
+
+describe("readerSummaryOptions", () => {
+  it("summarizes in the app language, not the document's", () => {
+    expect(summaryLanguage("tr")).toBe("Turkish");
+    expect(summaryLanguage("en")).toBe("English");
+    expect(readerSummaryOptions("tr", 16).language).toBe("Turkish");
+  });
+
+  it("asks for every page with page citations", () => {
+    const options = readerSummaryOptions("tr", 16);
+    expect(options.length).toBe("detailed");
+    expect(options.focus).toContain("pages 1-16");
+    expect(options.focus).toContain("[page N]");
   });
 });

@@ -498,7 +498,8 @@ fn relevance_retrieval_prefers_matching_pages() {
         (3, "Appendix with addresses".to_string()),
         (4, "Payment terms: bank transfer to IBAN DE00.".to_string()),
     ];
-    let selected = select_relevant_pages(&pages, "payment terms and total amount", 10_000);
+    // A budget smaller than the document (151 chars), so the pages are ranked.
+    let selected = select_relevant_pages(&pages, "payment terms and total amount", 100);
     let page_numbers: Vec<u32> = selected.iter().map(|(page, _)| *page).collect();
     assert!(page_numbers.contains(&2));
     assert!(page_numbers.contains(&4));
@@ -507,6 +508,48 @@ fn relevance_retrieval_prefers_matching_pages() {
     let mut sorted = page_numbers.clone();
     sorted.sort_unstable();
     assert_eq!(page_numbers, sorted);
+}
+
+#[test]
+fn retrieval_sends_every_page_when_the_document_fits() {
+    let pages: Vec<(u32, String)> =
+        (1..=16).map(|page| (page, format!("Page {page} discusses cloud margins."))).collect();
+    // A whole-document request in Turkish shares no keyword with an English text.
+    let selected = select_relevant_pages(&pages, "tüm 16 sayfa için bir özet yap", 100_000);
+    let page_numbers: Vec<u32> = selected.iter().map(|(page, _)| *page).collect();
+    assert_eq!(page_numbers, (1..=16).collect::<Vec<u32>>());
+}
+
+#[test]
+fn retrieval_without_keyword_hits_fills_the_budget_in_document_order() {
+    let pages: Vec<(u32, String)> = (1..=10).map(|page| (page, "x".repeat(100))).collect();
+    // No term matches: the old retriever sent only page 1.
+    let selected = select_relevant_pages(&pages, "tüm sayfaları özetle", 450);
+    let page_numbers: Vec<u32> = selected.iter().map(|(page, _)| *page).collect();
+    assert_eq!(page_numbers, vec![1, 2, 3, 4]);
+}
+
+#[test]
+fn doc_chat_prompt_answers_in_the_question_language_and_covers_all_pages() {
+    let messages = doc_chat_messages("Belgeyi özetle", &[(1, "Text".to_string())], &[]);
+    assert!(messages[0].content.contains("language of the user's latest question"));
+    assert!(messages[0].content.contains("cover all pages"));
+}
+
+#[test]
+fn summary_prompt_asks_for_the_whole_document() {
+    let options = SummaryOptions {
+        language: "Turkish".into(),
+        length: SummaryLength::Detailed,
+        style: SummaryStyle::Bullets,
+        focus: String::new(),
+    };
+    let Plan::Single { messages } = summarize_prompt("[page 1]\nA\n\n[page 2]\nB", &options) else {
+        panic!("a short text is one request");
+    };
+    let user = &messages[1].content;
+    assert!(user.contains("from the first page to the last"));
+    assert!(user.contains("Reply in Turkish."));
 }
 
 #[test]

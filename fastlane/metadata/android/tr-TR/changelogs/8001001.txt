@@ -1,0 +1,1 @@
+Okuyucudaki yapay zekâ düzeltmeleri: sorular artık yalnızca ilk sayfadan değil tüm belgeden yanıtlanıyor ("tüm sayfaları özetle" gibi sorular dahil); yanıtlar sorunun dilinde, özet ise uygulamanın dilinde geliyor; özet belgenin tamamını kapsıyor ve her maddede kaynak sayfayı gösteriyor.
