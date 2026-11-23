@@ -1,0 +1,1 @@
+Okuyucu telefonda belgeyi daha büyük gösteriyor: Android'de ve dokunmatik ekranlarda belgenin altındaki Ctrl kısayol satırı artık görünmüyor, sayfa kenar boşlukları küçültüldü ve sayfa ekran genişliğinin neredeyse tamamını kullanıyor.

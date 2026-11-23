@@ -12,6 +12,12 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.1.4) - Larger reader page on phones
+
+- **No keyboard shortcut line in the Android app or on touch screens:**
+  `test:src/screens/reader/shortcut-hint.test.ts#is hidden in the Android app`
+  `test:src/screens/reader/shortcut-hint.test.ts#is hidden on a touch screen, so the page gets the space`
+
 ## Implemented (this cycle, 8.1.3) - Local dates and phone layout fixes
 
 - **Calendar and default dates use the local day, not the UTC one:**
