@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useRef } from "react";
 import { create } from "zustand";
+import { isAndroid } from "../../lib/mobile";
 
 interface ImmersiveState {
   immersive: boolean;
@@ -44,12 +45,17 @@ export const SINGLE_TAP_DELAY_MS = 320;
 /** Scrolling down this far in one go hides the chrome. */
 const HIDE_AFTER_SCROLL_PX = 48;
 
-function touchScreen(): boolean {
+export function touchScreen(): boolean {
   try {
     return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
   } catch {
     return false;
   }
+}
+
+/** The keyboard shortcut line is for desktops: hidden on Android and touch screens. */
+export function showShortcutHint(): boolean {
+  return !isAndroid() && !touchScreen();
 }
 
 /**

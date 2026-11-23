@@ -63,7 +63,7 @@ import {
   type TileSpec,
 } from "../lib/tiles";
 import type { PageGeometry, SearchResponse, TextMatch, Thumbnail } from "../lib/types";
-import { setWindowFullscreen, useImmersiveReader, useReaderImmersive } from "./reader/immersive";
+import { setWindowFullscreen, showShortcutHint, useImmersiveReader, useReaderImmersive } from "./reader/immersive";
 import { ReaderSidePanel, type ReaderSideTab } from "./reader/ReaderSidePanel";
 import { useRememberReaderDocument } from "./reader/remember-recent";
 import type { Navigate } from "../lib/nav";
@@ -497,6 +497,9 @@ const ReaderPage = memo(function ReaderPage({
   );
 });
 
+/** Reading area narrower than this (a phone) uses slim margins. */
+const COMPACT_READER_PX = 640;
+
 export function Reader({
   initialFiles,
   dragging,
@@ -588,15 +591,18 @@ export function Reader({
     };
   }, [session.primary?.path, session.password, pageCount]);
 
+  // Phones: the page gets almost the whole width (8 px each side) instead of
+  // giving up 72 px of a 400 px screen to margins.
+  const compact = containerWidth < COMPACT_READER_PX;
   const renderWidth = useMemo(() => {
-    const available = Math.max(320, containerWidth - 72);
+    const available = compact ? Math.max(200, containerWidth - 16) : Math.max(320, containerWidth - 72);
     if (debouncedZoom === "fit") return Math.round(available);
     const base = (geometries[0]?.display_width_pt ?? 595) * PT_TO_CSS;
     return Math.round(clamp(base * debouncedZoom, 200, 3200));
     // `geometries` is recreated each render from session.info; keying on the
     // first page width is what actually affects the fit-width math.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerWidth, debouncedZoom, geometries[0]?.display_width_pt]);
+  }, [compact, containerWidth, debouncedZoom, geometries[0]?.display_width_pt]);
 
   // Track the reading area width for "fit width" and current page on scroll.
   useEffect(() => {
@@ -1355,7 +1361,10 @@ export function Reader({
           {/* `w-max` + `min-w-full` lets the pages overflow sideways (instead
               of centring out of reach) once a zoom makes them wider than the
               reading area, which is what horizontal panning scrolls. */}
-          <div ref={contentRef} className="px-6 py-5 flex flex-col gap-5 items-center min-w-full w-max mx-auto">
+          <div
+            ref={contentRef}
+            className={`${compact ? "px-2 py-2 gap-2" : "px-6 py-5 gap-5"} flex flex-col items-center min-w-full w-max mx-auto`}
+          >
             {/* The notes are capped at the page width: the column is `w-max`,
                 so a wider unwrapped line widened it and a phone centred the
                 page partly off screen. */}
@@ -1401,9 +1410,12 @@ export function Reader({
                 </>
               );
             })()}
-            <div className="text-center text-xs muted py-3" style={{ maxWidth: renderWidth }}>
-              {t("reader.shortcutHint")}
-            </div>
+            {/* Keyboard shortcuts mean nothing on a phone; the space goes to the page. */}
+            {showShortcutHint() ? (
+              <div className="text-center text-xs muted py-3" style={{ maxWidth: renderWidth }}>
+                {t("reader.shortcutHint")}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

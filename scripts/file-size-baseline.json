@@ -378,7 +378,7 @@
     "src/screens/PdfStudio.tsx": 1625,
     "src/screens/PetitionWizard.tsx": 221,
     "src/screens/Plugins.tsx": 224,
-    "src/screens/Reader.tsx": 1431,
+    "src/screens/Reader.tsx": 1443,
     "src/screens/reader/ReaderAiPanel.tsx": 409,
     "src/screens/Recipes.tsx": 349,
     "src/screens/Redact.tsx": 592,
