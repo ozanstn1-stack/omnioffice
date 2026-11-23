@@ -20,6 +20,12 @@ export const DesktopSidebar = React.lazy(() =>
 export const DrawerNav = React.lazy(() =>
   import("../components/sidebar").then((module) => ({ default: module.DrawerNav })),
 );
+export const WorkbenchShell = React.lazy(() =>
+  import("../components/workbench-shell").then((module) => ({ default: module.WorkbenchShell })),
+);
+export const MobileShell = React.lazy(() =>
+  import("../components/mobile-shell").then((module) => ({ default: module.MobileShell })),
+);
 export const OfficeLauncher = React.lazy(() =>
   import("./OfficeLauncher").then((module) => ({ default: module.OfficeLauncher })),
 );

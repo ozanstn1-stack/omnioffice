@@ -12,6 +12,18 @@ test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
 
+## Implemented (this cycle, 8.2.0) - Radical hybrid UI for Windows and Android
+
+- **Windows Workbench shell with slim icon rail, live tabs, expandable hubs panel, Split View and density toggle:**
+  `test:src/lib/workbench-store.test.ts#keeps Home pinned and creates live tabs for visited screens`
+  `test:src/lib/workbench-store.test.ts#manages Split View state and clamps the split ratio`
+  `test:src/lib/workbench-store.test.ts#applies comfortable and compact density attributes on documentElement`
+  `test:src/components/workbench-shell.test.tsx#renders the icon rail, live tab strip, and opens Split View on click`
+  `test:src/components/workbench-shell.test.tsx#expands the hubs panel on demand from the slim rail`
+- **Android Bottom-First shell with thumb-zone omnibar, pull-up quick-create sheet, visual tab switcher grid and sub-screen back button:**
+  `test:src/components/mobile-shell.test.tsx#renders bottom thumb omnibar on Home and opens the visual tab grid`
+  `test:src/components/mobile-shell.test.tsx#shows a back button on sub-screens and quick-create items inside the pull-up sheet`
+
 ## Implemented (this cycle, 8.1.4) - Larger reader page on phones
 
 - **No keyboard shortcut line in the Android app or on touch screens:**

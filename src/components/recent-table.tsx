@@ -69,6 +69,7 @@ export function RecentTable({
   language,
   limit = 7,
   filters = true,
+  layout = "list",
   onOpen,
   onShare,
 }: {
@@ -77,6 +78,7 @@ export function RecentTable({
   limit?: number;
   /** Kind chips; off where the caller already shows one kind. */
   filters?: boolean;
+  layout?: "list" | "cards";
   onOpen: (entry: RecentEntry) => void;
   onShare: (entry: RecentEntry) => void;
 }) {
@@ -108,14 +110,18 @@ export function RecentTable({
           hint={entries.length === 0 ? t("home.recentEmptyHint") : undefined}
         />
       ) : (
-        <ul className="recent-rows">
+        <ul className={layout === "cards" ? "recent-cards-grid" : "recent-rows"}>
           {shown.map((entry) => {
             const kind = recentKind(entry.fileName);
             const ext = (entry.fileName.split(".").pop() ?? "").slice(0, 4).toUpperCase();
             const tool = toolLabel(entry.tool, t);
             return (
-              <li key={entry.token} className="recent-row-item">
-                <button type="button" className="recent-open" onClick={() => onOpen(entry)}>
+              <li key={entry.token} className={layout === "cards" ? "recent-card-item" : "recent-row-item"}>
+                <button
+                  type="button"
+                  className={layout === "cards" ? "recent-card-open" : "recent-open"}
+                  onClick={() => onOpen(entry)}
+                >
                   <span className={`doc-tile recent-ext ${TILE[kind]}`} aria-hidden>
                     {ext || "—"}
                   </span>
