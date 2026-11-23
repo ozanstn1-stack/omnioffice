@@ -5,7 +5,6 @@ import { extensionsFor } from "./lib/tool-files";
 import { openTokenDocument } from "./lib/file-refs";
 import { firstIncomingError, incomingErrorKey } from "./lib/incoming";
 import { useDropTokens, useLaunchTokens } from "./lib/use-file-ref-events";
-import { Lock, Menu, Moon, Sun } from "lucide-react";
 import { useT } from "./lib/i18n";
 import { NAV_ICONS } from "./lib/nav-icons";
 import { GlobalOverlays } from "./components/global-overlays";
@@ -24,9 +23,7 @@ import { resumeJobs, useJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
 import { useDeskTaskCommands } from "./lib/use-desk-task-commands";
 import { usePresend } from "./lib/presend-gate";
-import { Badge, IconButton, Spinner } from "./components/ui";
-import { BrandMark } from "./components/brand";
-import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ScreenFrame, ScreenLoading } from "./components/ErrorBoundary";
 import { isAndroid, openAnyFile, pickAndroidFiles } from "./lib/mobile";
 import { isImage } from "./lib/format";
 import {
@@ -40,30 +37,9 @@ import { routeForPath } from "./lib/open-route";
 import { useAndroidPendingOpen } from "./lib/android-open-with";
 import { useReaderImmersive } from "./screens/reader/immersive";
 import { recordOpenWith } from "./lib/open-with-diagnostics";
+import { useWorkbench, type WorkbenchTab } from "./lib/workbench-store";
 
 type PageToolTab = PageToolsTab["tab"];
-
-/** Shown while a lazily imported screen chunk is being fetched. */
-function ScreenLoading() {
-  return (
-    <div className="flex items-center justify-center h-full">
-      <Spinner size={22} />
-    </div>
-  );
-}
-
-/**
- * One routed screen. A render crash stays inside this frame: the sidebar, the
- * toasts and the other screens keep working (the wrapper is keyed per screen,
- * so navigating away resets it).
- */
-function ScreenFrame({ screen, children }: { screen: ScreenId; children: React.ReactNode }) {
-  return (
-    <ErrorBoundary scope={`screen:${screen}`}>
-      <React.Suspense fallback={<ScreenLoading />}>{children}</React.Suspense>
-    </ErrorBoundary>
-  );
-}
 
 export default function App() {
   const t = useT();
@@ -90,18 +66,20 @@ export default function App() {
   const [convertTab, setConvertTab] = useState<"pdfToImages" | "imagesToPdf">("pdfToImages");
   const [securityTab, setSecurityTab] = useState<"protect" | "unlock">("protect");
   const [dragging, setDragging] = useState(false);
-  const [sidebarCompact, setSidebarCompact] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const narrow = useNarrowLayout();
   const backgroundJobs = useJobs((state) => state.jobs.filter((job) => job.status === "running").length);
+  const syncWorkbench = useWorkbench((state) => state.syncScreen);
+  const activateWorkbench = useWorkbench((state) => state.activateTab);
+  const closeWorkbench = useWorkbench((state) => state.closeTab);
   // WebView history bridge for the Android back button (see lib/nav-history).
   const navSnapshotRef = useRef<NavigationSnapshot>({ screen: "home", files: [] });
   const overlayGuardRef = useRef(false);
 
-  // Phones always use the drawer navigation; desktop windows switch to it
-  // when they get narrow enough for the sidebar to waste space.
+  // Phones always use the bottom-first mobile shell; desktop windows switch to it
+  // when they get narrow enough for the workbench shell to waste space.
   const compactNav = isAndroid() || narrow;
 
   // Phone ergonomics (D8): publish the keyboard inset for the bottom action
@@ -139,7 +117,24 @@ export default function App() {
   useEffect(() => {
     recordScreenVisit(history, navSnapshotRef.current, { screen, files });
     navSnapshotRef.current = { screen, files };
-  }, [screen, files]);
+    syncWorkbench(screen, files);
+  }, [screen, files, syncWorkbench]);
+
+  const handleActivateTab = useCallback(
+    (tab: WorkbenchTab) => {
+      const target = activateWorkbench(tab.id);
+      if (target) navigate(target.screen, { files: target.files });
+    },
+    [activateWorkbench, navigate],
+  );
+
+  const handleCloseTab = useCallback(
+    (id: string) => {
+      const fallback = closeWorkbench(id);
+      if (fallback) navigate(fallback.screen, { files: fallback.files });
+    },
+    [closeWorkbench, navigate],
+  );
 
   // Overlays push a guard entry so back closes them first.
   const overlayOpen = navOpen || paletteOpen || searchOpen;
@@ -414,11 +409,20 @@ export default function App() {
       enabled: () => true,
       execute: () => setSearchOpen(true),
     });
+    registerCommand({
+      id: "app.quickOmnibar",
+      titleKey: "workbench.commandHint",
+      category: "view",
+      keybinding: "Ctrl+K",
+      enabled: () => true,
+      execute: () => setSearchOpen(true),
+    });
     const ids = [
       ...enabledRoutes().map((view) => `view.${view.id}`),
       "file.open",
       "app.commandPalette",
       "app.globalSearch",
+      "app.quickOmnibar",
     ];
     return () => ids.forEach((id) => unregisterCommand(id));
   }, [pickFiles]);
@@ -565,7 +569,14 @@ export default function App() {
 
   const screens: Record<ScreenId, React.ReactElement> = useMemo(
     () => ({
-      home: <Screens.HomeScreen onNavigate={navigate} onDropFiles={homeDrop} dragging={dragging} />,
+      home: (
+        <Screens.HomeScreen
+          onNavigate={navigate}
+          onDropFiles={homeDrop}
+          dragging={dragging}
+          onSearch={() => setSearchOpen(true)}
+        />
+      ),
       reader: (
         <Screens.Reader initialFiles={files} dragging={dragging} initialPage={readerPage} onNavigate={navigate} />
       ),
@@ -649,16 +660,38 @@ export default function App() {
     [aiPack, convertTab, dragging, files, homeDrop, navigate, pageToolTab, readerPage, securityTab, selectionText],
   );
 
+  const renderSecondaryScreen = useCallback(
+    (id: ScreenId, overrideFiles?: string[]) => {
+      const target = routeEnabled(id) ? id : "home";
+      const useFiles = overrideFiles?.length ? overrideFiles : files;
+      const content =
+        target === "ai" ? (
+          <Screens.Ai initialFiles={useFiles} dragging={false} onNavigate={navigate} />
+        ) : target === "reader" ? (
+          <Screens.Reader initialFiles={useFiles} dragging={false} onNavigate={navigate} />
+        ) : target === "office" ? (
+          <Screens.OfficeWorkspace />
+        ) : target === "notes" ? (
+          <Screens.NotesScreen />
+        ) : target === "tools" ? (
+          <Screens.ToolsScreen onNavigate={navigate} />
+        ) : (
+          screens[target]
+        );
+      return (
+        <div key={`split-${target}-${useFiles.join("|")}`} className="h-full">
+          <ScreenFrame screen={target}>{content}</ScreenFrame>
+        </div>
+      );
+    },
+    [files, navigate, screens],
+  );
+
   // Flag-gated routes are closed, not just hidden: a deep link to a disabled
   // route renders Home instead of the unfinished screen.
   const effectiveScreen = routeEnabled(screen) ? screen : "home";
   const isDark = appliedDark;
-  const pickNav = (id: ScreenId) => {
-    navigate(id);
-    setNavOpen(false);
-  };
   const activeLabel = routeEnabled(screen) ? t(routeFor(screen).labelKey) : t("app.name");
-
   const overlayProps = {
     screen,
     backgroundJobs,
@@ -675,107 +708,62 @@ export default function App() {
       </React.Suspense>
     ) : null,
   };
+  const activeScreenNode = (
+    <div key={`${screen}-${files.join("|")}-${selectionText ?? ""}`} className="h-full">
+      <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
+    </div>
+  );
 
-  // Phones (and narrow desktop windows): drawer navigation with a top bar.
   if (compactNav) {
     return (
-      <div className="flex flex-col h-full" style={{ background: "var(--bg)" }}>
-        <header className={`mobile-bar${readerImmersive ? " hidden" : ""}`}>
-          <IconButton label={t("app.name")} onClick={() => setNavOpen(true)} aria-expanded={navOpen}>
-            <Menu size={18} />
-          </IconButton>
-          <p className="font-bold text-[17px] truncate flex-1">{activeLabel}</p>
-          <IconButton label={t("settings.theme")} onClick={() => void update({ theme: isDark ? "light" : "dark" })}>
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          </IconButton>
-        </header>
-
-        {navOpen ? (
-          <div
-            className="drawer-overlay"
-            role="presentation"
-            onClick={(event) => {
-              if (event.target === event.currentTarget) setNavOpen(false);
-            }}
+      <>
+        <React.Suspense fallback={<ScreenLoading />}>
+          <Screens.MobileShell
+            icons={NAV_ICONS}
+            screen={screen}
+            activeLabel={activeLabel}
+            isDark={isDark}
+            readerImmersive={readerImmersive}
+            sheetOpen={navOpen}
+            onOpenSheet={() => setNavOpen(true)}
+            onCloseSheet={() => setNavOpen(false)}
+            onNavigate={navigate}
+            onActivateTab={handleActivateTab}
+            onCloseTab={handleCloseTab}
+            onSearch={() => setSearchOpen(true)}
+            onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}
           >
-            <aside className="drawer">
-              <div className="flex items-center gap-2.5 px-3.5 py-4">
-                <BrandMark size={36} className="shrink-0" />
-                <div className="min-w-0">
-                  <p className="font-bold text-[13.5px] leading-tight truncate">{t("app.name")}</p>
-                  <p className="text-[11px] muted truncate">v{packageJson.version} · local</p>
-                </div>
-              </div>
-              <React.Suspense fallback={<div className="flex-1" />}>
-                <Screens.DrawerNav icons={NAV_ICONS} screen={screen} onPick={pickNav} />
-              </React.Suspense>
-              <div className="px-3 py-3 border-t" style={{ borderColor: "var(--border)" }}>
-                <Badge tone="ok">
-                  <Lock size={10} /> {t("nav.privacy")}
-                </Badge>
-              </div>
-            </aside>
-          </div>
-        ) : null}
-
-        <main className={`flex-1 min-w-0 relative overflow-hidden${readerImmersive ? " immersive-main" : ""}`}>
-          <div key={`${screen}-${files.join("|")}-${selectionText ?? ""}`} className="h-full">
-            <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
-          </div>
-        </main>
-
-        {/* Thumb-reach navigation on phones (C11); More opens the full drawer. */}
-        {readerImmersive ? null : (
-          <React.Suspense fallback={<div className="bottom-nav bottom-nav-placeholder" aria-hidden />}>
-            <Screens.BottomNav screen={screen} onNavigate={navigate} onMore={() => setNavOpen(true)} />
-          </React.Suspense>
-        )}
-
+            {activeScreenNode}
+          </Screens.MobileShell>
+        </React.Suspense>
         <GlobalOverlays {...overlayProps} />
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="flex h-full" style={{ background: "var(--bg)" }}>
-      {readerFocus ? null : (
-        <React.Suspense fallback={<aside className="sidebar shrink-0" style={{ width: sidebarCompact ? 68 : 252 }} />}>
-          <Screens.DesktopSidebar
-            icons={NAV_ICONS}
-            screen={screen}
-            compact={sidebarCompact}
-            version={packageJson.version}
-            backgroundJobs={backgroundJobs}
-            isDark={isDark}
-            onNavigate={pickNav}
-            onSearch={() => setSearchOpen(true)}
-            onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}
-            onToggleCompact={() => setSidebarCompact((previous) => !previous)}
-          />
-        </React.Suspense>
-      )}
-
-      {/* Main area */}
-      <main className="app-main flex-1 min-w-0 relative">
-        {dragging ? (
-          <div
-            className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none"
-            style={{
-              background: "color-mix(in srgb, var(--accent) 8%, transparent)",
-              border: "2px dashed var(--accent)",
-            }}
-          >
-            <p className="font-semibold" style={{ color: "var(--accent)" }}>
-              {t("common.dropHere")}
-            </p>
-          </div>
-        ) : null}
-        <div key={`${screen}-${files.join("|")}-${selectionText ?? ""}`} className="h-full">
-          <ScreenFrame screen={effectiveScreen}>{screens[effectiveScreen]}</ScreenFrame>
-        </div>
-      </main>
-
+    <>
+      <React.Suspense fallback={<ScreenLoading />}>
+        <Screens.WorkbenchShell
+          icons={NAV_ICONS}
+          screen={screen}
+          version={packageJson.version}
+          backgroundJobs={backgroundJobs}
+          isDark={isDark}
+          readerFocus={readerFocus}
+          dragging={dragging}
+          onNavigate={navigate}
+          onActivateTab={handleActivateTab}
+          onCloseTab={handleCloseTab}
+          onSearch={() => setSearchOpen(true)}
+          onPalette={() => setPaletteOpen(true)}
+          onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}
+          renderScreen={renderSecondaryScreen}
+        >
+          {activeScreenNode}
+        </Screens.WorkbenchShell>
+      </React.Suspense>
       <GlobalOverlays {...overlayProps} />
-    </div>
+    </>
   );
 }

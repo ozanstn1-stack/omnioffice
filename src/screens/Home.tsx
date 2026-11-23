@@ -15,11 +15,10 @@ import {
   Stamp,
 } from "lucide-react";
 import { Button, Card, EmptyState } from "../components/ui";
-import { DropZone } from "../components/files";
 import { Screen } from "../components/layout";
 import { CreateRow, greetingKey, todayLabel } from "../components/create-row";
 import { RecentTable } from "../components/recent-table";
-import { JobsGlance } from "../components/jobs-glance";
+import { BentoHeroGrid, BentoOmnibar } from "../components/bento-home";
 import { UpdateBanner } from "../components/update-banner";
 import { WelcomeCard } from "../components/welcome-card";
 import { ProfessionDesk, ProfessionPicker } from "../components/profession-desk";
@@ -51,18 +50,16 @@ const QUICK_ACTIONS: { id: ScreenId; icon: typeof Combine }[] = [
 /** Icon lookup so a recommended tool renders with the card's own icon. */
 const ICON_BY_ID: Map<ScreenId, React.ReactNode> = new Map(CARDS.map((card) => [card.id, card.icon]));
 
-function fold(text: string): string {
-  return foldSearch(text);
-}
-
 export function Home({
   onNavigate,
   onDropFiles,
   dragging,
+  onSearch,
 }: {
   onNavigate: Navigate;
   onDropFiles: (paths: string[]) => void;
   dragging: boolean;
+  onSearch?: () => void;
 }) {
   const t = useT();
   const recent = useRecent((s) => s.entries);
@@ -73,9 +70,8 @@ export function Home({
   const pushToast = useToasts((s) => s.push);
   const [suggestion, setSuggestion] = useState<string[] | null>(null);
   const [query, setQuery] = useState("");
+  const [recentLayout, setRecentLayout] = useState<"list" | "cards">("cards");
 
-  // The profession desk leads Home; until the first-run question is answered
-  // (or while "Change desk" is open) the picker takes its place.
   const profession = settings.profession ?? "";
   const desk = useMemo(() => deskTasks(profession), [profession]);
   const [choosing, setChoosing] = useState(false);
@@ -99,16 +95,12 @@ export function Home({
     void refreshRecent();
   }, [refreshRecent]);
 
-  // Cards follow the same route manifest: a flag-gated route is not offered.
-  // While a desk is shown the full catalogue sits behind "All tools" (search
-  // still covers every tool).
   const cards = useMemo(() => CARDS.filter((card) => routeEnabled(card.id)), []);
-
-  const needle = fold(query.trim());
+  const needle = foldSearch(query.trim());
   const matches = useMemo(() => {
     if (!needle) return cards;
     return cards.filter((card) => {
-      const haystack = fold(`${t(card.titleKey)} ${card.descKey ? t(card.descKey) : ""} ${card.id}`);
+      const haystack = foldSearch(`${t(card.titleKey)} ${card.descKey ? t(card.descKey) : ""} ${card.id}`);
       return haystack.includes(needle);
     });
   }, [cards, needle, t]);
@@ -121,13 +113,8 @@ export function Home({
     [matches],
   );
 
-  // PDFs open in the reader and office documents in their editor; anything
-  // else (images, archives, outputs of other tools) goes to the system viewer.
   const openRecent = async (entry: RecentEntry) => {
     if (isPdf(entry.fileName)) {
-      // One call: navigate() sets the screen's files, so a separate file-list
-      // update before it was overwritten with an empty list (the reader then
-      // showed its file picker instead of the recent PDF).
       onNavigate("reader", { files: [entry.token] });
       return;
     }
@@ -140,6 +127,11 @@ export function Home({
     await openAnyFile(entry.token).catch(() => undefined);
   };
 
+  const handlePicked = (paths: string[]) => {
+    onDropFiles(paths);
+    if (paths.length > 0) setSuggestion(paths);
+  };
+
   const suggestionLabel = suggestion
     ? suggestion.length === 1
       ? fileBaseName(suggestion[0])
@@ -149,8 +141,15 @@ export function Home({
   return (
     <Screen title={t(greetingKey(new Date().getHours()))} subtitle={todayLabel(settings.language)}>
       <UpdateBanner />
+      <BentoOmnibar dragging={dragging} onSearch={onSearch} onDropFiles={handlePicked} />
       {asking ? <ProfessionPicker onChoose={chooseProfession} /> : null}
       {profession !== "" ? <WelcomeCard onNavigate={onNavigate} /> : null}
+      <BentoHeroGrid
+        recent={recent}
+        language={settings.language}
+        onOpenRecent={(entry) => void openRecent(entry)}
+        onNavigate={onNavigate}
+      />
       {!asking && isProfession(profession) && desk.length > 0 ? (
         <ProfessionDesk
           profession={profession}
@@ -160,39 +159,37 @@ export function Home({
         />
       ) : null}
       <CreateRow onNavigate={onNavigate} />
-      <div className={settings.showRecentFiles ? "home-split" : undefined}>
-        {settings.showRecentFiles ? (
-          <section aria-labelledby="home-recent" className="min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <h2 id="home-recent" className="section-title">
-                {t("home.recent")}
-              </h2>
+      {settings.showRecentFiles ? (
+        <section aria-labelledby="home-recent" className="min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h2 id="home-recent" className="section-title !mb-0">
+              {t("home.recent")}
+            </h2>
+            <div className="flex items-center gap-2">
+              {!isAndroid() ? (
+                <div className="recent-view-toggle" role="group" aria-label={t("home.recent")}>
+                  <button type="button" data-active={recentLayout === "cards"} onClick={() => setRecentLayout("cards")}>
+                    {t("bento.viewCards")}
+                  </button>
+                  <button type="button" data-active={recentLayout === "list"} onClick={() => setRecentLayout("list")}>
+                    {t("bento.viewList")}
+                  </button>
+                </div>
+              ) : null}
               <Button size="sm" variant="ghost" onClick={() => onNavigate("history")}>
                 {t("home.viewAll")}
               </Button>
             </div>
-            <RecentTable
-              entries={recent}
-              language={settings.language}
-              onOpen={(entry) => void openRecent(entry)}
-              onShare={(entry) => void shareRecent(entry.token, entry.fileName).catch(() => undefined)}
-            />
-          </section>
-        ) : null}
-        <div className="home-side">
-          <DropZone
-            compact
-            onPaths={(paths) => {
-              onDropFiles(paths);
-              if (paths.length > 0) setSuggestion(paths);
-            }}
-            title={isAndroid() ? t("common.selectFiles") : t("home.dropTitle")}
-            hint={isAndroid() ? t("common.tapHint") : t("home.dropHint")}
-            dragging={dragging}
+          </div>
+          <RecentTable
+            entries={recent}
+            language={settings.language}
+            layout={isAndroid() ? "list" : recentLayout}
+            onOpen={(entry) => void openRecent(entry)}
+            onShare={(entry) => void shareRecent(entry.token, entry.fileName).catch(() => undefined)}
           />
-          <JobsGlance onNavigate={onNavigate} />
-        </div>
-      </div>
+        </section>
+      ) : null}
 
       {suggestion && suggestion.length > 0 ? (
         <Card className="p-4 fade-in">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AccentPicker } from "../components/accent-picker";
+import { AccentPicker, DensityPicker, RevocationControl } from "../components/accent-picker";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -26,7 +26,7 @@ function VersionLine() {
   const [version, setVersion] = useState("");
   useEffect(() => {
     void appInfo()
-      .then((info) => setVersion(`v${info.appVersion} · core ${info.coreVersion} · ${info.platform}`))
+      .then((i) => setVersion(`v${i.appVersion} · core ${i.coreVersion} · ${i.platform}`))
       .catch(() => setVersion("v1.2.0"));
   }, []);
   return (
@@ -118,26 +118,6 @@ function UpdateControls() {
   );
 }
 
-/** Opt-in OCSP/CRL lookup for signer certificates; the only signature feature that uses the network. */
-function RevocationControl() {
-  const t = useT();
-  const enabled = useSettings((s) => s.settings.onlineRevocationCheck);
-  const updateSettings = useSettings((s) => s.update);
-  return (
-    <div className="flex flex-col gap-2">
-      <label className="checkbox">
-        <input
-          type="checkbox"
-          checked={enabled === true}
-          onChange={(event) => void updateSettings({ onlineRevocationCheck: event.target.checked })}
-        />
-        <span>{t("settings.onlineRevocation")}</span>
-      </label>
-      <p className="text-xs muted">{t("settings.onlineRevocationHint")}</p>
-    </div>
-  );
-}
-
 /** Retention for saved AI chats plus a "clear AI data" action. */
 function AiPrivacyControls() {
   const t = useT();
@@ -209,6 +189,7 @@ export function Settings() {
   };
 
   const shortcuts: [string, string][] = [
+    ["Ctrl + K", t("workbench.commandHint")],
     ["Ctrl + Shift + P", t("palette.open")],
     ["Ctrl + Shift + F", t("palette.search")],
     ["Ctrl + O", t("common.openFile")],
@@ -236,6 +217,7 @@ export function Settings() {
             </div>
           </div>
           <AccentPicker />
+          <DensityPicker />
           <div>
             <label className="label">{t("settings.language")}</label>
             <div className="seg">

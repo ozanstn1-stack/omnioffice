@@ -1,0 +1,4 @@
+- Yeni Windows Workbench arayüzü: 58 px ince ikon rayı, canlı çalışma sekmeleri, yan yana Bölünmüş Ekran (Split View), Ctrl+K hızlı arama ve alt durum çubuğu.
+- Yeni Bento Studio Ana Ekran: akıllı üst Omnibar, "Kaldığın yerden devam et" belge kartı ve Son Dosyalar için Kart/Liste görünümü.
+- Yeni Android Bottom-First arayüzü: başparmak bölgesinde alt Omnibar, yukarı çekilen araç ve hızlı oluşturma çekmecesi, görsel sekme ızgarası, bottom-sheet pencereler ve 3 sütunlu temiz Araçlar ızgarası.
+- Ayarlar > Görünüm altına Rahat / Kompakt arayüz yoğunluğu seçeneği eklendi.

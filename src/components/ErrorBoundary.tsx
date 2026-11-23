@@ -1,8 +1,8 @@
-import { Component, Fragment, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, Fragment, Suspense, useState, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { logFrontend } from "../lib/api";
 import { useT } from "../lib/i18n";
-import { Button, EmptyState } from "./ui";
+import { Button, EmptyState, Spinner } from "./ui";
 
 /** Keeps a runaway stack from flooding frontend.log or the clipboard. */
 const MAX_DETAIL_CHARS = 4000;
@@ -134,5 +134,21 @@ function CrashFallback({
         }
       />
     </div>
+  );
+}
+
+export function ScreenLoading() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <Spinner size={22} />
+    </div>
+  );
+}
+
+export function ScreenFrame({ screen, children }: { screen: string; children: ReactNode }) {
+  return (
+    <ErrorBoundary scope={`screen:${screen}`}>
+      <Suspense fallback={<ScreenLoading />}>{children}</Suspense>
+    </ErrorBoundary>
   );
 }

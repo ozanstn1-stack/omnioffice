@@ -42,3 +42,47 @@ export function AccentPicker() {
     </div>
   );
 }
+
+/** Interface density selector (Comfortable vs Compact). */
+export function DensityPicker() {
+  const t = useT();
+  const density = useSettings((state) => state.settings.uiDensity ?? "comfortable");
+  const update = useSettings((state) => state.update);
+  return (
+    <div>
+      <p className="label">{t("settings.density")}</p>
+      <div className="seg">
+        <button
+          type="button"
+          data-active={density === "comfortable"}
+          onClick={() => void update({ uiDensity: "comfortable" })}
+        >
+          {t("settings.densityComfortable")}
+        </button>
+        <button type="button" data-active={density === "compact"} onClick={() => void update({ uiDensity: "compact" })}>
+          {t("settings.densityCompact")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Opt-in OCSP/CRL lookup for signer certificates. */
+export function RevocationControl() {
+  const t = useT();
+  const enabled = useSettings((s) => s.settings.onlineRevocationCheck === true);
+  const update = useSettings((s) => s.update);
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => void update({ onlineRevocationCheck: event.target.checked })}
+        />
+        <span>{t("settings.onlineRevocation")}</span>
+      </label>
+      <p className="text-xs muted">{t("settings.onlineRevocationHint")}</p>
+    </div>
+  );
+}

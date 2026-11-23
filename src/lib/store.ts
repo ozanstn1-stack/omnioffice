@@ -19,6 +19,7 @@ import {
   type Settings,
 } from "./types";
 import { paintAccent } from "./accent";
+import { applyDensity } from "./workbench-store";
 import { rememberRecentNames as withNames } from "./file-token-names";
 
 interface SettingsState {
@@ -55,6 +56,7 @@ export const useSettings = create<SettingsState>((set, get) => ({
       }
       set({ settings, engine, languages, loaded: true });
       applyTheme(settings.theme);
+      applyDensity(settings.uiDensity);
       void import("./api").then(({ logFrontend }) => logFrontend("info", `engines: ${JSON.stringify(engine)}`));
     } catch {
       set({ loaded: true });
@@ -64,16 +66,15 @@ export const useSettings = create<SettingsState>((set, get) => ({
     const next = { ...get().settings, ...patch };
     set({ settings: next });
     if (patch.theme || patch.accent) applyTheme(next.theme);
+    if (patch.uiDensity) applyDensity(next.uiDensity);
     await saveSettings(next).catch(() => undefined);
   },
 }));
 
 /** Detaches the OS colour-scheme listener of the "system" theme, if any. */
 let stopSystemThemeWatch: (() => void) | null = null;
-
 /** Whether the applied theme is dark, as state so React follows OS changes too. */
 const useAppliedDark = create<{ dark: boolean }>(() => ({ dark: true }));
-
 /** True while the applied theme is dark (the "system" theme resolves live). */
 export const useIsDarkTheme = () => useAppliedDark((state) => state.dark);
 
@@ -110,11 +111,9 @@ export function applyTheme(theme: Settings["theme"]) {
     stopSystemThemeWatch = () => query.removeListener(onChange);
   }
 }
-
 // ---------------------------------------------------------------------------
 // Toasts
 // ---------------------------------------------------------------------------
-
 export interface Toast {
   id: number;
   kind: "info" | "success" | "error";

@@ -287,8 +287,8 @@ export type SplitMode =
 
 export interface Settings {
   theme: "dark" | "light" | "system" | "midnight" | "paper";
-  /** Accent colour (7.33.1); absent means indigo. */
   accent?: import("./accent").Accent;
+  uiDensity?: import("./workbench-store").UiDensity;
   language: "en" | "tr";
   /** Calc number/date locale; "auto" follows the interface language. */
   calcNumberLocale: "auto" | "tr" | "en";

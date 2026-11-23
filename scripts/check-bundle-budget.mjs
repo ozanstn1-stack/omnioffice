@@ -126,7 +126,12 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Raised to 551 in 8.1.0: the reader's "ask this document" AI panel (its own
 // lazy chunk, loaded on first use) and the side-panel/focus-mode wiring add
 // about 1.5 KB gzip; the entry and the Reader route cap hold.
-const TOTAL_BUDGET_KB = 551;
+// Raised to 562 in 8.2.0: the radical hybrid UI (lazy Windows WorkbenchShell +
+// Split View + live tabs, lazy Android Bottom-First MobileShell + pull-up sheet
+// + visual tab grid, and Bento Studio Home) adds ~7.2 KB gzip across lazy
+// chunks (total measured at 558.2 KB); entry stays at 60.5 / 62 KB and all
+// per-route caps hold.
+const TOTAL_BUDGET_KB = 562;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

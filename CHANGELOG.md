@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.2.0] - 2026-11-23
+
+### Added
+
+- **Windows Workbench shell (`WorkbenchShell`, `WorkbenchTopBar`, `WorkbenchSplitHost`):** replaces the permanent 252 px accordion sidebar with a slim 58 px floating icon rail (with live open-document shortcuts and an expandable hubs panel on demand), a unified live tab strip across PDFs, Office editors and tools, a resizable side-by-side Split View (for example PDF Reader next to AI Assistant, Writer or Notes), a `Ctrl+K` quick omnibar shortcut, and a bottom status bar with live local status and Comfortable/Compact density switching.
+- **Bento Studio Home (`BentoOmnibar`, `BentoHeroGrid`, `RecentTable`):** adds a unified hero omnibar (search tools, vault or pick files in one bar), a live "Pick up where you left off" document card with a miniature page preview, a local engine pulse card, and a Cards/List view switcher for recent files.
+- **Android Bottom-First shell (`MobileShell`, `MobileToolsSheet`, `MobileTabGrid`):** moves search and quick actions into a thumb-reach bottom omnibar with a pull-up Quick Create & All Tools bottom sheet, adds a visual 2-column open-tabs switcher grid, replaces the redundant top-left hamburger on sub-screens with a Back button, converts mobile modals into bottom sheets, and matches native Android edge-to-edge light/dark window backgrounds.
+- **Interface density setting (`DensityPicker`):** Settings > Appearance now lets you switch between Comfortable and Compact density across the whole workspace.
+
+### Changed
+
+- **Android Tools grid (`Tools`):** uses 3 spacious columns with proper word breaking on compact phones instead of 4 cramped columns, eliminating mid-word breaks.
+- **Office workspace tabs (`OfficeWorkspace`):** refreshed to pill-style tabs with kind-coloured indicators and cleaner hover/active depth.
+
 ## [8.1.4] - 2026-11-23
 
 ### Fixed
