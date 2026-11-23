@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **The reader gives the page more room on phones (`Reader`):** the keyboard shortcut line under the document ("Ctrl+F search · Ctrl +/− zoom · …") is no longer shown in the Android app or on touch screens, where it means nothing, and the margins around the page shrink from 72 px to 16 px on narrow screens, so a page fills about 95% of a phone's width instead of about 80%. Desktop windows keep the hint and the wider margins.
 
+### Security
+
+- **Dependency updates:** `url` 2.5.9 (RUSTSEC-2026-0592, stack overflow in `Url::origin()` on nested `blob:` URLs) and `cookie` 0.18.3 (RUSTSEC-2026-0594, private cookie nonces could repeat after `fork()`; the app does not fork, so it was not affected).
+
 ## [8.1.3] - 2026-11-21
 
 ### Fixed
