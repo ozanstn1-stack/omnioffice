@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 8.3.0
+# Release Readiness — OmniOffice 8.3.1
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,11 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 8.3.1) - Android emulator Vulkan stability and APK build retry
+
+- **Disable host Vulkan on Android CI emulator runners, bound `android-launch-smoke.sh` `adb` calls, and retry transient Maven Central `429` APK build failures:**
+  `test:src/lib/ci-workflow.test.ts#disables host Vulkan on the Android emulator and guards launch smoke adb calls`
 
 ## Implemented (this cycle, 8.3.0) - Release APK+EXE gate, storage cleanup, and Workbench/Reader UX
 

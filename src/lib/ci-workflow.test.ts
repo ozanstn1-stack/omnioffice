@@ -658,4 +658,13 @@ describe("release APK+EXE gate and storage retention (8.3.0)", () => {
     expect(cleanup).toContain("actions/artifacts");
     expect(cleanup).toContain("actions/caches");
   });
+
+  it("disables host Vulkan on the Android emulator and guards launch smoke adb calls", () => {
+    const launchSmoke = readFileSync(path.join(root, "scripts", "android-launch-smoke.sh"), "utf8");
+    expect(android).toContain("Vulkan = off");
+    expect(android).toContain("-gpu guest");
+    expect(android).toContain("-feature -Vulkan");
+    expect(android).toContain("for attempt in 1 2; do");
+    expect(launchSmoke).toContain("timeout 15 adb logcat");
+  });
 });

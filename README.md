@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 8.3.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 8.3.1** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,24 +23,23 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new in 8.3.0
+## What's new in 8.3.1
 
-- **Guaranteed APK + EXE Release Gate & Storage Hygiene (`verify-release.yml`, `beta.yml`, `storage-cleanup.yml`, `scripts/cleanup-storage.mjs`):** verifies that every release tag publishes both Windows Setup/Portable `.exe`/`.zip` and Android `arm64-v8a` / `armeabi-v7a` APKs & AABs, adds parallel Android beta APKs, caps workflow artifact retention (`<= 14` days), adds `npm run release:bump` and `npm run clean:storage`, and adds an in-app `StorageCleanupCard` in Settings.
-- **Workbench & Bento Refinements (`useWorkbench`, `WorkbenchShell`, `BentoHeroGrid`, `MobileShell`):** persists Split View layout preferences without file paths, adds `Ctrl+\` Split View and `Ctrl+Shift+]` / `Ctrl+Shift+[` tab shortcuts, forwards active tab files into Split View, wires Bento's engine card to real `useSettings().engine` status, keeps command-palette/overlay navigation in sync with live tabs, and clears mobile toasts above the thumb dock.
-- **Reader Handoffs & CSS Modularization (`ReaderQuickActions`, `ReaderAiActions`, `src/styles/{workbench,mobile-shell}.css`):** adds lazy one-click handoffs from PDF Reader to Annotate and PDF Studio, Copy & Open-in-Writer export for Reader AI answers, and extracts v8.2.0 workbench/mobile-shell CSS out of `styles.css`.
+- **Android CI Emulator & APK Build Stability (`.github/workflows/android.yml`, `scripts/android-launch-smoke.sh`):** disables host Vulkan (`Vulkan = off`, `-feature -Vulkan`) on `ubuntu-24.04` emulator runners to prevent SwiftShader `gfxstream` crashes, bounds `adb` diagnostics with `timeout 15`, and retries APK/AAB builds once on transient Maven Central `429` responses.
+- **v8.3.0 Highlights (included):** `verify-release.yml` APK+EXE release gate, parallel Android beta APKs, `npm run release:bump`, 3-layer automated storage cleanup (`storage-cleanup.yml`, `scripts/cleanup-storage.mjs`, Settings `StorageCleanupCard`), Workbench Split View persistence & shortcuts, live Bento engine status, Android Back tab-grid handling, mobile toast clearance, lazy Reader Annotate/Studio handoffs, and Reader AI → Writer export.
 
 Earlier in the 8.0–8.2 and 7.4x–7.5x series: radical hybrid Windows Workbench & Android Bottom-First UI with Bento Studio Home (8.2.0), mobile full-width reader margins (8.1.4), local calendar/date fixes & mobile layout polish (8.1.3), Writer ribbon focus & recents (8.1.2), whole-document Reader AI (8.1.1), Focus Reading + "Ask this document" panel (8.1.0), AcroForm Field Builder & multi-doc AI matrix (8.0.0), worker isolation & fidelity updates (7.38–7.51). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 
-**Downloads (v8.3.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v8.3.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v8.3.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.0/OmniOffice-Setup-8.3.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.0/OmniOffice-Portable-8.3.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.0/OmniOffice-Linux-8.3.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.0/OmniOffice-Linux-8.3.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.0/OmniOffice-Android-8.3.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.0/OmniOffice-Android-8.3.0-armeabi-v7a.apk)
+**Downloads (v8.3.1)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v8.3.1](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v8.3.1)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.1/OmniOffice-Setup-8.3.1.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.1/OmniOffice-Portable-8.3.1.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.1/OmniOffice-Linux-8.3.1-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.1/OmniOffice-Linux-8.3.1-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.1/OmniOffice-Android-8.3.1-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.3.1/OmniOffice-Android-8.3.1-armeabi-v7a.apk)
 
 ## Release history
 
@@ -773,7 +772,7 @@ Next (architecture prepared, not implemented):
 | Tauri commands | 256 |
 | Rust tests | 1959 |
 | TypeScript test files | 279 |
-| TypeScript test cases (approx.) | 2828 |
+| TypeScript test cases (approx.) | 2829 |
 <!-- stats:end -->
 
 ## License
