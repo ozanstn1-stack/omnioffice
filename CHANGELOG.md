@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.3.1] - 2026-11-26
+
+### Fixed
+
+- **Android CI emulator stability & APK retry (`.github/workflows/android.yml`, `scripts/android-launch-smoke.sh`):** disabled host Vulkan (`Vulkan = off`, `GLDirectMem = on`, `-feature -Vulkan`) in `android.yml` emulator tests to prevent `Android emulator 37.3.10` SwiftShader `gfxstream` crashes (`error: closed` / `adb: device offline`) on `ubuntu-24.04`, bounded `adb` logcat and post-launch cleanup calls with `timeout 15`, and added a 2-attempt retry in `android.yml` for transient Maven Central HTTP `429` responses during APK/AAB builds.
+
 ## [8.3.0] - 2026-11-26
 
 ### Added

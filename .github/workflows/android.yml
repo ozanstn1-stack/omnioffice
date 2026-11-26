@@ -170,7 +170,15 @@ jobs:
       - name: Build the APK and AAB for this ABI
         run: |
           set -e
-          npm run tauri android build -- --apk --aab --ci --target ${{ matrix.target }}
+          for attempt in 1 2; do
+            if npm run tauri android build -- --apk --aab --ci --target ${{ matrix.target }}; then
+              break
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              exit 1
+            fi
+            sleep 20
+          done
           mkdir -p release-artifacts
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
@@ -279,13 +287,20 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Configure emulator stability (disable host Vulkan)
+        run: |
+          mkdir -p ~/.android
+          printf 'Vulkan = off\nGLDirectMem = on\n' >> ~/.android/advancedFeatures.ini
+
       - name: Instrumented tests (open-with pipeline) and launch smoke test
+        timeout-minutes: 25
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           arch: x86_64
           profile: pixel_5
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -feature -Vulkan
           # The runner executes each script line in its own shell, so the test
           # and the logcat capture share one line. On failure the crash lines
           # are printed and the full logcat is kept for the artifact below.
