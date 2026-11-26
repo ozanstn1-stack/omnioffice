@@ -1,0 +1,240 @@
+/* Android Bottom-First Shell & Pull-up Sheets */
+.mobile-shell .screen-content {
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+}
+.mobile-scan-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--doc-pdf) 28%, transparent);
+  background: color-mix(in srgb, var(--doc-pdf) 12%, transparent);
+  color: var(--doc-pdf);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.mobile-tabs-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mobile-thumb-dock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  padding-left: calc(12px + env(safe-area-inset-left));
+  padding-right: calc(12px + env(safe-area-inset-right));
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mobile-thumb-search {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: var(--surface);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.mobile-thumb-fab {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  border: 0;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+/* Pull-up Bottom Sheet & Visual Tab Grid */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: rgb(6 8 14 / 0.52);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.bottom-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px 24px 0 0;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: sheet-up 0.18s ease-out;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0.7;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.sheet-handle {
+  width: 38px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--border-strong);
+  margin: 10px auto 4px;
+}
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sheet-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+.sheet-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sheet-quick-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.sheet-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-grid-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.tab-grid-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 112px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.tab-grid-card.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-weak) 55%, var(--surface));
+}
+.tab-grid-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tab-grid-card-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+.tab-grid-close {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.tab-grid-card-title {
+  font-size: 13px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-grid-card-kind {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.tab-grid-card-new {
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  background: transparent;
+  color: var(--accent-ink);
+}
+
+/* Mobile modals become ergonomic bottom sheets */
+@media (max-width: 720px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .overlay .modal {
+    max-width: none !important;
+    border-radius: 22px 22px 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: sheet-up 0.18s ease-out;
+  }
+}

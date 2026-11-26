@@ -222,6 +222,7 @@ jobs:
           name: authenticode-input
           path: ${{ runner.temp }}/authenticode/*
           if-no-files-found: error
+          retention-days: 1
 
       - name: Sign through SignPath.io
         if: steps.authenticode.outputs.provider == 'signpath'
@@ -334,6 +335,7 @@ jobs:
           name: omnioffice-windows
           path: release-artifacts/*
           if-no-files-found: error
+          retention-days: 3
 
       - name: Attach to GitHub release
         if: startsWith(github.ref, 'refs/tags/')

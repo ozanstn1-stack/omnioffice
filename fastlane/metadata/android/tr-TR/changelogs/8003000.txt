@@ -1,0 +1,5 @@
+8.3.0:
+- APK + EXE yayın kapısı (verify-release) ve paralel Android beta APK eklendi.
+- Ayarlar > Depolamayı Temizle kartı; CI ve yerel otomatik önbellek/atık temizliği eklendi.
+- Okuyucudan tek tıkla Açıklama/PDF Stüdyosu geçişi ve Okuyucu AI yanıtlarını Kopyala / Writer'da Aç eklendi.
+- Bölünmüş Ekran düzeni kalıcılığı, Ctrl+\ kısayolu, dosya aktarımı ve mobil bildirim konum düzeltmeleri yapıldı.

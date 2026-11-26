@@ -179,13 +179,16 @@ jobs:
           cp "$aab" "release-artifacts/OmniOffice-Android-$version-${{ matrix.abi }}.aab"
           ls -lh release-artifacts
 
+      - name: Clean intermediate Gradle build outputs
+        run: rm -rf src-tauri/gen/android/app/build/intermediates src-tauri/gen/android/app/build/tmp
+
       - name: Upload this ABI's packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-abi-${{ matrix.abi }}
           path: release-artifacts/*
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 2
 
   # The emulator is x86_64, and the Tauri Gradle plugin reads the ABI list from
   # -P flags (RustPlugin.kt), so this job builds one library instead of four.
@@ -300,6 +303,7 @@ jobs:
           name: android-logcat
           path: android-logcat.txt
           if-no-files-found: ignore
+          retention-days: 3
 
   # Verifying and publishing happens in one place, after both arms and the
   # tests pass; the release is only attached when the tests are green, as before.
@@ -382,6 +386,7 @@ jobs:
             release-artifacts/*.aab
             release-artifacts/SHA256SUMS-android.txt
           if-no-files-found: error
+          retention-days: 3
 
       # The Windows release job creates the GitHub release; wait for it briefly
       # and create it here if this job wins the race (tag push starts both).

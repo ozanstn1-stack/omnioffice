@@ -10,15 +10,15 @@ import { NAV_ICONS } from "./lib/nav-icons";
 import { GlobalOverlays } from "./components/global-overlays";
 import type { RecentEntry } from "./lib/types";
 import { useDev, useDrop, useIsDarkTheme, useRecent, useSettings, useToasts } from "./lib/store";
-import packageJson from "../package.json";
 import { devLaunchContext } from "./lib/api";
 import type { Navigate, PageToolsTab, ScreenId } from "./lib/nav";
 import { flagEnabled } from "./lib/flags";
 import { useFocusScrollIntoView, useKeyboardInset, useNarrowLayout } from "./lib/viewport";
-import { enabledRoutes, routeEnabled, routeFor } from "./lib/routes";
+import { routeEnabled, routeFor } from "./lib/routes";
 import type { TaskPackId } from "./lib/ai-task-packs";
 import * as Screens from "./screens/registry";
-import { matchKeybinding, registerCommand, runCommand, setCommandTranslator, unregisterCommand } from "./lib/commands";
+import { matchKeybinding, runCommand, setCommandTranslator } from "./lib/commands";
+import { registerAppCommands } from "./lib/app-commands";
 import { resumeJobs, useJobs } from "./lib/jobs";
 import { installJobRetryHandlers } from "./lib/job-retries";
 import { useDeskTaskCommands } from "./lib/use-desk-task-commands";
@@ -67,6 +67,7 @@ export default function App() {
   const [securityTab, setSecurityTab] = useState<"protect" | "unlock">("protect");
   const [dragging, setDragging] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [tabsOpen, setTabsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const narrow = useNarrowLayout();
@@ -74,6 +75,7 @@ export default function App() {
   const syncWorkbench = useWorkbench((state) => state.syncScreen);
   const activateWorkbench = useWorkbench((state) => state.activateTab);
   const closeWorkbench = useWorkbench((state) => state.closeTab);
+  const closeOtherWorkbench = useWorkbench((state) => state.closeOtherTabs);
   // WebView history bridge for the Android back button (see lib/nav-history).
   const navSnapshotRef = useRef<NavigationSnapshot>({ screen: "home", files: [] });
   const overlayGuardRef = useRef(false);
@@ -136,8 +138,16 @@ export default function App() {
     [closeWorkbench, navigate],
   );
 
+  const handleCloseOtherTabs = useCallback(
+    (id: string) => {
+      const kept = closeOtherWorkbench(id);
+      if (kept) navigate(kept.screen, { files: kept.files });
+    },
+    [closeOtherWorkbench, navigate],
+  );
+
   // Overlays push a guard entry so back closes them first.
-  const overlayOpen = navOpen || paletteOpen || searchOpen;
+  const overlayOpen = navOpen || tabsOpen || paletteOpen || searchOpen;
   useEffect(() => {
     if (overlayOpen && !overlayGuardRef.current) {
       overlayGuardRef.current = true;
@@ -154,6 +164,7 @@ export default function App() {
       if (overlayGuardRef.current) {
         overlayGuardRef.current = false;
         setNavOpen(false);
+        setTabsOpen(false);
         setPaletteOpen(false);
         setSearchOpen(false);
         return;
@@ -369,63 +380,19 @@ export default function App() {
   useEffect(() => installJobRetryHandlers(), []);
 
   // Command platform: every screen is a command, alongside the global file,
-  // palette and search actions. The keybindings registered here are the single
-  // source of truth for the former hard-coded shortcut handler.
-  useEffect(() => {
-    // The command palette mirrors the route manifest (lib/routes.ts): one
-    // list, and a flag-gated route is not registered at all.
-
-    for (const view of enabledRoutes()) {
-      registerCommand({
-        id: `view.${view.id}`,
-        titleKey: view.labelKey,
-        category: view.category,
-        keybinding: view.keybinding,
-        enabled: () => true,
-        execute: () => setScreen(view.id),
-      });
-    }
-    registerCommand({
-      id: "file.open",
-      titleKey: "common.openFile",
-      category: "file",
-      keybinding: "Ctrl+O",
-      enabled: () => true,
-      execute: () => pickFiles(),
-    });
-    registerCommand({
-      id: "app.commandPalette",
-      titleKey: "palette.open",
-      category: "view",
-      keybinding: "Ctrl+Shift+P",
-      enabled: () => true,
-      execute: () => setPaletteOpen(true),
-    });
-    registerCommand({
-      id: "app.globalSearch",
-      titleKey: "palette.search",
-      category: "view",
-      keybinding: "Ctrl+Shift+F",
-      enabled: () => true,
-      execute: () => setSearchOpen(true),
-    });
-    registerCommand({
-      id: "app.quickOmnibar",
-      titleKey: "workbench.commandHint",
-      category: "view",
-      keybinding: "Ctrl+K",
-      enabled: () => true,
-      execute: () => setSearchOpen(true),
-    });
-    const ids = [
-      ...enabledRoutes().map((view) => `view.${view.id}`),
-      "file.open",
-      "app.commandPalette",
-      "app.globalSearch",
-      "app.quickOmnibar",
-    ];
-    return () => ids.forEach((id) => unregisterCommand(id));
-  }, [pickFiles]);
+  // palette, search and workbench actions.
+  useEffect(
+    () =>
+      registerAppCommands({
+        compactNav,
+        screen,
+        navigate,
+        pickFiles,
+        openPalette: () => setPaletteOpen(true),
+        openSearch: () => setSearchOpen(true),
+      }),
+    [compactNav, navigate, pickFiles, screen],
+  );
 
   // Desk tasks (D13): the palette runs a task with the current file or Writer selection.
   useDeskTaskCommands(files, navigate, screen);
@@ -699,7 +666,7 @@ export default function App() {
     onClosePalette: () => setPaletteOpen(false),
     searchOpen,
     onCloseSearch: () => setSearchOpen(false),
-    onNavigate: (next: string) => setScreen(next as ScreenId),
+    onNavigate: (next: string) => navigate(next as ScreenId),
     onOpenPath: openAnyPath,
     onOpenRecent: (entry: RecentEntry) => openDocumentRef({ token: entry.token, name: entry.fileName }),
     presend: presendOpen ? (
@@ -727,6 +694,9 @@ export default function App() {
             sheetOpen={navOpen}
             onOpenSheet={() => setNavOpen(true)}
             onCloseSheet={() => setNavOpen(false)}
+            tabsOpen={tabsOpen}
+            onOpenTabs={() => setTabsOpen(true)}
+            onCloseTabs={() => setTabsOpen(false)}
             onNavigate={navigate}
             onActivateTab={handleActivateTab}
             onCloseTab={handleCloseTab}
@@ -747,7 +717,7 @@ export default function App() {
         <Screens.WorkbenchShell
           icons={NAV_ICONS}
           screen={screen}
-          version={packageJson.version}
+          version={typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "8.3.0"}
           backgroundJobs={backgroundJobs}
           isDark={isDark}
           readerFocus={readerFocus}
@@ -755,6 +725,7 @@ export default function App() {
           onNavigate={navigate}
           onActivateTab={handleActivateTab}
           onCloseTab={handleCloseTab}
+          onCloseOtherTabs={handleCloseOtherTabs}
           onSearch={() => setSearchOpen(true)}
           onPalette={() => setPaletteOpen(true)}
           onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}

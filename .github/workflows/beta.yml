@@ -94,3 +94,89 @@ jobs:
           } else {
             Write-Host "::warning::no latest.json was produced (missing signing key?); nothing uploaded"
           }
+
+  beta-android:
+    name: Beta Android APK (arm64-v8a)
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            src-tauri/gen/android/**/*.gradle*
+            src-tauri/gen/android/gradle/wrapper/gradle-wrapper.properties
+      - name: Install Android NDK and platform
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          export ANDROID_HOME="$SDK"
+          export PATH="$SDK/cmdline-tools/latest/bin:$SDK/platform-tools:$PATH"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;27.3.13750724" "platforms;android-36" "build-tools;36.0.0"
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.3.13750724" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch
+        with:
+          targets: aarch64-linux-android
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Beta version (prerelease of the next minor)
+        id: version
+        run: |
+          stable=$(node -p "require('./package.json').version")
+          IFS='.' read -r major minor _patch <<< "$stable"
+          beta="${major}.$((minor + 1)).0-beta.${{ github.run_number }}"
+          echo "beta=$beta" >> "$GITHUB_OUTPUT"
+          echo "stable $stable -> beta $beta"
+      - name: Configure release signing (when available)
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > src-tauri/gen/android/pdfsak-release.jks
+          {
+            echo "storeFile=pdfsak-release.jks"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "keyPassword=$ANDROID_KEY_PASSWORD"
+          } > src-tauri/gen/android/keystore.properties
+      - name: Fetch Android engines
+        run: pwsh -NoProfile -File scripts/fetch-engines-android.ps1 -Abis arm64-v8a
+      - name: Lockfile preflight
+        run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: Patch the version files for the beta channel
+        run: node scripts/set-update-channel.mjs beta "${{ steps.version.outputs.beta }}"
+      - name: Build beta APK (arm64-v8a)
+        run: |
+          set -e
+          npm run tauri android build -- --apk --ci --target aarch64
+          mkdir -p release-artifacts
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -printf '%T@ %p\n' | sort -rn | head -n1 | cut -d' ' -f2)
+          cp "$apk" "release-artifacts/OmniOffice-Android-${{ steps.version.outputs.beta }}-arm64-v8a.apk"
+          cp "$apk" "release-artifacts/OmniOffice-Android-beta-arm64-v8a.apk"
+          (cd release-artifacts && sha256sum *.apk > SHA256SUMS-beta-android.txt)
+          rm -rf src-tauri/gen/android/app/build/intermediates src-tauri/gen/android/app/build/tmp
+      - name: Attach beta APK to the rolling beta prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view beta >/dev/null 2>&1; then
+            gh release create beta --title "OmniOffice beta" --prerelease \
+              --notes "Rolling beta from master (${{ steps.version.outputs.beta }}). Not for production; installs update through the beta channel."
+          fi
+          gh release upload beta release-artifacts/* --clobber

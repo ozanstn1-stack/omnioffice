@@ -40,8 +40,8 @@ import {
   redactCertificateVerify,
   searchDocument,
   toAppError,
+  type TextRunInfo,
 } from "../lib/api";
-import type { TextRunInfo } from "../lib/api";
 import { clampSpeechRate, pageTextFromRuns, speechSupported } from "../lib/reader-text";
 import { ReaderTextLayer } from "./reader/ReaderTextLayer";
 import type { SpeechWindow } from "../lib/reader-text";
@@ -64,7 +64,7 @@ import {
 } from "../lib/tiles";
 import type { PageGeometry, SearchResponse, TextMatch, Thumbnail } from "../lib/types";
 import { setWindowFullscreen, showShortcutHint, useImmersiveReader, useReaderImmersive } from "./reader/immersive";
-import { ReaderSidePanel, type ReaderSideTab } from "./reader/ReaderSidePanel";
+import { ReaderQuickActions, ReaderSidePanel, type ReaderSideTab } from "./reader/ReaderSidePanel";
 import { useRememberReaderDocument } from "./reader/remember-recent";
 import type { Navigate } from "../lib/nav";
 
@@ -1300,6 +1300,7 @@ export function Reader({
                 )}
               </>
             ) : null}
+            <ReaderQuickActions path={session.primary.path} onNavigate={onNavigate} />
             <IconButton label={t("reader.copyText")} onClick={() => void copyPage()}>
               <Copy size={15} />
             </IconButton>
@@ -1358,16 +1359,12 @@ export function Reader({
           className="reader-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden touch-pan-y"
           style={{ background: "var(--bg)" }}
         >
-          {/* `w-max` + `min-w-full` lets the pages overflow sideways (instead
-              of centring out of reach) once a zoom makes them wider than the
-              reading area, which is what horizontal panning scrolls. */}
+          {/* `w-max` + `min-w-full` allows horizontal panning when zoomed wider than viewport. */}
           <div
             ref={contentRef}
             className={`${compact ? "px-2 py-2 gap-2" : "px-6 py-5 gap-5"} flex flex-col items-center min-w-full w-max mx-auto`}
           >
-            {/* The notes are capped at the page width: the column is `w-max`,
-                so a wider unwrapped line widened it and a phone centred the
-                page partly off screen. */}
+            {/* Cap note width so narrow phones do not widen the scrollable column. */}
             <LoadError loaded={Boolean(session.info)} error={session.infoError} />
             {session.info && !session.info.hasTextLayer ? (
               <div className="text-xs muted text-center" style={{ maxWidth: Math.min(620, renderWidth) }}>

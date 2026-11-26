@@ -15,6 +15,17 @@ import type { SearchResponse } from "../../lib/types";
 // The AI chat is its own chunk: most reading sessions never open it, and the
 // Reader route has a 12 KB gzip budget (scripts/check-bundle-budget.mjs).
 const ReaderAiPanel = lazy(() => import("./ReaderAiPanel").then((module) => ({ default: module.ReaderAiPanel })));
+const LazyReaderQuickActions = lazy(() => import("./ReaderQuickActions"));
+
+/** Lazy toolbar handoff buttons so Annotate/PDF Studio icons stay outside the Reader chunk. */
+export function ReaderQuickActions({ path, onNavigate }: { path: string; onNavigate?: Navigate }) {
+  if (!onNavigate) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyReaderQuickActions path={path} onNavigate={onNavigate} />
+    </Suspense>
+  );
+}
 
 export type ReaderSideTab = "info" | "ai";
 

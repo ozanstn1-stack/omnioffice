@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, Moon, Plus, ScanLine, Search, Sun } from "lucide-react";
 import { BrandMark } from "./brand";
 import { BottomNav } from "./bottom-nav";
@@ -21,6 +21,9 @@ export interface MobileShellProps {
   sheetOpen: boolean;
   onOpenSheet: () => void;
   onCloseSheet: () => void;
+  tabsOpen?: boolean;
+  onOpenTabs?: () => void;
+  onCloseTabs?: () => void;
   onNavigate: Navigate;
   onActivateTab: (tab: WorkbenchTab) => void;
   onCloseTab: (id: string) => void;
@@ -38,6 +41,9 @@ export function MobileShell({
   sheetOpen,
   onOpenSheet,
   onCloseSheet,
+  tabsOpen: controlledTabsOpen,
+  onOpenTabs,
+  onCloseTabs,
   onNavigate,
   onActivateTab,
   onCloseTab,
@@ -49,10 +55,29 @@ export function MobileShell({
   const keyboardOpen = useKeyboardOpen();
   const tabs = useWorkbench((s) => s.tabs);
   const activeTabId = useWorkbench((s) => s.activeTabId);
-  const [tabsOpen, setTabsOpen] = useState(false);
+  const [uncontrolledTabsOpen, setUncontrolledTabsOpen] = useState(false);
+
+  const tabsOpen = controlledTabsOpen ?? uncontrolledTabsOpen;
+  const openTabs = () => {
+    if (onOpenTabs) onOpenTabs();
+    else setUncontrolledTabsOpen(true);
+  };
+  const closeTabs = () => {
+    if (onCloseTabs) onCloseTabs();
+    else setUncontrolledTabsOpen(false);
+  };
 
   const isRoot = ROOT_SCREENS.has(screen);
   const showThumbOmnibar = !keyboardOpen && !readerImmersive && (screen === "home" || screen === "tools");
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    if (showThumbOmnibar) document.documentElement.dataset.mobileDock = "open";
+    else delete document.documentElement.dataset.mobileDock;
+    return () => {
+      delete document.documentElement.dataset.mobileDock;
+    };
+  }, [showThumbOmnibar]);
 
   const pickFromSheet = (id: ScreenId) => {
     onNavigate(id);
@@ -81,7 +106,7 @@ export function MobileShell({
           className="mobile-tabs-btn"
           aria-label={t("mobile.tabsButton", { count: tabs.length })}
           title={t("mobile.tabsButton", { count: tabs.length })}
-          onClick={() => setTabsOpen(true)}
+          onClick={openTabs}
         >
           {tabs.length}
         </button>
@@ -120,7 +145,7 @@ export function MobileShell({
         tabs={tabs}
         activeTabId={activeTabId}
         icons={icons}
-        onClose={() => setTabsOpen(false)}
+        onClose={closeTabs}
         onActivate={onActivateTab}
         onCloseTab={onCloseTab}
         onNewTab={() => onNavigate("tools")}

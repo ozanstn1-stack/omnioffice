@@ -16,6 +16,7 @@ import { useT } from "../lib/i18n";
 import { reportError, useSettings, useToasts } from "../lib/store";
 import { BETA_RELEASES_URL, updateChannel, useUpdate, type UpdateChannel } from "../lib/update";
 import { AiSettings } from "../components/ai-settings";
+import { StorageCleanupCard } from "../components/storage-cleanup-card";
 import { appInfo, aiClearData, updateOpen } from "../lib/api";
 import { DiagnosticsExport, OpenWithDiagnostics } from "../components/open-with-diagnostics";
 import { PROFESSIONS, type ProfessionChoice } from "../lib/desks";
@@ -190,6 +191,7 @@ export function Settings() {
 
   const shortcuts: [string, string][] = [
     ["Ctrl + K", t("workbench.commandHint")],
+    ["Ctrl + \\", t("workbench.toggleSplitCmd")],
     ["Ctrl + Shift + P", t("palette.open")],
     ["Ctrl + Shift + F", t("palette.search")],
     ["Ctrl + O", t("common.openFile")],
@@ -530,6 +532,7 @@ export function Settings() {
         </Card>
 
         <AiSettings />
+        <StorageCleanupCard />
 
         <Card className="p-5 flex flex-col gap-3">
           <h3 className="font-semibold flex items-center gap-2">

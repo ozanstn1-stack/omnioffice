@@ -1,5 +1,5 @@
 import React, { useRef, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpLeft, Columns2, Plus, Search, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpLeft, Columns2, ListX, Plus, Search, X } from "lucide-react";
 import { IconButton } from "./ui";
 import { useT } from "../lib/i18n";
 import { routeEnabled, routeFor } from "../lib/routes";
@@ -7,7 +7,16 @@ import { useWorkbench, type WorkbenchTab } from "../lib/workbench-store";
 import type { Navigate, ScreenId } from "../lib/nav";
 
 const QUICK_SHORTCUT = "Ctrl K";
-const SPLIT_CHOICES: readonly ScreenId[] = ["ai", "reader", "office", "notes", "tools"];
+const SPLIT_CHOICES: readonly ScreenId[] = [
+  "ai",
+  "reader",
+  "office",
+  "notes",
+  "compare",
+  "vault",
+  "pdfStudio",
+  "tools",
+];
 
 export function WorkbenchTopBar({
   icons,
@@ -15,6 +24,7 @@ export function WorkbenchTopBar({
   onNavigate,
   onActivateTab,
   onCloseTab,
+  onCloseOtherTabs,
   onPalette,
 }: {
   icons: Record<ScreenId, ReactNode>;
@@ -22,6 +32,7 @@ export function WorkbenchTopBar({
   onNavigate: Navigate;
   onActivateTab: (tab: WorkbenchTab) => void;
   onCloseTab: (id: string) => void;
+  onCloseOtherTabs?: (id: string) => void;
   onPalette: () => void;
 }) {
   const t = useT();
@@ -30,6 +41,7 @@ export function WorkbenchTopBar({
   const splitScreen = useWorkbench((s) => s.splitScreen);
   const toggleSplit = useWorkbench((s) => s.toggleSplit);
   const splitActive = splitScreen !== null && routeEnabled(splitScreen);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
   const tabLabel = (tab: WorkbenchTab) => {
     if (tab.title) return tab.title;
@@ -100,6 +112,11 @@ export function WorkbenchTopBar({
         >
           <Plus size={14} />
         </button>
+        {tabs.length > 2 && onCloseOtherTabs ? (
+          <IconButton label={t("workbench.closeOthers")} onClick={() => onCloseOtherTabs(activeTabId)}>
+            <ListX size={14} />
+          </IconButton>
+        ) : null}
       </div>
 
       <div className="workbench-topbar-actions">
@@ -113,7 +130,7 @@ export function WorkbenchTopBar({
           className={`workbench-split-btn${splitActive ? " is-active" : ""}`}
           aria-pressed={splitActive}
           title={splitActive ? t("workbench.splitClose") : t("workbench.splitOpen")}
-          onClick={() => toggleSplit(screen === "ai" ? "reader" : "ai")}
+          onClick={() => toggleSplit(screen === "ai" ? "reader" : "ai", activeTab?.files ?? [])}
         >
           <Columns2 size={15} aria-hidden />
           <span>{t("workbench.splitOpen")}</span>
@@ -206,7 +223,7 @@ export function WorkbenchSplitHost({
                     key={choice}
                     type="button"
                     className={`workbench-split-chip${splitScreen === choice ? " is-active" : ""}`}
-                    onClick={() => openSplit(choice, choice === splitScreen ? splitFiles : [])}
+                    onClick={() => openSplit(choice, splitFiles)}
                   >
                     {t(routeFor(choice).labelKey)}
                   </button>

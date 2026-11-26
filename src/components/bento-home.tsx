@@ -1,9 +1,10 @@
-import { ArrowRight, FolderOpen, Lock, ScanLine, Search, Sparkles } from "lucide-react";
+import { ArrowRight, FolderOpen, Lock, ScanLine, Search, Settings as SettingsIcon, Sparkles } from "lucide-react";
 import { Button } from "./ui";
 import { JobsGlance } from "./jobs-glance";
 import { recentKind, relativeTime } from "./recent-table";
 import { useT } from "../lib/i18n";
 import { useOfficeTabs } from "../lib/office-store";
+import { useSettings } from "../lib/store";
 import { pickDocumentTokens } from "../lib/file-tokens";
 import { extensionsFor } from "../lib/tool-files";
 import { isAndroid, pickAndroidFiles } from "../lib/mobile";
@@ -94,8 +95,16 @@ export function BentoHeroGrid({
 }) {
   const t = useT();
   const officeTabs = useOfficeTabs((s) => s.tabs);
+  const engine = useSettings((s) => s.engine);
   const activeOffice = officeTabs[officeTabs.length - 1] ?? null;
   const latestRecent = recent[0] ?? null;
+  const missingEngines: string[] = [];
+  if (engine) {
+    if (!engine.pdfium) missingEngines.push("PDFium");
+    if (!isAndroid() && !engine.qpdf) missingEngines.push("qpdf");
+    if (!engine.tesseract) missingEngines.push("Tesseract");
+  }
+  const enginesHealthy = missingEngines.length === 0;
 
   const resumeKind = activeOffice ? activeOffice.kind : latestRecent ? recentKind(latestRecent.fileName) : null;
   const resumeExt = activeOffice
@@ -175,12 +184,31 @@ export function BentoHeroGrid({
         <div className="bento-engine-card">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2 font-semibold text-[13.5px]">
-              <span className="pulse-dot" aria-hidden />
+              <span
+                className="pulse-dot"
+                style={
+                  enginesHealthy ? undefined : { background: "var(--warn)", boxShadow: "0 0 0 4px var(--warn-weak)" }
+                }
+                aria-hidden
+              />
               {t("bento.enginePulse")}
             </span>
-            <Lock size={14} style={{ color: "var(--ok)" }} aria-hidden />
+            {enginesHealthy ? (
+              <Lock size={14} style={{ color: "var(--ok)" }} aria-hidden />
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<SettingsIcon size={12} />}
+                onClick={() => onNavigate("settings")}
+              >
+                {t("bento.engineCheck")}
+              </Button>
+            )}
           </div>
-          <p className="text-xs muted">{t("bento.engineReady")}</p>
+          <p className="text-xs muted">
+            {enginesHealthy ? t("bento.engineReady") : t("bento.enginePartial", { engines: missingEngines.join(", ") })}
+          </p>
           <p className="text-[11.5px] muted">{t("home.supportedFormats")}</p>
         </div>
         <JobsGlance onNavigate={onNavigate} />

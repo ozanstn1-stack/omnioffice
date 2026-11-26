@@ -3404,5 +3404,21 @@
   "mobile.tabsTitle": "Açık sekmeler",
   "mobile.quickCreate": "Hızlı oluştur",
   "mobile.scanNow": "Tara",
-  "mobile.toolsDrawer": "Tüm araçlar ve merkezler"
+  "mobile.toolsDrawer": "Tüm araçlar ve merkezler",
+  "workbench.toggleSplitCmd": "Bölünmüş ekranı aç/kapat",
+  "workbench.nextTabCmd": "Sonraki sekme",
+  "workbench.prevTabCmd": "Önceki sekme",
+  "workbench.closeOthers": "Diğer sekmeleri kapat",
+  "bento.enginePartial": "Eksik isteğe bağlı motorlar: {engines}",
+  "bento.engineCheck": "Motor ayarları",
+  "settings.storageTitle": "Depolama ve önbellek",
+  "settings.storageSummary": "{jobs} tamamlanan iş · {logs} işlem kaydı · {recent} son dosya",
+  "settings.storageIncludeRecent": "Son dosyalar listesini de temizle",
+  "settings.storageIncludeAi": "Kayıtlı yapay zekâ sohbetlerini de temizle",
+  "settings.storageCleanBtn": "Gereksiz depolamayı temizle",
+  "settings.storageCleaned": "Depolama temizlendi ({count} kategori boşaltıldı)",
+  "reader.openInAnnotate": "Metin / İmza ekle",
+  "reader.openInStudio": "PDF Stüdyo'da aç",
+  "reader.aiOpenInWriter": "Writer'da aç",
+  "reader.aiCopied": "Yanıt kopyalandı"
 }

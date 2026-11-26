@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { applyDensity, HOME_TAB_ID, MAX_WORKBENCH_TABS, useWorkbench } from "./workbench-store";
+import { applyDensity, HOME_TAB_ID, MAX_WORKBENCH_TABS, useWorkbench, WORKBENCH_PREFS_KEY } from "./workbench-store";
 import type { ScreenId } from "./nav";
 
 describe("workbench store (v8.2.0)", () => {
@@ -65,5 +65,30 @@ describe("workbench store (v8.2.0)", () => {
     expect(document.documentElement.dataset.density).toBe("compact");
     applyDensity("comfortable");
     expect(document.documentElement.dataset.density).toBe("comfortable");
+  });
+
+  it("persists layout preferences without file paths and closes other tabs cleanly", () => {
+    useWorkbench.getState().syncScreen("merge", ["/secret/a.pdf"]);
+    useWorkbench.getState().syncScreen("reader", ["/secret/b.pdf"]);
+    useWorkbench.getState().setSplitRatio(0.41);
+    useWorkbench.getState().openSplit("notes", ["/secret/b.pdf"]);
+
+    const saved = window.localStorage.getItem(WORKBENCH_PREFS_KEY) ?? "";
+    expect(saved).toContain('"splitRatio":0.41');
+    expect(saved).toContain('"lastSplitScreen":"notes"');
+    expect(saved).not.toContain("/secret/");
+
+    const cycled = useWorkbench.getState().cycleTab(1);
+    expect(cycled?.screen).toBe("home");
+
+    const readerTab = useWorkbench.getState().tabs.find((tab) => tab.screen === "reader")!;
+    useWorkbench.getState().closeOtherTabs(readerTab.id);
+    expect(useWorkbench.getState().tabs.map((tab) => tab.screen)).toEqual(["home", "reader"]);
+  });
+
+  it("forwards active document files when toggling Split View open", () => {
+    useWorkbench.getState().toggleSplit("ai", ["/docs/contract.pdf"]);
+    expect(useWorkbench.getState().splitScreen).toBe("ai");
+    expect(useWorkbench.getState().splitFiles).toEqual(["/docs/contract.pdf"]);
   });
 });

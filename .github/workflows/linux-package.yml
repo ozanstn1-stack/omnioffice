@@ -105,6 +105,7 @@ jobs:
         with:
           name: linux-packages
           path: release-artifacts/*
+          retention-days: 3
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:

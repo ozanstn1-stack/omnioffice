@@ -49,3 +49,4 @@ jobs:
           name: compat-report
           path: target/compat/report.json
           if-no-files-found: warn
+          retention-days: 7

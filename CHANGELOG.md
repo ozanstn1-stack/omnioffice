@@ -6,6 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.3.0] - 2026-11-26
+
+### Added
+
+- **Guaranteed APK + EXE release gate (`verify-release.yml`, `beta.yml`, `scripts/prepare-release.mjs`):** adds a post-release verification gate checking that every tagged release publishes both Windows Installer/Portable `.exe`/`.zip` and Android `arm64-v8a` / `armeabi-v7a` APKs & AABs, adds a parallel `beta-android` job (`arm64-v8a` APK) to rolling beta releases, and adds `npm run release:bump` to bump all manifests in one command.
+- **Automated storage cleanup (`scripts/cleanup-storage.mjs`, `storage-cleanup.yml`, `StorageCleanupCard`):** adds scheduled/PR CI workflow cache and artifact pruning (without touching GitHub Releases), caps `upload-artifact` retention across all workflows (`<= 14` days), adds intermediate Android Gradle cache pruning, provides `npm run clean:storage` / `clean:storage:deep` for local build/cache cleanup, and adds a live storage cleanup card in Settings.
+- **Workbench & Reader productivity improvements (`useWorkbench`, `ReaderQuickActions`, `ReaderAiActions`):** persists Split View ratio, rail state, and last split pane without storing file paths; adds `Ctrl+\` (Split View toggle), `Ctrl+Shift+]` / `Ctrl+Shift+[` (tab cycling), and "Close other tabs"; adds lazy one-click Reader toolbar handoffs to Annotate and PDF Studio; and adds Copy & Open-in-Writer export actions on Reader AI answers.
+
+### Changed
+
+- **Hybrid shell & Bento refinements (`app-commands.ts`, `bento-home.tsx`, `src/styles/workbench.css`, `src/styles/mobile-shell.css`):** modularized v8.2.0 workbench and mobile-shell CSS into dedicated stylesheets, extracted global/workbench command registration into `app-commands.ts`, replaced runtime `package.json` imports with build-time `__APP_VERSION__`, expanded Split View target choices with active-file forwarding, and wired `BentoHeroGrid`'s engine pulse card to real `useSettings().engine` diagnostics.
+
+### Fixed
+
+- **Navigation, Android back button & toast clearance (`App.tsx`, `MobileShell`, `styles.css`):** routed command-palette `view.<id>` commands and mobile quick-action overlays through `navigate()` so live Workbench tabs stay in sync, wired Android Back handling to close the visual tab grid, and lifted mobile toasts above the bottom thumb dock (`data-mobile-dock="open"`).
+
 ## [8.2.0] - 2026-11-23
 
 ### Added

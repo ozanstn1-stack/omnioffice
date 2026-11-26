@@ -1,7 +1,7 @@
 {
   "name": "pdf-swiss-army-knife",
   "private": true,
-  "version": "8.2.0",
+  "version": "8.3.0",
   "engines": {
     "node": ">=20"
   },
@@ -73,7 +73,11 @@
     "acl:sync": "node scripts/command-acl.mjs",
     "acl:check": "node scripts/command-acl.mjs --check",
     "signing:check": "node scripts/check-signing-readiness.mjs",
-    "repro:check": "node scripts/check-reproducibility-inputs.mjs"
+    "repro:check": "node scripts/check-reproducibility-inputs.mjs",
+    "release:bump": "node scripts/prepare-release.mjs",
+    "clean:storage": "node scripts/cleanup-storage.mjs",
+    "clean:storage:work": "node scripts/cleanup-storage.mjs --keep-target",
+    "clean:storage:deep": "node scripts/cleanup-storage.mjs --deep"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
