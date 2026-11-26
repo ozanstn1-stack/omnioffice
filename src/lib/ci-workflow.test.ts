@@ -611,6 +611,8 @@ describe("GitHub token permissions (E5)", () => {
       ["pr-size.yml", "size", { issues: "write", "pull-requests": "write" }],
       ["release.yml", "windows", { contents: "write", "id-token": "write", attestations: "write" }],
       ["release.yml", "linux", { contents: "write" }],
+      ["beta.yml", "beta-android", { contents: "write" }],
+      ["storage-cleanup.yml", "cleanup", { contents: "read", actions: "write" }],
     ];
     for (const [name, job, permissions] of needs) {
       const { jobs } = parsed(name);
@@ -619,5 +621,41 @@ describe("GitHub token permissions (E5)", () => {
         expect(jobs[job]?.permissions?.[permission], `${name} ${job} ${permission}`).toBe(level);
       }
     }
+  });
+});
+
+describe("release APK+EXE gate and storage retention (8.3.0)", () => {
+  it("caps retention-days on every upload-artifact step to avoid 90-day bloat", () => {
+    const dir = path.join(root, ".github", "workflows");
+    for (const file of readdirSync(dir).filter((name) => name.endsWith(".yml"))) {
+      const text = read(file);
+      const blocks = text.split(/\n(?= {6}- )/);
+      for (const block of blocks) {
+        if (!block.includes("actions/upload-artifact@")) continue;
+        const match = /retention-days:\s*(\d+)/.exec(block);
+        expect(match, `${file}: upload-artifact without retention-days`).not.toBeNull();
+        expect(Number(match?.[1] ?? 999), `${file} retention-days`).toBeLessThanOrEqual(14);
+      }
+    }
+  });
+
+  it("verifies both Windows EXE and Android APK assets on every release", () => {
+    const verify = read("verify-release.yml");
+    expect(verify).toContain("runs-on: ubuntu-24.04");
+    expect(verify).not.toContain("actions/checkout@");
+    expect(verify).toContain("OmniOffice-Setup-${VERSION}.exe");
+    expect(verify).toContain("OmniOffice-Android-${VERSION}-arm64-v8a.apk");
+    expect(verify).toContain("OmniOffice-Android-${VERSION}-armeabi-v7a.apk");
+    expect(beta).toContain("beta-android:");
+    expect(beta).toContain("OmniOffice-Android-beta-arm64-v8a.apk");
+  });
+
+  it("keeps storage-cleanup least-privilege and never deletes GitHub Releases", () => {
+    const cleanup = read("storage-cleanup.yml");
+    expect(cleanup).toContain("runs-on: ubuntu-24.04");
+    expect(cleanup).not.toContain("actions/checkout@");
+    expect(cleanup).not.toContain("gh release delete");
+    expect(cleanup).toContain("actions/artifacts");
+    expect(cleanup).toContain("actions/caches");
   });
 });

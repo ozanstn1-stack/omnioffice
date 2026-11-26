@@ -3404,5 +3404,21 @@
   "mobile.tabsTitle": "Open tabs",
   "mobile.quickCreate": "Quick create",
   "mobile.scanNow": "Scan",
-  "mobile.toolsDrawer": "All tools & hubs"
+  "mobile.toolsDrawer": "All tools & hubs",
+  "workbench.toggleSplitCmd": "Toggle split view",
+  "workbench.nextTabCmd": "Next workbench tab",
+  "workbench.prevTabCmd": "Previous workbench tab",
+  "workbench.closeOthers": "Close other tabs",
+  "bento.enginePartial": "Missing optional engines: {engines}",
+  "bento.engineCheck": "Engine settings",
+  "settings.storageTitle": "Storage & cache",
+  "settings.storageSummary": "{jobs} finished jobs · {logs} log entries · {recent} recent files",
+  "settings.storageIncludeRecent": "Also clear recent files list",
+  "settings.storageIncludeAi": "Also clear saved AI chats & index",
+  "settings.storageCleanBtn": "Clean unnecessary storage",
+  "settings.storageCleaned": "Storage cleaned ({count} categories cleared)",
+  "reader.openInAnnotate": "Annotate & sign",
+  "reader.openInStudio": "Open in PDF Studio",
+  "reader.aiOpenInWriter": "Open in Writer",
+  "reader.aiCopied": "Answer copied"
 }

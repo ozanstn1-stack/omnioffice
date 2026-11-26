@@ -146,6 +146,7 @@ jobs:
           name: coverage-frontend
           path: coverage/
           if-no-files-found: ignore
+          retention-days: 5
       - name: Production build
         run: npx vite build
       - name: Bundle budget
@@ -410,6 +411,7 @@ jobs:
             lcov.info
             coverage-summary.txt
           if-no-files-found: ignore
+          retention-days: 5
 
   # The workspace declares a rust-version; this job proves the declaration is
   # true instead of trusting it. Cargo.lock already contains crates that need
@@ -590,6 +592,7 @@ jobs:
           name: e2e-screenshots
           path: e2e/artifacts/
           if-no-files-found: ignore
+          retention-days: 3
 
   # The same harness on the platform that is actually shipped: WebView2 driven
   # by msedgedriver, with the native engines fetched so the Reader step can
@@ -736,6 +739,7 @@ jobs:
           name: e2e-screenshots-windows
           path: e2e/artifacts/
           if-no-files-found: ignore
+          retention-days: 3
 
   # Short nightly fuzzing on master keeps the hardened ZIP/XML/reader layers
   # exercised without making every pull request wait for it.
@@ -821,6 +825,7 @@ jobs:
           name: fuzz-artifacts
           path: fuzz/artifacts/
           if-no-files-found: ignore
+          retention-days: 7
 
   # Criterion trend benchmarks with a regression gate. The previous master
   # run's means are cached; a benchmark >15 % slower than the others moved
@@ -869,6 +874,7 @@ jobs:
           name: criterion-report
           path: target/criterion/
           if-no-files-found: error
+          retention-days: 5
 
   # Blocking on purpose: a known-vulnerable dependency is a release blocker,
   # not a note in the log. Fix or override an advisory explicitly.

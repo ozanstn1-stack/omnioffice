@@ -1,10 +1,4 @@
-/**
- * "Ask this document" panel beside the reader. Everything it sends is about
- * the open PDF only: summaries go through `ai_summarize` and questions through
- * `ai_chat` with the `document` scope, whose system prompt answers strictly
- * from the document's text and cites pages. The same data notice as the AI
- * screen gates every request (and the backend enforces it again).
- */
+/** "Ask this document" AI side panel for the PDF Reader. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, Send, Settings as SettingsIcon, Sparkles, Square, Trash2 } from "lucide-react";
 import { aiChat, aiGetSettings, aiSummarize, cancelJob, onAiChunk } from "../../lib/api";
@@ -17,6 +11,7 @@ import { useSettings } from "../../lib/store";
 import { uid } from "../../lib/format";
 import type { AiSettingsView, DocChatMessage } from "../../lib/types";
 import type { Navigate } from "../../lib/nav";
+import { ReaderAiAnswerActions } from "./ReaderAiActions";
 
 type PanelSettings = AiSettingsView & { provider?: string; providerLabel?: string };
 
@@ -354,7 +349,12 @@ export function ReaderAiPanel({
             >
               {message.role === "assistant" ? (
                 message.content ? (
-                  renderAnswer(message.content)
+                  <div className="flex flex-col gap-1.5">
+                    <div>{renderAnswer(message.content)}</div>
+                    {!running ? (
+                      <ReaderAiAnswerActions path={path} content={message.content} onNavigate={onNavigate} />
+                    ) : null}
+                  </div>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 muted">
                     <Spinner size={12} /> {t("reader.aiThinking")}

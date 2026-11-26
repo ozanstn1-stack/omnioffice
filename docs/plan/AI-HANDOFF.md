@@ -8,7 +8,8 @@ Bu dosya, [`ROADMAP-3.md`](./ROADMAP-3.md) yol haritasını uygulayacak yapay ze
   `feat/<issue#>-kısa-ad` veya `fix/<issue#>-kısa-ad`.
 - **PR:** her PR `master`'a açılır, gövdesinde `Closes #N` olur ve CI yeşil olmadan birleşmez.
 - **Sürüm:** iş PR'larında sürüm yükseltilmez. Bir epic'in tüm alt issue'ları kapanınca ayrı bir
-  `release/vX.Y.Z` PR'ı açılır. Bu PR şunları içerir:
+  `release/vX.Y.Z` PR'ı açılır (veya tek komutla `npm run release:bump -- <patch|minor|major|X.Y.Z>`
+  çalıştırılıp `CHANGELOG.md`, `fastlane`, `README.md` ve `RELEASE_READINESS.md` güncellenir). Bu PR şunları içerir:
   - **Sürüm numarası:** `package.json` (satır 4), `package-lock.json` (iki yer), `Cargo.toml`
     (`version`), `Cargo.lock` (yalnızca `aicore`, `officecore`, `pdf-swiss-army-knife`,
     `pdfcore`, `synccore`; `objc2-encode`'a dokunma), `src-tauri/tauri.conf.json`,
@@ -35,7 +36,8 @@ Bu dosya, [`ROADMAP-3.md`](./ROADMAP-3.md) yol haritasını uygulayacak yapay ze
   - `latest.json` ve `.sig`
   - `SHA256SUMS*`
 
-  Biri eksikse sürüm tamamlanmış sayılmaz.
+  Biri eksikse sürüm tamamlanmış sayılmaz. `.github/workflows/verify-release.yml`, hem `Release` hem `Android` iş akışları tamamlandığında tüm Setup/Portable `.exe`/`.zip` ve Android APK/AAB dosyalarının `vX.Y.Z` sayfasında bulunduğunu otomatik doğrular.
+- **Depolama hijyeni (zorunlu):** çalışma sırasında veya iş bittikten sonra `dist/`, `coverage/`, `junit.xml` ve önbelleklerin şişmemesi için `npm run clean:storage` (veya iş tamamen bitince `npm run clean:storage:deep`) çalıştırılır. `.github/workflows/storage-cleanup.yml` ise eski CI önbellek ve artifact'larını Release varlıklarına dokunmadan temizler.
 - **Tag asla taşınmaz:** v4.7.0'da tag yayından sonra taşındı. Hata çıkarsa yeni bir yama sürümü
   (X.Y.Z+1) yayınlanır.
 - **Authenticode (opsiyonel):** sağlayıcı sırları tanımlıysa `release.yml` Windows işi exe'yi

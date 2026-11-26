@@ -53,6 +53,7 @@ export interface WorkbenchShellProps {
   onNavigate: Navigate;
   onActivateTab: (tab: WorkbenchTab) => void;
   onCloseTab: (id: string) => void;
+  onCloseOtherTabs?: (id: string) => void;
   onSearch: () => void;
   onPalette: () => void;
   onToggleTheme: () => void;
@@ -71,6 +72,7 @@ export function WorkbenchShell({
   onNavigate,
   onActivateTab,
   onCloseTab,
+  onCloseOtherTabs,
   onSearch,
   onPalette,
   onToggleTheme,
@@ -270,6 +272,7 @@ export function WorkbenchShell({
               onNavigate={onNavigate}
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
+              onCloseOtherTabs={onCloseOtherTabs}
               onPalette={onPalette}
             />
           )}

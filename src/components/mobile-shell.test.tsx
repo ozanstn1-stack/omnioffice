@@ -75,4 +75,66 @@ describe("MobileShell (v8.2.0 Android bottom-first)", () => {
     expect(onNavigate).toHaveBeenCalledWith("scanner");
     expect(onCloseSheet).toHaveBeenCalled();
   });
+
+  it("supports controlled tabsOpen state and sets mobile dock dataset attribute on Home", async () => {
+    const user = userEvent.setup();
+    const onOpenTabs = vi.fn();
+    const onCloseTabs = vi.fn();
+
+    const { rerender, unmount } = render(
+      <MobileShell
+        icons={icons}
+        screen="home"
+        activeLabel="Home"
+        isDark={false}
+        readerImmersive={false}
+        sheetOpen={false}
+        onOpenSheet={vi.fn()}
+        onCloseSheet={vi.fn()}
+        tabsOpen={false}
+        onOpenTabs={onOpenTabs}
+        onCloseTabs={onCloseTabs}
+        onNavigate={vi.fn()}
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onSearch={vi.fn()}
+        onToggleTheme={vi.fn()}
+      >
+        <div>Home</div>
+      </MobileShell>,
+    );
+
+    expect(document.documentElement.dataset.mobileDock).toBe("open");
+    await user.click(screen.getByRole("button", { name: /Open tabs \(1\)/i }));
+    expect(onOpenTabs).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <MobileShell
+        icons={icons}
+        screen="home"
+        activeLabel="Home"
+        isDark={false}
+        readerImmersive={false}
+        sheetOpen={false}
+        onOpenSheet={vi.fn()}
+        onCloseSheet={vi.fn()}
+        tabsOpen
+        onOpenTabs={onOpenTabs}
+        onCloseTabs={onCloseTabs}
+        onNavigate={vi.fn()}
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onSearch={vi.fn()}
+        onToggleTheme={vi.fn()}
+      >
+        <div>Home</div>
+      </MobileShell>,
+    );
+    expect(screen.getByRole("dialog", { name: /Open tabs/i })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^Close$/i }));
+    expect(onCloseTabs).toHaveBeenCalledTimes(1);
+
+    unmount();
+    expect(document.documentElement.dataset.mobileDock).toBeUndefined();
+  });
 });

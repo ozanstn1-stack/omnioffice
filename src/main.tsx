@@ -5,6 +5,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ensureLanguage } from "./lib/i18n";
 import { preloadTypedCommands } from "./lib/typed-call";
 import "./styles.css";
+import "./styles/workbench.css";
+import "./styles/mobile-shell.css";
 
 const splash = document.getElementById("root");
 if (splash) {

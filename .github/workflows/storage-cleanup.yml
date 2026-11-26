@@ -1,0 +1,72 @@
+name: Storage cleanup
+
+# Automatically prunes ephemeral GitHub Actions caches (for closed PR branches
+# and stale entries) and aged workflow artifacts so CI storage never bloats.
+# Published GitHub Releases and their APK/EXE assets are never touched.
+
+on:
+  schedule:
+    - cron: "15 3 * * 0"
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storage-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Prune stale CI artifacts and closed-PR caches
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Delete caches for closed pull request
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          ref="refs/pull/${PR_NUMBER}/merge"
+          ids=$(gh api --paginate "repos/$REPO/actions/caches?ref=$ref" --jq '.actions_caches[].id' || true)
+          deleted=0
+          for id in $ids; do
+            gh api -X DELETE "repos/$REPO/actions/caches/$id" >/dev/null || true
+            deleted=$((deleted + 1))
+          done
+          echo "Deleted $deleted Actions cache(s) for closed PR #$PR_NUMBER ($ref)."
+
+      - name: Prune aged workflow artifacts and unused caches
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          artifact_cutoff=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          cache_cutoff=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          artifact_ids=$(gh api --paginate "repos/$REPO/actions/artifacts" \
+            --jq ".artifacts[] | select(.expired == false and .created_at < \"$artifact_cutoff\") | .id" || true)
+          a_count=0
+          for id in $artifact_ids; do
+            gh api -X DELETE "repos/$REPO/actions/artifacts/$id" >/dev/null || true
+            a_count=$((a_count + 1))
+          done
+
+          cache_ids=$(gh api --paginate "repos/$REPO/actions/caches" \
+            --jq ".actions_caches[] | select(.last_accessed_at < \"$cache_cutoff\") | .id" || true)
+          c_count=0
+          for id in $cache_ids; do
+            gh api -X DELETE "repos/$REPO/actions/caches/$id" >/dev/null || true
+            c_count=$((c_count + 1))
+          done
+          echo "Pruned $a_count aged workflow artifact(s) (>7d) and $c_count stale cache(s) (>14d)."

@@ -56,3 +56,4 @@ jobs:
           name: specta-bindings
           path: src/lib/generated/specta.ts
           if-no-files-found: error
+          retention-days: 5

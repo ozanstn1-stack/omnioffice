@@ -1,0 +1,109 @@
+name: Verify release assets (APK + EXE)
+
+# Guarantees that every tagged release carries both the Windows EXE installers
+# and the signed Android APKs/AABs before it can be considered complete.
+# Runs automatically whenever Release or Android completes on a `v*` tag.
+
+on:
+  workflow_run:
+    workflows: ["Release", "Android"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify (for example v8.3.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-release-${{ github.event.inputs.tag || github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify EXE and APK release assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_repository.full_name == github.repository &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    steps:
+      - name: Check sibling workflows and verify APK + EXE release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          TAG="${DISPATCH_TAG:-$RUN_TAG}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Skipping non-release tag '$TAG'."
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ -n "${RUN_SHA:-}" ]; then
+            for wf in release.yml android.yml; do
+              state=$(gh api "repos/$REPO/actions/workflows/$wf/runs?head_sha=$RUN_SHA&per_page=10" \
+                --jq '[.workflow_runs[] | select(.head_branch == "'"$TAG"'" or .event == "workflow_dispatch")][0] | "\(.status // "missing"):\(.conclusion // "none")"')
+              status="${state%%:*}"
+              conclusion="${state#*:}"
+              echo "Workflow $wf for $TAG ($RUN_SHA): status=$status conclusion=$conclusion"
+              if [ "$status" = "missing" ] || [ "$status" = "queued" ] || [ "$status" = "in_progress" ] || [ "$status" = "waiting" ]; then
+                echo "::notice::Waiting for sibling workflow $wf to complete before final APK+EXE verification."
+                exit 0
+              fi
+              if [ "$conclusion" != "success" ]; then
+                echo "::error::Sibling workflow $wf failed ($conclusion) for release $TAG."
+                exit 1
+              fi
+            done
+          fi
+
+          assets_json=$(gh release view "$TAG" --repo "$REPO" --json assets)
+          required=(
+            "OmniOffice-Setup-${VERSION}.exe"
+            "OmniOffice_${VERSION}_x64-setup.exe"
+            "OmniOffice-Portable-${VERSION}.zip"
+            "OmniOffice-Android-${VERSION}-arm64-v8a.apk"
+            "OmniOffice-Android-${VERSION}-armeabi-v7a.apk"
+            "OmniOffice-Android-${VERSION}-arm64-v8a.aab"
+            "OmniOffice-Android-${VERSION}-armeabi-v7a.aab"
+            "SHA256SUMS.txt"
+            "SHA256SUMS-android.txt"
+          )
+
+          missing=0
+          {
+            echo "## Release Completeness Check ($TAG)"
+            echo ""
+            echo "| Asset | Status | Size |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for name in "${required[@]}"; do
+            size=$(echo "$assets_json" | jq -r --arg n "$name" '.assets[] | select(.name == $n) | .size' | head -n1)
+            if [ -z "$size" ] || [ "$size" = "0" ]; then
+              echo "::error::Missing or empty required release asset: $name"
+              echo "| \`$name\` | MISSING | - |" >> "$GITHUB_STEP_SUMMARY"
+              missing=$((missing + 1))
+            else
+              mb=$(awk "BEGIN { printf \"%.1f MB\", $size / 1048576 }")
+              echo "| \`$name\` | OK | $mb |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::$missing mandatory APK/EXE release asset(s) missing on $TAG."
+            exit 1
+          fi
+          echo "Release $TAG verified: all Windows EXE and Android APK/AAB assets are present."

@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 8.0.0
+# Release Readiness — OmniOffice 8.3.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,27 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 8.3.0) - Release APK+EXE gate, storage cleanup, and Workbench/Reader UX
+
+- **Guaranteed APK + EXE release completeness gate and parallel Android arm64 beta APK publishing:**
+  `test:src/lib/ci-workflow.test.ts#verifies both Windows EXE and Android APK assets on every release`
+- **Bounded workflow artifact retention and least-privilege CI storage cleanup (never deleting GitHub Releases):**
+  `test:src/lib/ci-workflow.test.ts#caps retention-days on every upload-artifact step to avoid 90-day bloat`
+  `test:src/lib/ci-workflow.test.ts#keeps storage-cleanup least-privilege and never deletes GitHub Releases`
+- **Single-command SemVer bumper (`prepare-release.mjs`) and automated local workspace/cache cleanup (`cleanup-storage.mjs`):**
+  (no test: covered by `node --test scripts/prepare-release.test.mjs scripts/cleanup-storage.test.mjs` rather than Vitest JUnit)
+- **Settings in-app storage cleanup card (`StorageCleanupCard`) clearing finished jobs, operation logs, layout prefs, and optional recent/AI index data:**
+  `test:src/components/storage-cleanup-card.test.tsx#summarizes storage counts and cleans finished jobs, logs, and optional data`
+- **Split View layout persistence without file paths, tab cycling, "Close other tabs", active-file forwarding into Split View, and live engine status in Bento:**
+  `test:src/lib/workbench-store.test.ts#persists layout preferences without file paths and closes other tabs cleanly`
+  `test:src/lib/workbench-store.test.ts#forwards active document files when toggling Split View open`
+  `test:src/components/workbench-shell.test.tsx#forwards open files into Split View, closes other tabs, and reflects engine status in BentoHeroGrid`
+- **Controlled Android tab grid back-button state and mobile toast clearance above bottom thumb dock:**
+  `test:src/components/mobile-shell.test.tsx#supports controlled tabsOpen state and sets mobile dock dataset attribute on Home`
+- **Reader toolbar lazy handoff to Annotate / PDF Studio and Reader AI answer export to Writer:**
+  `test:src/screens/reader/reader-ai-export.test.tsx#renders Reader quick handoff actions to Annotate and PDF Studio`
+  `test:src/screens/reader/reader-ai-export.test.tsx#builds a Writer document from an AI answer and navigates to Office`
 
 ## Implemented (this cycle, 8.2.0) - Radical hybrid UI for Windows and Android
 

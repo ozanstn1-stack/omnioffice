@@ -90,3 +90,4 @@ jobs:
           name: fuzz-artifacts
           path: fuzz/artifacts/
           if-no-files-found: ignore
+          retention-days: 7
