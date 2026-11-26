@@ -31,13 +31,23 @@ frontend_log() {
 }
 
 attempt=0
+empty_pids=0
 while [ "$attempt" -lt 60 ]; do
   pid=$(timeout 15 adb shell pidof "$PKG" 2>/dev/null | tr -d '\r' || true)
   if [ -z "$pid" ]; then
-    echo "launch smoke: the app process exited" >&2
-    timeout 15 adb logcat -d -v threadtime 2>/dev/null | grep -E "AndroidRuntime|FATAL|F DEBUG|panicked|RustStdoutStderr" | tail -n 150 >&2 || true
-    exit 1
+    empty_pids=$((empty_pids + 1))
+    if [ "$empty_pids" -ge 3 ]; then
+      echo "launch smoke: the app process exited (adb state: $(timeout 5 adb get-state 2>/dev/null || echo unavailable))" >&2
+      frontend_log | tail -n 20 >&2 || true
+      timeout 15 adb logcat -d -v threadtime > android-logcat.txt 2>/dev/null || true
+      grep -E "AndroidRuntime|FATAL|F DEBUG|panicked|RustStdoutStderr|chromium|Tauri" android-logcat.txt | tail -n 150 >&2 || true
+      exit 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 2
+    continue
   fi
+  empty_pids=0
   if frontend_log | grep -q "engines:"; then
     echo "launch smoke: PASS - the frontend started and reached the Rust side"
     frontend_log | tail -n 5
@@ -51,7 +61,8 @@ while [ "$attempt" -lt 60 ]; do
   sleep 2
 done
 
-echo "launch smoke: the frontend did not start within 120 s" >&2
+echo "launch smoke: the frontend did not start within 120 s (adb state: $(timeout 5 adb get-state 2>/dev/null || echo unavailable))" >&2
 frontend_log >&2
-timeout 15 adb logcat -d -v threadtime 2>/dev/null | grep -E "AndroidRuntime|FATAL|F DEBUG|chromium|RustStdoutStderr|Tauri" | tail -n 150 >&2 || true
+timeout 15 adb logcat -d -v threadtime > android-logcat.txt 2>/dev/null || true
+grep -E "AndroidRuntime|FATAL|F DEBUG|chromium|RustStdoutStderr|Tauri" android-logcat.txt | tail -n 150 >&2 || true
 exit 1

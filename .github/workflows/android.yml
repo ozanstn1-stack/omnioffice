@@ -274,7 +274,17 @@ jobs:
       # ABI list says otherwise; the emulator is x86_64, so only that one is
       # built here (RustPlugin.kt reads -PabiList/-ParchList/-PtargetList).
       - name: Build the x86_64 Android library (for the emulator)
-        run: npm run tauri android build -- --apk --ci --target x86_64
+        run: |
+          set -e
+          for attempt in 1 2; do
+            if npm run tauri android build -- --apk --ci --target x86_64; then
+              break
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              exit 1
+            fi
+            sleep 20
+          done
 
       - name: Android unit tests
         working-directory: src-tauri/gen/android
@@ -287,10 +297,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Configure emulator stability (disable host Vulkan)
+      - name: Configure emulator stability and free runner disk
         run: |
           mkdir -p ~/.android
           printf 'Vulkan = off\nGLDirectMem = on\n' >> ~/.android/advancedFeatures.ini
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          df -h /
 
       - name: Instrumented tests (open-with pipeline) and launch smoke test
         timeout-minutes: 25
@@ -299,8 +311,10 @@ jobs:
           api-level: 34
           arch: x86_64
           profile: pixel_5
+          cores: 4
+          ram-size: 3072M
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -feature -Vulkan
+          emulator-options: -no-window -gpu guest -no-snapshot -noaudio -no-boot-anim -feature -Vulkan
           # The runner executes each script line in its own shell, so the test
           # and the logcat capture share one line. On failure the crash lines
           # are printed and the full logcat is kept for the artifact below.
