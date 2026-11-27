@@ -2,24 +2,32 @@ name: Verify release assets (APK + EXE)
 
 # Guarantees that every tagged release carries both the Windows EXE installers
 # and the signed Android APKs/AABs before it can be considered complete.
-# Runs automatically whenever Release or Android completes on a `v*` tag.
+# Dispatched directly at the end of Release and Android tag builds (avoiding
+# GitHub's GITHUB_TOKEN `workflow_run` suppression), or run manually for a tag.
 
 on:
-  workflow_run:
-    workflows: ["Release", "Android"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to verify (for example v8.3.0)"
+        description: "Release tag to verify (for example v8.3.1)"
         required: true
+        type: string
+      sha:
+        description: "Commit SHA of the release tag (optional; enables sibling workflow checks)"
+        required: false
+        default: ""
+        type: string
+      caller:
+        description: "Workflow that dispatched verification (release, android, or empty for manual)"
+        required: false
+        default: ""
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: verify-release-${{ github.event.inputs.tag || github.event.workflow_run.head_branch || github.ref_name }}
+  group: verify-release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -29,35 +37,49 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.head_repository.full_name == github.repository &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
+      actions: read
     steps:
       - name: Check sibling workflows and verify APK + EXE release assets
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          DISPATCH_TAG: ${{ github.event.inputs.tag }}
-          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
-          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ inputs.tag }}
+          RUN_SHA: ${{ inputs.sha }}
+          CALLER: ${{ inputs.caller }}
         run: |
           set -euo pipefail
-          TAG="${DISPATCH_TAG:-$RUN_TAG}"
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Skipping non-release tag '$TAG'."
-            exit 0
+            echo "::error::Invalid release tag '$TAG' (expected vX.Y.Z)."
+            exit 1
           fi
           VERSION="${TAG#v}"
 
-          if [ "$EVENT_NAME" = "workflow_run" ] && [ -n "${RUN_SHA:-}" ]; then
-            for wf in release.yml android.yml; do
-              state=$(gh api "repos/$REPO/actions/workflows/$wf/runs?head_sha=$RUN_SHA&per_page=10" \
-                --jq '[.workflow_runs[] | select(.head_branch == "'"$TAG"'" or .event == "workflow_dispatch")][0] | "\(.status // "missing"):\(.conclusion // "none")"')
-              status="${state%%:*}"
-              conclusion="${state#*:}"
-              echo "Workflow $wf for $TAG ($RUN_SHA): status=$status conclusion=$conclusion"
+          if [ -n "${RUN_SHA:-}" ]; then
+            if [[ ! "$RUN_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Invalid commit SHA '$RUN_SHA' (expected 40 lowercase hex characters)."
+              exit 1
+            fi
+
+            case "${CALLER:-}" in
+              release) workflows=(android.yml) ;;
+              android) workflows=(release.yml) ;;
+              *) workflows=(release.yml android.yml) ;;
+            esac
+
+            for wf in "${workflows[@]}"; do
+              for attempt in 1 2; do
+                state=$(gh api "repos/$REPO/actions/workflows/$wf/runs?head_sha=$RUN_SHA&per_page=10" \
+                  | jq -r --arg tag "$TAG" '([.workflow_runs[] | select(.head_branch == $tag)][0] // {}) | "\(.status // "missing"):\(.conclusion // "none")"')
+                status="${state%%:*}"
+                conclusion="${state#*:}"
+                echo "Workflow $wf for $TAG ($RUN_SHA) [attempt $attempt]: status=$status conclusion=$conclusion"
+                if [ "$status" = "in_progress" ] && [ "$attempt" -eq 1 ]; then
+                  sleep 15
+                  continue
+                fi
+                break
+              done
+
               if [ "$status" = "missing" ] || [ "$status" = "queued" ] || [ "$status" = "in_progress" ] || [ "$status" = "waiting" ]; then
                 echo "::notice::Waiting for sibling workflow $wf to complete before final APK+EXE verification."
                 exit 0

@@ -611,6 +611,8 @@ describe("GitHub token permissions (E5)", () => {
       ["pr-size.yml", "size", { issues: "write", "pull-requests": "write" }],
       ["release.yml", "windows", { contents: "write", "id-token": "write", attestations: "write" }],
       ["release.yml", "linux", { contents: "write" }],
+      ["release.yml", "verify-release", { actions: "write" }],
+      ["android.yml", "verify-release", { actions: "write" }],
       ["beta.yml", "beta-android", { contents: "write" }],
       ["storage-cleanup.yml", "cleanup", { contents: "read", actions: "write" }],
     ];
@@ -643,9 +645,30 @@ describe("release APK+EXE gate and storage retention (8.3.0)", () => {
     const verify = read("verify-release.yml");
     expect(verify).toContain("runs-on: ubuntu-24.04");
     expect(verify).not.toContain("actions/checkout@");
+    expect(verify).toContain("workflow_dispatch:");
+    expect(verify).not.toContain("workflow_run:");
+    expect(verify).toContain("sha:");
+    expect(verify).toContain("caller:");
+    expect(verify).toContain("RUN_SHA");
     expect(verify).toContain("OmniOffice-Setup-${VERSION}.exe");
     expect(verify).toContain("OmniOffice-Android-${VERSION}-arm64-v8a.apk");
     expect(verify).toContain("OmniOffice-Android-${VERSION}-armeabi-v7a.apk");
+
+    for (const [name, workflow, caller] of [
+      ["release.yml", release, "release"],
+      ["android.yml", android, "android"],
+    ] as const) {
+      const start = workflow.indexOf("\n  verify-release:\n");
+      expect(start, `${name} verify-release job`).toBeGreaterThan(-1);
+      const rest = workflow.slice(start + 1);
+      const nextJob = rest.slice(1).search(/\n {2}[a-z0-9-]+:\n/);
+      const jobText = nextJob === -1 ? rest : rest.slice(0, nextJob + 1);
+      expect(jobText, name).toContain("startsWith(github.ref, 'refs/tags/v')");
+      expect(jobText, name).toContain("gh workflow run verify-release.yml");
+      expect(jobText, name).toContain(`-f caller="${caller}"`);
+      expect(jobText, name).not.toContain("actions/checkout@");
+    }
+
     expect(beta).toContain("beta-android:");
     expect(beta).toContain("OmniOffice-Android-beta-arm64-v8a.apk");
   });
