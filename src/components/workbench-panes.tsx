@@ -1,9 +1,21 @@
-import React, { useRef, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, ArrowUpLeft, Columns2, ListX, Plus, Search, X } from "lucide-react";
+import React, { useRef, useState, type ReactNode } from "react";
+import {
+  ArrowLeft,
+  ArrowLeftRight,
+  ArrowRight,
+  ArrowUpLeft,
+  Columns2,
+  ListX,
+  Pin,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
 import { IconButton } from "./ui";
+import { WorkbenchTabMenu } from "./workbench-tab-menu";
 import { useT } from "../lib/i18n";
 import { routeEnabled, routeFor } from "../lib/routes";
-import { useWorkbench, type WorkbenchTab } from "../lib/workbench-store";
+import { HOME_TAB_ID, useWorkbench, type WorkbenchTab } from "../lib/workbench-store";
 import type { Navigate, ScreenId } from "../lib/nav";
 
 const QUICK_SHORTCUT = "Ctrl K";
@@ -25,6 +37,7 @@ export function WorkbenchTopBar({
   onActivateTab,
   onCloseTab,
   onCloseOtherTabs,
+  onCloseTabsToRight,
   onPalette,
 }: {
   icons: Record<ScreenId, ReactNode>;
@@ -33,6 +46,7 @@ export function WorkbenchTopBar({
   onActivateTab: (tab: WorkbenchTab) => void;
   onCloseTab: (id: string) => void;
   onCloseOtherTabs?: (id: string) => void;
+  onCloseTabsToRight?: (id: string) => void;
   onPalette: () => void;
 }) {
   const t = useT();
@@ -40,8 +54,16 @@ export function WorkbenchTopBar({
   const activeTabId = useWorkbench((s) => s.activeTabId);
   const splitScreen = useWorkbench((s) => s.splitScreen);
   const toggleSplit = useWorkbench((s) => s.toggleSplit);
+  const openSplit = useWorkbench((s) => s.openSplit);
+  const togglePinTab = useWorkbench((s) => s.togglePinTab);
+  const reorderTab = useWorkbench((s) => s.reorderTab);
+  const [dragSourceId, setDragSourceId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [menuState, setMenuState] = useState<{ tabId: string; x: number; y: number } | null>(null);
   const splitActive = splitScreen !== null && routeEnabled(splitScreen);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const menuTab = menuState ? (tabs.find((tab) => tab.id === menuState.tabId) ?? null) : null;
+  const menuIndex = menuTab ? tabs.findIndex((tab) => tab.id === menuTab.id) : -1;
 
   const tabLabel = (tab: WorkbenchTab) => {
     if (tab.title) return tab.title;
@@ -62,14 +84,45 @@ export function WorkbenchTopBar({
       <div className="workbench-tab-strip" role="tablist" aria-label={t("workbench.tabsCount", { count: tabs.length })}>
         {tabs.map((tab) => {
           const active = tab.id === activeTabId;
+          const userPinned = Boolean(tab.pinned) && tab.id !== HOME_TAB_ID;
+          const dropTarget = dragOverId === tab.id && dragSourceId !== tab.id;
           return (
             <div
               key={tab.id}
               role="tab"
               tabIndex={active ? 0 : -1}
               aria-selected={active}
-              className={`workbench-tab${active ? " is-active" : ""}`}
+              draggable={tab.id !== HOME_TAB_ID}
+              className={`workbench-tab${active ? " is-active" : ""}${userPinned ? " is-pinned" : ""}${dropTarget ? " is-drop-target" : ""}`}
               onClick={() => onActivateTab(tab)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenuState({ tabId: tab.id, x: event.clientX, y: event.clientY });
+              }}
+              onDragStart={(event) => {
+                if (tab.id === HOME_TAB_ID) return;
+                setDragSourceId(tab.id);
+                event.dataTransfer?.setData("text/plain", tab.id);
+              }}
+              onDragOver={(event) => {
+                if (!dragSourceId || tab.id === HOME_TAB_ID || dragSourceId === tab.id) return;
+                event.preventDefault();
+                setDragOverId(tab.id);
+              }}
+              onDragLeave={() => {
+                if (dragOverId === tab.id) setDragOverId(null);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const sourceId = dragSourceId ?? event.dataTransfer?.getData("text/plain") ?? "";
+                if (sourceId && tab.id !== HOME_TAB_ID) reorderTab(sourceId, tab.id);
+                setDragSourceId(null);
+                setDragOverId(null);
+              }}
+              onDragEnd={() => {
+                setDragSourceId(null);
+                setDragOverId(null);
+              }}
               onMouseDown={(event) => {
                 if (event.button === 1 && !tab.pinned) {
                   event.preventDefault();
@@ -80,12 +133,17 @@ export function WorkbenchTopBar({
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   onActivateTab(tab);
+                } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setMenuState({ tabId: tab.id, x: Math.round(rect.left), y: Math.round(rect.bottom + 4) });
                 }
               }}
             >
               <span className="workbench-tab-icon" aria-hidden>
                 {icons[tab.screen]}
               </span>
+              {userPinned ? <Pin size={11} className="workbench-tab-pin" aria-hidden /> : null}
               <span className="workbench-tab-label">{tabLabel(tab)}</span>
               {!tab.pinned ? (
                 <button
@@ -136,6 +194,25 @@ export function WorkbenchTopBar({
           <span>{t("workbench.splitOpen")}</span>
         </button>
       </div>
+
+      {menuTab ? (
+        <WorkbenchTabMenu
+          tab={menuTab}
+          x={menuState!.x}
+          y={menuState!.y}
+          canOpenSplit={routeEnabled(menuTab.screen) && menuTab.screen !== "home"}
+          hasClosableRight={Boolean(onCloseTabsToRight) && tabs.slice(menuIndex + 1).some((entry) => !entry.pinned)}
+          hasClosableOthers={
+            Boolean(onCloseOtherTabs) && tabs.some((entry) => entry.id !== menuTab.id && !entry.pinned)
+          }
+          onCloseMenu={() => setMenuState(null)}
+          onTogglePin={togglePinTab}
+          onOpenInSplit={(target) => openSplit(target.screen, target.files)}
+          onCloseToRight={(id) => onCloseTabsToRight?.(id)}
+          onCloseOthers={(id) => onCloseOtherTabs?.(id)}
+          onCloseTab={onCloseTab}
+        />
+      ) : null}
     </header>
   );
 }
@@ -143,11 +220,13 @@ export function WorkbenchTopBar({
 export function WorkbenchSplitHost({
   dragging,
   onNavigate,
+  onSwapSplit,
   renderScreen,
   children,
 }: {
   dragging: boolean;
   onNavigate: Navigate;
+  onSwapSplit?: () => void;
   renderScreen: (id: ScreenId, filesOverride?: string[]) => ReactNode;
   children: ReactNode;
 }) {
@@ -158,6 +237,7 @@ export function WorkbenchSplitHost({
   const openSplit = useWorkbench((s) => s.openSplit);
   const closeSplit = useWorkbench((s) => s.closeSplit);
   const setSplitRatio = useWorkbench((s) => s.setSplitRatio);
+  const resetSplitRatio = useWorkbench((s) => s.resetSplitRatio);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const splitActive = splitScreen !== null && routeEnabled(splitScreen);
 
@@ -203,8 +283,10 @@ export function WorkbenchSplitHost({
           <button
             type="button"
             className="workbench-splitter"
-            aria-label={t("workbench.splitOpen")}
+            aria-label={t("workbench.resetSplit")}
+            title={t("workbench.resetSplit")}
             onMouseDown={startResize}
+            onDoubleClick={() => resetSplitRatio()}
             onKeyDown={(event) => {
               if (event.key === "ArrowLeft") {
                 event.preventDefault();
@@ -212,6 +294,9 @@ export function WorkbenchSplitHost({
               } else if (event.key === "ArrowRight") {
                 event.preventDefault();
                 setSplitRatio(splitRatio + 0.04);
+              } else if (event.key === "0" || event.key === "Home") {
+                event.preventDefault();
+                resetSplitRatio();
               }
             }}
           />
@@ -230,6 +315,11 @@ export function WorkbenchSplitHost({
                 ))}
               </div>
               <div className="flex items-center gap-1 shrink-0">
+                {onSwapSplit ? (
+                  <IconButton label={t("workbench.swapSplit")} onClick={onSwapSplit}>
+                    <ArrowLeftRight size={14} />
+                  </IconButton>
+                ) : null}
                 <IconButton
                   label={t("workbench.splitPromote")}
                   onClick={() => {

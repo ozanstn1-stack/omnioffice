@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkbenchShell } from "./workbench-shell";
@@ -134,5 +134,59 @@ describe("WorkbenchShell (v8.2.0 desktop)", () => {
     expect(screen.getByText(/Missing optional engines: qpdf, Tesseract/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Engine settings/i }));
     expect(onNavigate).toHaveBeenCalledWith("settings");
+  });
+
+  it("opens tab context menu to pin, split, close right, and swaps or resets split panes", async () => {
+    const user = userEvent.setup();
+    const onCloseTabsToRight = vi.fn();
+    const onSwapSplit = vi.fn();
+    useWorkbench.getState().syncScreen("merge", []);
+    useWorkbench.getState().syncScreen("reader", ["/tmp/a.pdf"]);
+    useWorkbench.getState().syncScreen("split", []);
+    const readerTabId = useWorkbench.getState().tabs.find((tab) => tab.screen === "reader")!.id;
+    useWorkbench.getState().setSplitRatio(0.68);
+
+    render(
+      <WorkbenchShell
+        icons={icons}
+        screen="split"
+        version="8.4.0"
+        backgroundJobs={0}
+        isDark={false}
+        readerFocus={false}
+        dragging={false}
+        onNavigate={vi.fn()}
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onCloseOtherTabs={vi.fn()}
+        onCloseTabsToRight={onCloseTabsToRight}
+        onSwapSplit={onSwapSplit}
+        onSearch={vi.fn()}
+        onPalette={vi.fn()}
+        onToggleTheme={vi.fn()}
+        renderScreen={(id, files) => <div data-testid={`split-${id}`}>{`${id}:${(files ?? []).join(",")}`}</div>}
+      >
+        <div>Split body</div>
+      </WorkbenchShell>,
+    );
+
+    const mergeTab = screen.getByRole("tab", { name: /Merge/i });
+    fireEvent.contextMenu(mergeTab, { clientX: 120, clientY: 28 });
+    await user.click(screen.getByRole("menuitem", { name: /Pin tab/i }));
+    expect(screen.getByRole("tab", { name: /Merge/i })).toHaveClass("is-pinned");
+
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /a\.pdf/i }), { clientX: 140, clientY: 28 });
+    await user.click(screen.getByRole("menuitem", { name: /Close tabs to right/i }));
+    expect(onCloseTabsToRight).toHaveBeenCalledWith(readerTabId);
+
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /a\.pdf/i }), { clientX: 140, clientY: 28 });
+    await user.click(screen.getByRole("menuitem", { name: /Open in split view/i }));
+    expect(screen.getByTestId("split-reader")).toHaveTextContent("reader:/tmp/a.pdf");
+
+    await user.click(screen.getByRole("button", { name: /Swap panes/i }));
+    expect(onSwapSplit).toHaveBeenCalledTimes(1);
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Reset split to 50\/50/i }));
+    expect(useWorkbench.getState().splitRatio).toBe(0.5);
   });
 });

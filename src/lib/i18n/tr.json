@@ -3420,5 +3420,21 @@
   "reader.openInAnnotate": "Metin / İmza ekle",
   "reader.openInStudio": "PDF Stüdyo'da aç",
   "reader.aiOpenInWriter": "Writer'da aç",
-  "reader.aiCopied": "Yanıt kopyalandı"
+  "reader.aiCopied": "Yanıt kopyalandı",
+  "workbench.pinTab": "Sekmeyi sabitle",
+  "workbench.unpinTab": "Sabitlemeyi kaldır",
+  "workbench.closeToRight": "Sağdakileri kapat",
+  "workbench.openInSplit": "Yan bölmede aç",
+  "workbench.swapSplit": "Bölmeleri takas et",
+  "workbench.resetSplit": "Bölmeyi 50/50 sıfırla",
+  "workbench.swapSplitCmd": "Bölünmüş ekran bölmelerini takas et",
+  "workbench.togglePinTabCmd": "Aktif sekmeyi sabitle veya çöz",
+  "workbench.tabMenu": "Sekme işlemleri",
+  "reader.selectionToolbar": "Seçili metin işlemleri",
+  "reader.selectionAskAi": "Yapay zekâya sor",
+  "reader.selectionToWriter": "Writer'a aktar",
+  "reader.selectionCopied": "Seçili metin kopyalandı",
+  "reader.aiExportAll": "Sohbeti Writer'a aktar",
+  "reader.aiCopyTranscript": "Sohbeti kopyala",
+  "reader.aiTranscriptCopied": "Sohbet kopyalandı"
 }

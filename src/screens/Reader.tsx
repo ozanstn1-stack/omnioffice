@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { isAndroid, openAnyFile } from "../lib/mobile";
 import { shareWithCheck } from "../lib/presend-gate";
-import { detectEdevletVerification, type EdevletVerification } from "../lib/edevlet";
+import { type EdevletVerification } from "../lib/edevlet";
 import { openExternalLink } from "../office/calc/open-link";
 import { Badge, Button, IconButton, Spinner, useDebounced } from "../components/ui";
 import { DropZone } from "../components/files";
@@ -64,7 +64,7 @@ import {
 } from "../lib/tiles";
 import type { PageGeometry, SearchResponse, TextMatch, Thumbnail } from "../lib/types";
 import { setWindowFullscreen, showShortcutHint, useImmersiveReader, useReaderImmersive } from "./reader/immersive";
-import { ReaderQuickActions, ReaderSidePanel, type ReaderSideTab } from "./reader/ReaderSidePanel";
+import { ReaderQuickActions, ReaderSelectionBar, ReaderSidePanel, type ReaderSideTab } from "./reader/ReaderSidePanel";
 import { useRememberReaderDocument } from "./reader/remember-recent";
 import type { Navigate } from "../lib/nav";
 
@@ -548,6 +548,7 @@ export function Reader({
   // windows, in focus mode and on phones it opens as an overlay on demand.
   const [sideTab, setSideTab] = useState<ReaderSideTab>("info");
   const [sideOpen, setSideOpen] = useState(false);
+  const [draftAiPrompt, setDraftAiPrompt] = useState<{ id: number; text: string } | null>(null);
   const [containerWidth, setContainerWidth] = useState(900);
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [currentPage, setCurrentPage] = useState(1);
@@ -575,6 +576,7 @@ export function Reader({
       for (const page of candidates) {
         try {
           const text = await pageText(path, page, session.password || undefined);
+          const { detectEdevletVerification } = await import("../lib/edevlet");
           const found = detectEdevletVerification(text);
           if (found) {
             if (!cancelled) setVerification(found);
@@ -613,7 +615,6 @@ export function Reader({
     });
     observer.observe(element);
     // The initial measurement is a read of layout, not a state cascade.
-
     setContainerWidth(element.clientWidth || 900);
     return () => observer.disconnect();
   }, [session.primary]);
@@ -901,7 +902,6 @@ export function Reader({
     container.scrollLeft = Math.max(0, container.scrollLeft + bounds.left + focal.contentX * factor - focal.screenX);
     container.scrollTop += bounds.top + focal.contentY * factor - focal.screenY;
   }, [renderWidth]);
-
   const runSearch = useCallback(async () => {
     const trimmed = query.trim();
     if (!session.primary || !trimmed) {
@@ -948,7 +948,6 @@ export function Reader({
       reportError(error, t);
     }
   };
-
   /**
    * Verifies the redaction certificate a PDF carries (A6): the file is
    * re-hashed with the certificate stripped, so an edit after certification
@@ -977,7 +976,6 @@ export function Reader({
       reportError(error, t);
     }
   };
-
   // The text layer is loaded once per document. A scanned PDF simply has no
   // runs, which is not an error: the Reader then offers the OCR hint instead.
   useEffect(() => {
@@ -1014,12 +1012,10 @@ export function Reader({
   );
   const currentRuns = runsByPage.get(currentPage);
   const hasTextLayer = Boolean(currentRuns && currentRuns.length > 0);
-
   const stopSpeaking = useCallback(() => {
     if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     setSpeechState("idle");
   }, []);
-
   const speakPage = useCallback(() => {
     if (typeof window === "undefined" || !speechSupported(window as unknown as SpeechWindow)) return;
     const text = currentRuns ? pageTextFromRuns(currentRuns) : "";
@@ -1036,7 +1032,6 @@ export function Reader({
     setSpeechState("speaking");
     window.speechSynthesis.speak(utterance);
   }, [currentRuns, pushToast, speechRate, t]);
-
   const togglePause = useCallback(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     if (window.speechSynthesis.paused) {
@@ -1047,10 +1042,8 @@ export function Reader({
       setSpeechState("paused");
     }
   }, []);
-
   // Stop speech when the document changes or the screen unmounts.
   useEffect(() => () => stopSpeaking(), [docKey, stopSpeaking]);
-
   const toggleFocus = useCallback(() => {
     if (isAndroid()) {
       // Phones already have immersive reading; the button just enters it.
@@ -1062,7 +1055,6 @@ export function Reader({
     if (next) setSideOpen(false);
     void setWindowFullscreen(next);
   }, [setFocus, setImmersive]);
-
   // Leaving the reader always restores the window and the shell.
   useEffect(
     () => () => {
@@ -1073,12 +1065,16 @@ export function Reader({
     },
     [],
   );
-
   const toggleAiPanel = () => {
     if (sideTab === "ai" && sideOpen) {
       setSideOpen(false);
       return;
     }
+    setSideTab("ai");
+    setSideOpen(true);
+  };
+  const askSelectionInAi = (text: string) => {
+    setDraftAiPrompt((prev) => ({ id: (prev?.id ?? 0) + 1, text }));
     setSideTab("ai");
     setSideOpen(true);
   };
@@ -1138,7 +1134,6 @@ export function Reader({
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageCount, scrollToPage, toggleFocus, zoom]);
-
   const matchesByPage = useMemo(() => {
     const map = new Map<number, TextMatch[]>();
     for (const match of searchResult?.matches ?? []) {
@@ -1148,7 +1143,6 @@ export function Reader({
     }
     return map;
   }, [searchResult]);
-
   if (!session.primary) {
     return (
       <Screen title={t("reader.title")} subtitle={t("reader.subtitle")}>
@@ -1156,7 +1150,6 @@ export function Reader({
       </Screen>
     );
   }
-
   const zoomLabel = typeof zoom === "number" ? `${Math.round(zoom * 100)}%` : t("reader.fitWidth");
 
   return (
@@ -1415,8 +1408,15 @@ export function Reader({
             ) : null}
           </div>
         </div>
+        <ReaderSelectionBar
+          key={docId}
+          containerRef={scrollRef}
+          path={session.primary.path}
+          page={currentPage}
+          onNavigate={onNavigate}
+          onAskAi={askSelectionInAi}
+        />
       </div>
-
       <ReaderSidePanel
         tab={sideTab}
         onTab={setSideTab}
@@ -1434,6 +1434,7 @@ export function Reader({
         infoError={session.infoError}
         searchResult={searchResult}
         copiedPage={copiedPage}
+        draftPrompt={draftAiPrompt}
       />
     </div>
   );

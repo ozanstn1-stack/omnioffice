@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.4.0] - 2026-11-27
+
+### Added
+
+- **Workbench tab management & Split View controls (`useWorkbench`, `WorkbenchTopBar`, `WorkbenchTabMenu`, `WorkbenchSplitHost`, `app-commands.ts`):** adds tab pinning/unpinning (preserving `Home` and pinned tabs across close/eviction limits), partition-safe HTML5 drag-and-drop tab reordering, right-click / keyboard context menu (`Pin/Unpin`, `Open in split view`, `Close tabs to right`, `Close other tabs`, `Close tab`), one-click **Swap panes** (`workbench.swapSplit`), splitter double-click / `Home` / `0` **50/50 reset**, and `workbench.togglePinTab` command palette actions without leaking file paths to `localStorage`.
+- **Reader text selection bar & AI session export (`ReaderSelectionBar`, `ReaderAiHeaderActions`, `reader-ai-export.ts`):** adds a lazy floating toolbar above selected text in the PDF Reader with Copy, Ask AI (pre-filling `ReaderAiPanel` while preserving AI consent), Annotate handoff, and Send to Writer (`<name> — p.N`), alongside full-session Markdown copy and Writer report export (`<name> — AI Report`), while dynamically importing `detectEdevletVerification` to keep the Reader route chunk under its 12 KB gzip budget.
+
+### Changed
+
+- **Release verification automation (`#789`):** dispatches `verify-release.yml` directly from `Release` and `Android` tag workflows via `workflow_dispatch` (`tag`, `sha`, `caller`), verifying both Windows EXE and Android APK/AAB packages automatically even when tags are created by `auto-tag.yml`.
+
 ## [8.3.1] - 2026-11-26
 
 ### Fixed

@@ -1,0 +1,1 @@
+8.4.0: Workbench sekmelerini sabitleme, sürükle-bırak sıralama, sağ tık menüsü, bölünmüş ekran bölmelerini takas etme ve 50/50 sıfırlama eklendi. PDF Okuyucu'da metin seçimi hızlı çubuğu (Kopyala, Yapay Zekâya Sor, Metin/İmza Ekle, Writer'a Aktar) ile tüm AI sohbetini Writer veya Markdown olarak dışa aktarma eklendi.

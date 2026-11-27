@@ -822,3 +822,88 @@
   padding: 13px;
   gap: 8px;
 }
+
+/* Workbench tab pinning, drag-and-drop & context menu */
+.workbench-tab.is-pinned {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+  background: color-mix(in srgb, var(--accent-weak) 45%, transparent);
+}
+.workbench-tab.is-drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.workbench-tab-pin {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.workbench-tab-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 196px;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.workbench-tab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.workbench-tab-menu-item:hover,
+.workbench-tab-menu-item:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+/* Reader floating text selection toolbar */
+.reader-selection-bar {
+  position: fixed;
+  z-index: 45;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+}
+.reader-selection-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.reader-selection-btn:hover,
+.reader-selection-btn:focus-visible {
+  background: var(--accent-weak);
+  color: var(--accent-ink);
+  outline: none;
+}

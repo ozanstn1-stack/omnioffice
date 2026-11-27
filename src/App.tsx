@@ -76,6 +76,8 @@ export default function App() {
   const activateWorkbench = useWorkbench((state) => state.activateTab);
   const closeWorkbench = useWorkbench((state) => state.closeTab);
   const closeOtherWorkbench = useWorkbench((state) => state.closeOtherTabs);
+  const closeTabsToRightWorkbench = useWorkbench((state) => state.closeTabsToRight);
+  const swapSplitWorkbench = useWorkbench((state) => state.swapSplitPanes);
   // WebView history bridge for the Android back button (see lib/nav-history).
   const navSnapshotRef = useRef<NavigationSnapshot>({ screen: "home", files: [] });
   const overlayGuardRef = useRef(false);
@@ -145,6 +147,19 @@ export default function App() {
     },
     [closeOtherWorkbench, navigate],
   );
+
+  const handleCloseTabsToRight = useCallback(
+    (id: string) => {
+      const kept = closeTabsToRightWorkbench(id);
+      if (kept) navigate(kept.screen, { files: kept.files });
+    },
+    [closeTabsToRightWorkbench, navigate],
+  );
+
+  const handleSwapSplit = useCallback(() => {
+    const swapped = swapSplitWorkbench(screen, files);
+    if (swapped) navigate(swapped.screen, { files: swapped.files });
+  }, [files, navigate, screen, swapSplitWorkbench]);
 
   // Overlays push a guard entry so back closes them first.
   const overlayOpen = navOpen || tabsOpen || paletteOpen || searchOpen;
@@ -390,8 +405,9 @@ export default function App() {
         pickFiles,
         openPalette: () => setPaletteOpen(true),
         openSearch: () => setSearchOpen(true),
+        onSwapSplit: handleSwapSplit,
       }),
-    [compactNav, navigate, pickFiles, screen],
+    [compactNav, handleSwapSplit, navigate, pickFiles, screen],
   );
 
   // Desk tasks (D13): the palette runs a task with the current file or Writer selection.
@@ -717,7 +733,7 @@ export default function App() {
         <Screens.WorkbenchShell
           icons={NAV_ICONS}
           screen={screen}
-          version={typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "8.3.0"}
+          version={typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "8.4.0"}
           backgroundJobs={backgroundJobs}
           isDark={isDark}
           readerFocus={readerFocus}
@@ -726,6 +742,8 @@ export default function App() {
           onActivateTab={handleActivateTab}
           onCloseTab={handleCloseTab}
           onCloseOtherTabs={handleCloseOtherTabs}
+          onCloseTabsToRight={handleCloseTabsToRight}
+          onSwapSplit={handleSwapSplit}
           onSearch={() => setSearchOpen(true)}
           onPalette={() => setPaletteOpen(true)}
           onToggleTheme={() => void update({ theme: isDark ? "light" : "dark" })}

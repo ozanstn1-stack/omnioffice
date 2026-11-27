@@ -91,4 +91,90 @@ describe("workbench store (v8.2.0)", () => {
     expect(useWorkbench.getState().splitScreen).toBe("ai");
     expect(useWorkbench.getState().splitFiles).toEqual(["/docs/contract.pdf"]);
   });
+
+  it("pins, unpins, reorders within partitions, and closes tabs to the right", () => {
+    useWorkbench.getState().syncScreen("merge", []);
+    useWorkbench.getState().syncScreen("reader", ["/docs/a.pdf"]);
+    useWorkbench.getState().syncScreen("split", []);
+    useWorkbench.getState().syncScreen("compress", []);
+
+    const findId = (screen: ScreenId) => useWorkbench.getState().tabs.find((tab) => tab.screen === screen)!.id;
+    const mergeId = findId("merge");
+    const readerId = findId("reader");
+    const splitId = findId("split");
+    const compressId = findId("compress");
+
+    useWorkbench.getState().togglePinTab(HOME_TAB_ID);
+    useWorkbench.getState().togglePinTab(compressId);
+    expect(useWorkbench.getState().tabs.map((tab) => tab.screen)).toEqual([
+      "home",
+      "compress",
+      "merge",
+      "reader",
+      "split",
+    ]);
+    expect(useWorkbench.getState().closeTab(compressId)).toBeNull();
+
+    useWorkbench.getState().togglePinTab(splitId);
+    expect(useWorkbench.getState().tabs.map((tab) => tab.screen)).toEqual([
+      "home",
+      "compress",
+      "split",
+      "merge",
+      "reader",
+    ]);
+
+    // Cross-partition reorder is ignored; same-partition reorder succeeds.
+    useWorkbench.getState().reorderTab(compressId, mergeId);
+    expect(useWorkbench.getState().tabs.map((tab) => tab.screen)).toEqual([
+      "home",
+      "compress",
+      "split",
+      "merge",
+      "reader",
+    ]);
+    useWorkbench.getState().reorderTab(splitId, compressId);
+    useWorkbench.getState().reorderTab(readerId, mergeId);
+    expect(useWorkbench.getState().tabs.map((tab) => tab.screen)).toEqual([
+      "home",
+      "split",
+      "compress",
+      "reader",
+      "merge",
+    ]);
+
+    // Unpin moves tab to the start of the unpinned partition.
+    useWorkbench.getState().togglePinTab(splitId);
+    expect(useWorkbench.getState().tabs.map((tab) => tab.screen)).toEqual([
+      "home",
+      "compress",
+      "split",
+      "reader",
+      "merge",
+    ]);
+
+    // Activate rightmost tab and close everything right of compress.
+    useWorkbench.getState().activateTab(mergeId);
+    const fallback = useWorkbench.getState().closeTabsToRight(compressId);
+    expect(fallback?.screen).toBe("compress");
+    expect(useWorkbench.getState().tabs.map((tab) => tab.screen)).toEqual(["home", "compress"]);
+  });
+
+  it("swaps split panes without leaking file paths to storage and resets ratio to 50/50", () => {
+    expect(useWorkbench.getState().swapSplitPanes("reader", ["/secret/a.pdf"])).toBeNull();
+
+    useWorkbench.getState().openSplit("ai", ["/secret/left.pdf"]);
+    useWorkbench.getState().setSplitRatio(0.64);
+    const swapped = useWorkbench.getState().swapSplitPanes("reader", ["/secret/right.pdf"]);
+    expect(swapped).toEqual({ screen: "ai", files: ["/secret/left.pdf"] });
+    expect(useWorkbench.getState().splitScreen).toBe("reader");
+    expect(useWorkbench.getState().splitFiles).toEqual(["/secret/right.pdf"]);
+
+    const saved = window.localStorage.getItem(WORKBENCH_PREFS_KEY) ?? "";
+    expect(saved).toContain('"lastSplitScreen":"reader"');
+    expect(saved).not.toContain("/secret/");
+
+    useWorkbench.getState().resetSplitRatio();
+    expect(useWorkbench.getState().splitRatio).toBe(0.5);
+  });
 });

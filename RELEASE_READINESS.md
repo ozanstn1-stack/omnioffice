@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 8.3.1
+# Release Readiness — OmniOffice 8.4.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,25 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 8.4.0) - Hybrid Workbench v2, Reader selection bar & AI transcript export
+
+- **Workbench tab pinning, partition-safe drag reordering, close-to-right, context menu, pane swap, and 50/50 split reset (without leaking file paths to storage):**
+  `test:src/lib/workbench-store.test.ts#pins, unpins, reorders within partitions, and closes tabs to the right`
+  `test:src/lib/workbench-store.test.ts#swaps split panes without leaking file paths to storage and resets ratio to 50/50`
+  `test:src/components/workbench-shell.test.tsx#opens tab context menu to pin, split, close right, and swaps or resets split panes`
+- **Lazy Reader floating text selection toolbar (Copy, pre-filled Ask AI draft, Annotate handoff, Send to Writer) and full AI session Writer/Markdown export:**
+  `test:src/screens/reader/reader-ai-export.test.tsx#exports selected excerpts and full AI transcripts to Writer and Markdown`
+  `test:src/screens/reader/reader-ai-export.test.tsx#shows floating ReaderSelectionBar on text selection and triggers copy, AI draft, Annotate, and Writer`
+- **Direct `verify-release.yml` dispatch from `Release` and `Android` workflows on tagged builds:**
+  `test:src/lib/ci-workflow.test.ts#verifies both Windows EXE and Android APK assets on every release`
+
+### Not done / Known limitations (8.4.0)
+
+- **Workbench tab dragging is mouse/HTML5-drag driven on desktop:** keyboard-only tab reordering is not implemented yet; keyboard users can switch/pin tabs via `Shift+F10` / context menu and command palette.
+  (no test: documented UI limitation.)
+- **Windows installer Authenticode signing & IzzyOnDroid catalogue listing remain owner-gated:** workflows (`release.yml`, `android.yml`, `fastlane`) stay ready without external signing or Codeberg secrets.
+  (no test: requires external accounts/secrets.)
 
 ## Implemented (this cycle, 8.3.1) - Android emulator Vulkan stability and APK build retry
 
