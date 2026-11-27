@@ -1,7 +1,7 @@
 import { registerCommand, unregisterCommand } from "./commands";
 import type { Navigate, ScreenId } from "./nav";
 import { enabledRoutes } from "./routes";
-import { useWorkbench } from "./workbench-store";
+import { HOME_TAB_ID, useWorkbench } from "./workbench-store";
 
 interface GlobalCommandDeps {
   compactNav: boolean;
@@ -10,6 +10,7 @@ interface GlobalCommandDeps {
   pickFiles: () => void;
   openPalette: () => void;
   openSearch: () => void;
+  onSwapSplit?: () => void;
 }
 
 /** Registers view navigation, global search/palette, and desktop workbench commands. */
@@ -20,6 +21,7 @@ export function registerAppCommands({
   pickFiles,
   openPalette,
   openSearch,
+  onSwapSplit,
 }: GlobalCommandDeps): () => void {
   for (const view of enabledRoutes()) {
     registerCommand({
@@ -97,6 +99,23 @@ export function registerAppCommands({
       if (prev) navigate(prev.screen, { files: prev.files });
     },
   });
+  registerCommand({
+    id: "workbench.swapSplit",
+    titleKey: "workbench.swapSplitCmd",
+    category: "view",
+    enabled: () => !compactNav && Boolean(onSwapSplit) && useWorkbench.getState().splitScreen !== null,
+    execute: () => onSwapSplit?.(),
+  });
+  registerCommand({
+    id: "workbench.togglePinTab",
+    titleKey: "workbench.togglePinTabCmd",
+    category: "view",
+    enabled: () => !compactNav && useWorkbench.getState().activeTabId !== HOME_TAB_ID,
+    execute: () => {
+      const wb = useWorkbench.getState();
+      wb.togglePinTab(wb.activeTabId);
+    },
+  });
 
   const ids = [
     ...enabledRoutes().map((view) => `view.${view.id}`),
@@ -107,6 +126,8 @@ export function registerAppCommands({
     "workbench.toggleSplit",
     "workbench.nextTab",
     "workbench.prevTab",
+    "workbench.swapSplit",
+    "workbench.togglePinTab",
   ];
   return () => ids.forEach((id) => unregisterCommand(id));
 }

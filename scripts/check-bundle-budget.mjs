@@ -131,7 +131,12 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // + visual tab grid, and Bento Studio Home) adds ~7.2 KB gzip across lazy
 // chunks (total measured at 558.2 KB); entry stays at 60.5 / 62 KB and all
 // per-route caps hold.
-const TOTAL_BUDGET_KB = 562;
+// Raised to 567 in 8.4.0: Workbench tab pinning/reordering/context menu,
+// Split View swap/50-50 reset, lazy ReaderSelectionBar floating toolbar, and
+// Reader AI multi-turn report export add ~3.9 KB across lazy chunks (total
+// measured at 565.0 KB; entry stays 60.2 / 62 KB and Reader stays 11.7 / 12 KB
+// via dynamic e-Devlet verification import).
+const TOTAL_BUDGET_KB = 567;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

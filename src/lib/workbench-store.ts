@@ -91,11 +91,16 @@ interface WorkbenchState {
   activateTab: (id: string) => WorkbenchTab | null;
   closeTab: (id: string) => WorkbenchTab | null;
   closeOtherTabs: (id: string) => WorkbenchTab | null;
+  closeTabsToRight: (id: string) => WorkbenchTab | null;
+  togglePinTab: (id: string) => void;
+  reorderTab: (fromId: string, toId: string) => void;
   cycleTab: (delta: 1 | -1) => WorkbenchTab | null;
   openSplit: (screen: ScreenId, files?: string[]) => void;
   closeSplit: () => void;
   toggleSplit: (defaultScreen?: ScreenId, files?: string[]) => void;
+  swapSplitPanes: (mainScreen: ScreenId, mainFiles: string[]) => { screen: ScreenId; files: string[] } | null;
   setSplitRatio: (ratio: number) => void;
+  resetSplitRatio: () => void;
   toggleRailExpanded: () => void;
   setRailExpanded: (expanded: boolean) => void;
   reset: () => void;
@@ -175,13 +180,55 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     return fallback;
   },
 
-  closeOtherTabs: (id) => {
+  closeOtherTabs: (id: string) => {
     const { tabs } = get();
     const target = tabs.find((tab) => tab.id === id) ?? tabs[0];
     if (!target) return null;
     const nextTabs = tabs.filter((tab) => tab.pinned || tab.id === target.id);
     set({ tabs: nextTabs, activeTabId: target.id });
     return target;
+  },
+
+  closeTabsToRight: (id) => {
+    const { tabs, activeTabId } = get();
+    const index = tabs.findIndex((tab) => tab.id === id);
+    if (index < 0) return null;
+    let activeRemoved = false;
+    const nextTabs = tabs.filter((tab, tabIndex) => {
+      const remove = tabIndex > index && !tab.pinned;
+      if (remove && tab.id === activeTabId) activeRemoved = true;
+      return !remove;
+    });
+    if (nextTabs.length === tabs.length) return null;
+    const fallback = activeRemoved ? tabs[index] : null;
+    set({ tabs: nextTabs, activeTabId: fallback ? fallback.id : activeTabId });
+    return fallback;
+  },
+
+  togglePinTab: (id) => {
+    if (id === HOME_TAB_ID) return;
+    const { tabs } = get();
+    const target = tabs.find((tab) => tab.id === id);
+    if (!target) return;
+    const nextTarget: WorkbenchTab = { ...target, pinned: !target.pinned };
+    const home = tabs.filter((tab) => tab.id === HOME_TAB_ID);
+    const rest = tabs.filter((tab) => tab.id !== HOME_TAB_ID && tab.id !== id);
+    const pinned = rest.filter((tab) => tab.pinned);
+    const unpinned = rest.filter((tab) => !tab.pinned);
+    set({ tabs: [...home, ...pinned, nextTarget, ...unpinned] });
+  },
+
+  reorderTab: (fromId, toId) => {
+    if (fromId === toId || fromId === HOME_TAB_ID || toId === HOME_TAB_ID) return;
+    const { tabs } = get();
+    const fromIndex = tabs.findIndex((tab) => tab.id === fromId);
+    const toIndex = tabs.findIndex((tab) => tab.id === toId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    if (Boolean(tabs[fromIndex].pinned) !== Boolean(tabs[toIndex].pinned)) return;
+    const next = [...tabs];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    set({ tabs: next });
   },
 
   cycleTab: (delta) => {
@@ -215,11 +262,22 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     }
   },
 
+  swapSplitPanes: (mainScreen, mainFiles) => {
+    const { splitScreen, splitFiles } = get();
+    if (!splitScreen) return null;
+    const previous = { screen: splitScreen, files: [...splitFiles] };
+    writePrefs({ lastSplitScreen: mainScreen });
+    set({ splitScreen: mainScreen, splitFiles: [...mainFiles], lastSplitScreen: mainScreen });
+    return previous;
+  },
+
   setSplitRatio: (ratio) => {
     const clamped = clampRatio(ratio);
     writePrefs({ splitRatio: clamped });
     set({ splitRatio: clamped });
   },
+
+  resetSplitRatio: () => get().setSplitRatio(0.5),
 
   toggleRailExpanded: () =>
     set((state) => {

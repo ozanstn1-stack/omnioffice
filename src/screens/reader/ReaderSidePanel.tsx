@@ -12,10 +12,19 @@ import { clamp } from "../../lib/format";
 import type { Navigate } from "../../lib/nav";
 import type { SearchResponse } from "../../lib/types";
 
-// The AI chat is its own chunk: most reading sessions never open it, and the
-// Reader route has a 12 KB gzip budget (scripts/check-bundle-budget.mjs).
+// The AI chat and selection bar are their own chunks: the Reader route has a 12 KB gzip budget.
 const ReaderAiPanel = lazy(() => import("./ReaderAiPanel").then((module) => ({ default: module.ReaderAiPanel })));
 const LazyReaderQuickActions = lazy(() => import("./ReaderQuickActions"));
+const LazyReaderSelectionBar = lazy(() => import("./ReaderSelectionBar"));
+
+/** Lazy floating toolbar for selected text in PDF Reader. */
+export function ReaderSelectionBar(props: ComponentProps<typeof LazyReaderSelectionBar>) {
+  return (
+    <Suspense fallback={null}>
+      <LazyReaderSelectionBar {...props} />
+    </Suspense>
+  );
+}
 
 /** Lazy toolbar handoff buttons so Annotate/PDF Studio icons stay outside the Reader chunk. */
 export function ReaderQuickActions({ path, onNavigate }: { path: string; onNavigate?: Navigate }) {
@@ -46,6 +55,7 @@ export function ReaderSidePanel({
   infoError,
   searchResult,
   copiedPage,
+  draftPrompt,
 }: {
   tab: ReaderSideTab;
   onTab: (tab: ReaderSideTab) => void;
@@ -64,6 +74,7 @@ export function ReaderSidePanel({
   infoError: ComponentProps<typeof InfoStrip>["error"];
   searchResult: SearchResponse | null;
   copiedPage: number | null;
+  draftPrompt?: { id: number; text: string } | null;
 }) {
   const t = useT();
   // Mounted on first use, then kept mounted so the conversation survives.
@@ -118,6 +129,7 @@ export function ReaderSidePanel({
               path={path}
               password={password}
               pageCount={pageCount}
+              draftPrompt={draftPrompt}
               onJumpToPage={scrollToPage}
               onNavigate={onNavigate}
             />

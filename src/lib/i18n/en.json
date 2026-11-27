@@ -3420,5 +3420,21 @@
   "reader.openInAnnotate": "Annotate & sign",
   "reader.openInStudio": "Open in PDF Studio",
   "reader.aiOpenInWriter": "Open in Writer",
-  "reader.aiCopied": "Answer copied"
+  "reader.aiCopied": "Answer copied",
+  "workbench.pinTab": "Pin tab",
+  "workbench.unpinTab": "Unpin tab",
+  "workbench.closeToRight": "Close tabs to right",
+  "workbench.openInSplit": "Open in split view",
+  "workbench.swapSplit": "Swap panes",
+  "workbench.resetSplit": "Reset split to 50/50",
+  "workbench.swapSplitCmd": "Swap split panes",
+  "workbench.togglePinTabCmd": "Pin or unpin active tab",
+  "workbench.tabMenu": "Tab actions",
+  "reader.selectionToolbar": "Selected text actions",
+  "reader.selectionAskAi": "Ask AI",
+  "reader.selectionToWriter": "Send to Writer",
+  "reader.selectionCopied": "Selection copied",
+  "reader.aiExportAll": "Export chat to Writer",
+  "reader.aiCopyTranscript": "Copy chat",
+  "reader.aiTranscriptCopied": "Chat copied"
 }

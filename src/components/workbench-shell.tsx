@@ -54,6 +54,8 @@ export interface WorkbenchShellProps {
   onActivateTab: (tab: WorkbenchTab) => void;
   onCloseTab: (id: string) => void;
   onCloseOtherTabs?: (id: string) => void;
+  onCloseTabsToRight?: (id: string) => void;
+  onSwapSplit?: () => void;
   onSearch: () => void;
   onPalette: () => void;
   onToggleTheme: () => void;
@@ -73,6 +75,8 @@ export function WorkbenchShell({
   onActivateTab,
   onCloseTab,
   onCloseOtherTabs,
+  onCloseTabsToRight,
+  onSwapSplit,
   onSearch,
   onPalette,
   onToggleTheme,
@@ -273,11 +277,17 @@ export function WorkbenchShell({
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
               onCloseOtherTabs={onCloseOtherTabs}
+              onCloseTabsToRight={onCloseTabsToRight}
               onPalette={onPalette}
             />
           )}
 
-          <WorkbenchSplitHost dragging={dragging} onNavigate={onNavigate} renderScreen={renderScreen}>
+          <WorkbenchSplitHost
+            dragging={dragging}
+            onNavigate={onNavigate}
+            onSwapSplit={onSwapSplit}
+            renderScreen={renderScreen}
+          >
             {children}
           </WorkbenchSplitHost>
 

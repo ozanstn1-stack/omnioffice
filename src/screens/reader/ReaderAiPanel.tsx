@@ -1,6 +1,6 @@
 /** "Ask this document" AI side panel for the PDF Reader. */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Send, Settings as SettingsIcon, Sparkles, Square, Trash2 } from "lucide-react";
+import { FileText, Send, Settings as SettingsIcon, Sparkles, Square } from "lucide-react";
 import { aiChat, aiGetSettings, aiSummarize, cancelJob, onAiChunk } from "../../lib/api";
 import { consentKeys, isLocalProvider, plainProviderName, providerDisplayName } from "../../lib/ai-providers";
 import { consentScope, isConsentRemembered } from "../../lib/ai-consent";
@@ -11,7 +11,7 @@ import { useSettings } from "../../lib/store";
 import { uid } from "../../lib/format";
 import type { AiSettingsView, DocChatMessage } from "../../lib/types";
 import type { Navigate } from "../../lib/nav";
-import { ReaderAiAnswerActions } from "./ReaderAiActions";
+import { ReaderAiAnswerActions, ReaderAiHeaderActions } from "./ReaderAiActions";
 
 type PanelSettings = AiSettingsView & { provider?: string; providerLabel?: string };
 
@@ -74,12 +74,14 @@ export function ReaderAiPanel({
   path,
   password,
   pageCount,
+  draftPrompt,
   onJumpToPage,
   onNavigate,
 }: {
   path: string;
   password?: string;
   pageCount: number;
+  draftPrompt?: { id: number; text: string } | null;
   onJumpToPage: (page: number) => void;
   onNavigate?: Navigate;
 }) {
@@ -92,12 +94,16 @@ export function ReaderAiPanel({
   const [consentChecked, setConsent] = useState(false);
   const [messages, setMessages] = useState<ReaderChatEntry[]>([]);
   const [input, setInput] = useState("");
+  const [appliedDraftId, setAppliedDraftId] = useState<number | null>(null);
+  if (draftPrompt && draftPrompt.id !== appliedDraftId) {
+    setAppliedDraftId(draftPrompt.id);
+    setInput(draftPrompt.text);
+  }
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const jobId = useRef(uid("reader-ai"));
   const activeRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
     let cancelled = false;
     void aiGetSettings()
@@ -112,7 +118,6 @@ export function ReaderAiPanel({
       cancelled = true;
     };
   }, [settingsLoaded]);
-
   // Streamed answer chunks go into the last (assistant) bubble.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -137,7 +142,6 @@ export function ReaderAiPanel({
       unlisten?.();
     };
   }, []);
-
   // A running request is cancelled when the panel goes away.
   useEffect(
     () => () => {
@@ -145,12 +149,10 @@ export function ReaderAiPanel({
     },
     [],
   );
-
   useEffect(() => {
     const element = listRef.current;
     if (element) element.scrollTop = element.scrollHeight;
   }, [messages]);
-
   const configured = aiSettings?.configured ?? false;
   const remembered = isConsentRemembered(appSettings.aiConsentRemembered, aiSettings?.provider, aiSettings?.baseUrl);
   const consent = consentChecked || remembered;
@@ -162,7 +164,6 @@ export function ReaderAiPanel({
       : providerLabel,
   };
   const canRun = configured && consent && !running;
-
   const run = useCallback(async (entry: ReaderChatEntry, request: () => Promise<string>) => {
     jobId.current = uid("reader-ai");
     activeRef.current = true;
@@ -270,6 +271,10 @@ export function ReaderAiPanel({
   }
 
   const suggestions = [t("reader.aiSuggestKeyPoints"), t("reader.aiSuggestNumbers"), t("reader.aiSuggestConclusion")];
+  const clearChat = () => {
+    setMessages([]);
+    setError(null);
+  };
 
   return (
     <div className="flex flex-col gap-2.5 min-h-0 flex-1">
@@ -294,22 +299,14 @@ export function ReaderAiPanel({
         <Button size="sm" variant="primary" icon={<FileText size={13} />} disabled={!canRun} onClick={summarize}>
           {t("reader.aiSummarize")}
         </Button>
-        {messages.length ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Trash2 size={13} />}
-            disabled={running}
-            onClick={() => {
-              setMessages([]);
-              setError(null);
-            }}
-          >
-            {t("reader.aiClear")}
-          </Button>
-        ) : null}
+        <ReaderAiHeaderActions
+          path={path}
+          entries={messages}
+          running={running}
+          onClear={clearChat}
+          onNavigate={onNavigate}
+        />
       </div>
-
       <div
         ref={listRef}
         className="flex-1 min-h-[160px] overflow-y-auto flex flex-col gap-2"
