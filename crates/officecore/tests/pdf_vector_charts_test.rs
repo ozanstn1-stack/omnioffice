@@ -27,10 +27,7 @@ fn cached_chart(kind: &str) -> ChartData {
 
 fn page_ops(bytes: &[u8]) -> Vec<String> {
     let doc = Document::load_mem(bytes).expect("export must produce a valid PDF");
-    doc.get_pages()
-        .values()
-        .map(|&id| String::from_utf8_lossy(&doc.get_page_content(id)).into_owned())
-        .collect()
+    doc.get_pages().values().map(|&id| String::from_utf8_lossy(&doc.get_page_content(id)).into_owned()).collect()
 }
 
 #[test]

@@ -1,11 +1,10 @@
 //! Column and horizontal bar chart renderers.
 
-use crate::model::ChartData;
-use crate::pdfcanvas::{Canvas, FontSet, Rgb, TextStyle};
-use super::ChartRect;
 use super::cartesian::{draw_value_label, value_to_y, AxisScale, AXIS_COLOR, GRID_COLOR};
 use super::resolve::{format_compact, ResolvedChart};
-use super::truncate_label;
+use super::{truncate_label, ChartRect};
+use crate::model::ChartData;
+use crate::pdfcanvas::{Canvas, FontSet, Rgb, TextStyle};
 
 pub(crate) fn draw_bar_grid(
     canvas: &mut Canvas<'_>,

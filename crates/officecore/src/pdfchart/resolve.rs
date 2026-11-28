@@ -69,10 +69,7 @@ fn read_sheet_labels(sheet: &Sheet, range: &str) -> Vec<String> {
     if addresses.is_empty() {
         return Vec::new();
     }
-    addresses
-        .into_iter()
-        .map(|addr| sheet.cells.get(&addr).map(cell_as_label).unwrap_or_default())
-        .collect()
+    addresses.into_iter().map(|addr| sheet.cells.get(&addr).map(cell_as_label).unwrap_or_default()).collect()
 }
 
 fn read_sheet_numbers(sheet: &Sheet, range: &str) -> Vec<f64> {
@@ -95,11 +92,10 @@ fn read_sheet_numbers(sheet: &Sheet, range: &str) -> Vec<f64> {
             _ => values.push(0.0),
         }
     }
-    if saw_number {
-        values
-    } else {
-        Vec::new()
+    if !saw_number {
+        return Vec::new();
     }
+    values
 }
 
 pub(crate) fn resolve_chart(chart: &ChartData, sheet: Option<&Sheet>) -> ResolvedChart {
@@ -108,16 +104,9 @@ pub(crate) fn resolve_chart(chart: &ChartData, sheet: Option<&Sheet>) -> Resolve
         let cached = chart.series_values_cache.get(index).filter(|vals| !vals.is_empty());
         let values = match cached {
             Some(vals) => vals.iter().map(|v| if v.is_finite() { *v } else { 0.0 }).collect(),
-            None => match sheet {
-                Some(sheet_ref) => read_sheet_numbers(sheet_ref, &entry.range),
-                None => Vec::new(),
-            },
+            None => sheet.map_or_else(Vec::new, |sheet_ref| read_sheet_numbers(sheet_ref, &entry.range)),
         };
-        let color = entry
-            .color
-            .as_deref()
-            .and_then(parse_hex)
-            .unwrap_or(CHART_PALETTE[index % CHART_PALETTE.len()]);
+        let color = entry.color.as_deref().and_then(parse_hex).unwrap_or(CHART_PALETTE[index % CHART_PALETTE.len()]);
         let name = if entry.name.trim().is_empty() { format!("Series {}", index + 1) } else { entry.name.clone() };
         resolved_series.push(ResolvedSeries { name, color, values });
     }

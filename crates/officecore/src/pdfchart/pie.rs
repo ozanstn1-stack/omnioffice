@@ -1,10 +1,10 @@
 //! Pie and doughnut chart vector renderer.
 
+use super::resolve::{ResolvedChart, CHART_PALETTE};
+use super::ChartRect;
 use crate::model::ChartData;
 use crate::pdfcanvas::{Canvas, FontSet, Rgb, TextStyle};
 use std::f64::consts::{FRAC_PI_2, TAU};
-use super::ChartRect;
-use super::resolve::{ResolvedChart, CHART_PALETTE};
 
 fn is_dark(color: Rgb) -> bool {
     (0.299 * color.0 as f64 + 0.587 * color.1 as f64 + 0.114 * color.2 as f64) < 150.0

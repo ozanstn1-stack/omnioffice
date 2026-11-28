@@ -1,10 +1,10 @@
 //! Cartesian chart vector renderer: axes, grid, lines, area, and scatter.
 
-use crate::model::ChartData;
-use crate::pdfcanvas::{Canvas, FontSet, Rgb, TextStyle};
 use super::bars::{draw_bar_grid, draw_bars_horizontal, draw_columns};
 use super::resolve::{format_compact, ResolvedChart};
 use super::{blend_white, truncate_label, ChartRect};
+use crate::model::ChartData;
+use crate::pdfcanvas::{Canvas, FontSet, Rgb, TextStyle};
 
 pub(crate) const AXIS_COLOR: Rgb = Rgb(148, 163, 184);
 pub(crate) const GRID_COLOR: Rgb = Rgb(226, 232, 240);
@@ -314,7 +314,7 @@ fn draw_scatter(
     let x_scale = compute_scale(raw_xmin, raw_xmax, false);
     draw_bar_grid(canvas, fonts, area, x_scale, tick_style);
 
-    let (draw_line, draw_markers, smooth) = crate::xlsx::chart_write::scatter_flavour(chart.scatter_style.as_deref());
+    let (draw_line, draw_markers, smooth) = crate::xlsx::scatter_flavour(chart.scatter_style.as_deref());
     canvas.clip_rect(area.x - 4.0, area.y - 4.0, area.w + 8.0, area.h + 8.0);
     for series in &data.series {
         let pts: Vec<(f64, f64)> = series
