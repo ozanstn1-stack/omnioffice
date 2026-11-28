@@ -202,7 +202,6 @@ fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<Buil
             canvas.begin_pagination_artifact("Footer");
             canvas.text(page_width - margin - 60.0, page_height - margin, &format!("Page {}", pages.len() + 1), &small);
             canvas.end_artifact();
-
             pages.push(canvas.finish());
             if last_row > max_row {
                 break;
@@ -210,5 +209,6 @@ fn render_sheet(fonts: &FontSet, sheet: &Sheet, workbook: &Workbook) -> Vec<Buil
             row = last_row;
         }
     }
+    pages.extend(crate::layout_calc_charts::render_sheet_charts(fonts, sheet, workbook, pages.len()));
     pages
 }
