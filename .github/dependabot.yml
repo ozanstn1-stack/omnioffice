@@ -110,6 +110,15 @@ updates:
       # test vectors re-checked. Tracked in #617.
       - dependency-name: sha2
         versions: [">=0.11.0"]
+      # sha1 0.11 rides the same digest 0.11 / hybrid-array wave as sha2 0.11
+      # and breaks crates still on digest 0.10. Moves together in #617.
+      - dependency-name: sha1
+        versions: [">=0.11.0"]
+      # pkcs5 0.8 moves with the same RustCrypto / der / digest wave as sha2
+      # 0.11 and hmac 0.13, breaking pdfcore's PDF encryption path on its own.
+      # Moves together in #617.
+      - dependency-name: pkcs5
+        versions: [">=0.8.0"]
       # getrandom 0.3 replaced `getrandom()` with `fill()` and 0.4 continues
       # from there; `rand` 0.8 still pulls 0.2, so a root bump forks the crate
       # unless the RNG call sites move too. Tracked in #618.
@@ -125,6 +134,13 @@ updates:
       fuzz:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # fuzz depends on crates/pdfcore (lopdf 0.46) and also lists lopdf
+      # directly; bumping /fuzz's lopdf ahead of pdfcore pulls two
+      # incompatible lopdf::Document types and fails to compile. Upgrade
+      # both Cargo.toml files together when pdfcore moves to 0.47.
+      - dependency-name: lopdf
+        versions: [">=0.47.0"]
 
   - package-ecosystem: github-actions
     directory: /
