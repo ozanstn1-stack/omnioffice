@@ -155,14 +155,13 @@ pub(crate) fn chart_part_xml(chart: &ChartData, external_rid: Option<&str>) -> R
         .chain(std::iter::once(chart.categories_cache.len()))
         .max()
         .unwrap_or(0);
-    let categories_ref = if chart.categories.trim().is_empty() {
-        if max_rows > 0 {
-            sheet_col_range(0, max_rows)
-        } else {
-            String::new()
-        }
+    let cat = chart.categories.trim();
+    let categories_ref = if !cat.is_empty() {
+        cat.to_string()
+    } else if max_rows > 0 {
+        sheet_col_range(0, max_rows)
     } else {
-        chart.categories.trim().to_string()
+        String::new()
     };
     let scatter = kind == "scatter";
     if categories_ref.is_empty() && !scatter {
@@ -276,9 +275,13 @@ pub(crate) fn chart_part_xml(chart: &ChartData, external_rid: Option<&str>) -> R
 
     let title = if chart.title.is_empty() { String::new() } else { title_xml(&chart.title) };
     let legend = if chart.legend { "<c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>" } else { "" };
-    let external = external_rid
-        .map(|rid| format!("<c:externalData r:id=\"{}\"><c:autoUpdate val=\"0\"/></c:externalData>", escape_attr(rid)))
-        .unwrap_or_default();
+    let external = match external_rid {
+        Some(rid) => {
+            let rid = escape_attr(rid);
+            format!("<c:externalData r:id=\"{rid}\"><c:autoUpdate val=\"0\"/></c:externalData>")
+        }
+        None => String::new(),
+    };
     Ok(format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><c:roundedCorners val=\"0\"/><c:chart>{title}<c:plotArea><c:layout/>{plot}{axes}</c:plotArea>{legend}<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"gap\"/></c:chart>{external}</c:chartSpace>"
     ))

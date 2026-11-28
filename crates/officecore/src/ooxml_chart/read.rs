@@ -25,8 +25,9 @@ fn cache_text_values(node: &XmlNode) -> Vec<String> {
     if found.is_empty() {
         node.find_all("numCache", &mut found);
     }
-    let Some(cache) = found.into_iter().next() else {
-        return Vec::new();
+    let cache = match found.into_iter().next() {
+        Some(cache) => cache,
+        None => return Vec::new(),
     };
     let mut points: Vec<(u32, String)> = cache
         .children_named("pt")
@@ -42,8 +43,9 @@ fn cache_text_values(node: &XmlNode) -> Vec<String> {
 fn cache_num_values(node: &XmlNode) -> Vec<f64> {
     let mut found = Vec::new();
     node.find_all("numCache", &mut found);
-    let Some(cache) = found.into_iter().next() else {
-        return Vec::new();
+    let cache = match found.into_iter().next() {
+        Some(cache) => cache,
+        None => return Vec::new(),
     };
     let mut points: Vec<(u32, f64)> = cache
         .children_named("pt")
@@ -74,6 +76,18 @@ fn srgb_color(props: Option<&XmlNode>) -> Option<String> {
 
 fn axis_title(axis: Option<&XmlNode>) -> String {
     axis.and_then(|a| first_descendant(a, "title")).map(XmlNode::deep_text).unwrap_or_default()
+}
+
+fn series_name(ser: &XmlNode) -> String {
+    let tx = match ser.child("tx") {
+        Some(tx) => tx,
+        None => return String::new(),
+    };
+    first_descendant(tx, "v").map(XmlNode::deep_text).unwrap_or_else(|| tx.deep_text())
+}
+
+fn is_horizontal_axis(axis: &XmlNode) -> bool {
+    matches!(axis.child("axPos").and_then(|p| p.attr("val")), Some("b" | "t"))
 }
 
 fn read_scatter_style(plot_child: &XmlNode) -> Option<String> {
@@ -132,10 +146,7 @@ pub(crate) fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<Ch
     let mut series_values_cache = Vec::new();
 
     for ser in plot_child.children_named("ser") {
-        let name = ser
-            .child("tx")
-            .map(|tx| first_descendant(tx, "v").map(XmlNode::deep_text).unwrap_or_else(|| tx.deep_text()))
-            .unwrap_or_default();
+        let name = series_name(ser);
         let (val_node, cat_node) =
             if scatter { (ser.child("yVal"), ser.child("xVal")) } else { (ser.child("val"), ser.child("cat")) };
         let range = val_node.and_then(|v| first_descendant(v, "f")).map(XmlNode::deep_text).unwrap_or_default();
@@ -157,16 +168,11 @@ pub(crate) fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<Ch
         series_values_cache.clear();
     }
     let stacked = first_descendant(plot_child, "grouping").and_then(|n| n.attr("val")) == Some("stacked");
-    let show_labels = first_descendant(&root, "dLbls")
-        .and_then(|l| first_descendant(l, "showVal"))
-        .and_then(|n| n.attr("val"))
-        == Some("1");
+    let labels = first_descendant(&root, "dLbls");
+    let show_labels = labels.and_then(|l| first_descendant(l, "showVal")).and_then(|n| n.attr("val")) == Some("1");
     let (x_title, y_title) = if scatter {
         let axes = plot.children_of("valAx");
-        let xi = axes
-            .iter()
-            .position(|a| matches!(a.child("axPos").and_then(|p| p.attr("val")), Some("b" | "t")))
-            .unwrap_or(0);
+        let xi = axes.iter().position(|a| is_horizontal_axis(a)).unwrap_or(0);
         (axis_title(axes.get(xi).copied()), axis_title(axes.get(usize::from(xi == 0)).copied()))
     } else {
         (axis_title(first_descendant(plot, "catAx")), axis_title(first_descendant(plot, "valAx")))
@@ -273,12 +279,13 @@ mod tests {
         let summary_cap = chart_text_summary(&sample("bar", false, None), "Cap");
         assert!(summary_cap.contains("Cap"));
         assert!(chart_text_summary(&sample("bar", false, None), "").contains("bar Chart"));
+        chart.title.clear();
         assert!(chart_text_summary(&chart, "").contains("[Chart (column): column]"));
 
         let radar = concat!(
             "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">",
             "<c:chart><c:plotArea><c:radarChart><c:ser><c:tx><c:v>R</c:v></c:tx></c:ser>",
-            "</c:radarChart></c:plotArea></c:chart></c:chartSpace>",
+            "</c:radarChart></c:plotArea></c:chart></c:chartSpace>"
         );
         let mut warnings = Vec::new();
         let parsed = read_chart_xml(radar, &mut warnings).unwrap();

@@ -247,6 +247,7 @@ mod tests {
     use crate::rtf::write_rtf;
     use crate::textio::{document_to_html, document_to_markdown, document_to_text};
     use crate::udf::write_udf;
+    use crate::zip::ZipReader;
 
     fn chart_for(kind: &str) -> ChartData {
         ChartData {
@@ -298,14 +299,17 @@ mod tests {
         let txt = document_to_text(&doc);
         let html = document_to_html(&doc);
         let rtf = String::from_utf8_lossy(&write_rtf(&doc).unwrap()).into_owned();
-        let udf = String::from_utf8_lossy(&write_udf(&doc).unwrap()).into_owned();
+        let udf_zip = ZipReader::open(write_udf(&doc).unwrap()).unwrap();
+        let udf = udf_zip.read_text("content.xml").unwrap();
         assert!(md.contains("ODT column") && txt.contains("ODT bar") && html.contains("chart-fallback"));
         assert!(rtf.contains("ODT line") && udf.contains("ODT pie"));
 
-        assert!(!format_capabilities("docx").features.is_empty());
-        assert!(!document_feature_report(&doc, "rtf").features.is_empty());
-        assert!(!document_feature_report(&doc, "udf").features.is_empty());
-        assert!(!document_feature_report(&doc, "txt").features.is_empty());
+        for ext in ["docx", "odt", "udf", "rtf", "txt"] {
+            assert!(!format_capabilities(ext).features.is_empty());
+        }
+        assert!(!document_feature_report(&doc, "rtf").items.is_empty());
+        assert!(!document_feature_report(&doc, "udf").items.is_empty());
+        assert!(!document_feature_report(&doc, "txt").items.is_empty());
 
         let files: Vec<String> = ["a.png", "b.jpg", "c.gif", "d.svg", "e.webp", "Object 1/", "content.xml"]
             .into_iter()
