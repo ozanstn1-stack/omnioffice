@@ -436,11 +436,8 @@ fn write_block(
             let mut indent_left = props.indent_left_pt;
             if let Some(list) = &props.list {
                 indent_left += 18.0 * (list.level as f64 + 1.0);
-                let marker = if list.kind == "number" {
-                    format!("{}.\\tab ", list.start)
-                } else {
-                    "\\u8226?\\tab ".to_string()
-                };
+                let marker =
+                    if list.kind == "number" { format!("{}.\\tab ", list.start) } else { "\\u8226?\\tab ".to_string() };
                 out.push_str(&format!("\\li{} \\fi-360 {{{marker}}}", (indent_left * 20.0).round() as i64));
             } else {
                 if indent_left > 0.0 {

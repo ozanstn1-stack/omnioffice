@@ -237,3 +237,83 @@ pub(super) fn read_image_block(
         wrap: frame_wrap(node, styles),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{manifest_for, meta_xml, settings_xml};
+    use crate::compat::{document_feature_report, format_capabilities};
+    use crate::model::{Block, ChartData, ChartSeries, TextDocument, Watermark};
+    use crate::odf::{read_odt, write_odt};
+    use crate::rtf::write_rtf;
+    use crate::textio::{document_to_html, document_to_markdown, document_to_text};
+    use crate::udf::write_udf;
+
+    fn chart_for(kind: &str) -> ChartData {
+        ChartData {
+            kind: kind.into(),
+            title: format!("{kind} title"),
+            categories: String::new(),
+            series: vec![ChartSeries { name: "S1".into(), range: String::new(), color: Some("#0ea5e9".into()) }],
+            legend: true,
+            x_title: "Cat".into(),
+            y_title: "Val".into(),
+            stacked: kind == "area",
+            show_labels: kind == "column",
+            categories_cache: vec!["A".into(), "B".into()],
+            series_values_cache: vec![vec![3.0, 9.0]],
+            hole_size: None,
+            scatter_style: if kind == "scatter" { Some("smoothMarker".into()) } else { None },
+        }
+    }
+
+    #[test]
+    fn odt_round_trips_charts_manifest_and_text_fallbacks() {
+        let mut doc = TextDocument::new_blank("ODT charts");
+        doc.watermark = Some(Watermark { text: "DRAFT".into(), ..Default::default() });
+        for (i, kind) in ["column", "bar", "line", "area", "pie", "doughnut", "scatter"].iter().enumerate() {
+            let align = ["left", "center", "right"][i % 3];
+            doc.blocks.push(Block::Chart {
+                chart: chart_for(kind),
+                width_pt: 320.0,
+                height_pt: 200.0,
+                align: align.into(),
+                caption: format!("ODT {kind}"),
+            });
+        }
+        doc.blocks.push(Block::Chart {
+            chart: chart_for("radar"),
+            width_pt: 240.0,
+            height_pt: 160.0,
+            align: "center".into(),
+            caption: "Fallback".into(),
+        });
+
+        let odt = write_odt(&doc).expect("write odt");
+        let read = read_odt(&odt).expect("read odt");
+        let charts = read.document.blocks.iter().filter(|b| matches!(b, Block::Chart { .. })).count();
+        assert_eq!(charts, 7);
+        assert!(read.document.watermark.is_some());
+
+        let md = document_to_markdown(&doc);
+        let txt = document_to_text(&doc);
+        let html = document_to_html(&doc);
+        let rtf = String::from_utf8_lossy(&write_rtf(&doc).unwrap()).into_owned();
+        let udf = String::from_utf8_lossy(&write_udf(&doc).unwrap()).into_owned();
+        assert!(md.contains("ODT column") && txt.contains("ODT bar") && html.contains("chart-fallback"));
+        assert!(rtf.contains("ODT line") && udf.contains("ODT pie"));
+
+        assert!(!format_capabilities("docx").features.is_empty());
+        assert!(!document_feature_report(&doc, "rtf").features.is_empty());
+        assert!(!document_feature_report(&doc, "udf").features.is_empty());
+        assert!(!document_feature_report(&doc, "txt").features.is_empty());
+
+        let files: Vec<String> = ["a.png", "b.jpg", "c.gif", "d.svg", "e.webp", "Object 1/", "content.xml"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let manifest = manifest_for("application/vnd.oasis.opendocument.text", &files);
+        assert!(manifest.contains("image/webp") && manifest.contains("application/vnd.oasis.opendocument.chart"));
+        assert!(meta_xml("T", "G", doc.watermark.as_ref()).contains("DRAFT"));
+        assert!(settings_xml().contains("office:settings"));
+    }
+}

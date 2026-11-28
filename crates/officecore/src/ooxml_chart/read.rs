@@ -57,14 +57,28 @@ fn cache_num_values(node: &XmlNode) -> Vec<f64> {
     points.into_iter().map(|(_, v)| v).take(MAX_CACHE_POINTS).collect()
 }
 
+fn line_hidden(ser: &XmlNode) -> bool {
+    ser.child("spPr").and_then(|p| p.child("ln")).is_some_and(|l| l.child("noFill").is_some())
+}
+
+fn marker_hidden(ser: &XmlNode) -> bool {
+    ser.child("marker").and_then(|m| m.child("symbol")).and_then(|s| s.attr("val")) == Some("none")
+}
+
+fn srgb_color(props: Option<&XmlNode>) -> Option<String> {
+    props
+        .and_then(|p| first_descendant(p, "srgbClr"))
+        .and_then(|c| c.attr("val"))
+        .map(|v| format!("#{}", v.trim_start_matches('#').to_ascii_uppercase()))
+}
+
+fn axis_title(axis: Option<&XmlNode>) -> String {
+    axis.and_then(|a| first_descendant(a, "title")).map(XmlNode::deep_text).unwrap_or_default()
+}
+
 fn read_scatter_style(plot_child: &XmlNode) -> Option<String> {
     let declared = plot_child.child("scatterStyle").and_then(|n| n.attr("val")).unwrap_or("lineMarker");
     let series: Vec<&XmlNode> = plot_child.children_named("ser").collect();
-    let line_hidden =
-        |ser: &XmlNode| ser.child("spPr").and_then(|p| p.child("ln")).is_some_and(|l| l.child("noFill").is_some());
-    let marker_hidden = |ser: &XmlNode| {
-        ser.child("marker").and_then(|m| m.child("symbol")).and_then(|s| s.attr("val")) == Some("none")
-    };
     let smooth = declared.starts_with("smooth")
         || series
             .iter()
@@ -125,16 +139,10 @@ pub(crate) fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<Ch
         let (val_node, cat_node) =
             if scatter { (ser.child("yVal"), ser.child("xVal")) } else { (ser.child("val"), ser.child("cat")) };
         let range = val_node.and_then(|v| first_descendant(v, "f")).map(XmlNode::deep_text).unwrap_or_default();
-        let colored = |props: Option<&XmlNode>| {
-            props
-                .and_then(|p| first_descendant(p, "srgbClr"))
-                .and_then(|c| c.attr("val"))
-                .map(|v| format!("#{}", v.trim_start_matches('#').to_ascii_uppercase()))
-        };
         let color = if scatter {
-            colored(ser.child("spPr")).or_else(|| colored(ser.child("marker").and_then(|m| m.child("spPr"))))
+            srgb_color(ser.child("spPr")).or_else(|| srgb_color(ser.child("marker").and_then(|m| m.child("spPr"))))
         } else {
-            colored(first_descendant(ser, "spPr"))
+            srgb_color(first_descendant(ser, "spPr"))
         };
         if let Some(cat) = cat_node {
             if categories.is_empty() {
@@ -153,9 +161,6 @@ pub(crate) fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<Ch
         .and_then(|l| first_descendant(l, "showVal"))
         .and_then(|n| n.attr("val"))
         == Some("1");
-    let axis_title = |axis: Option<&XmlNode>| {
-        axis.and_then(|a| first_descendant(a, "title")).map(XmlNode::deep_text).unwrap_or_default()
-    };
     let (x_title, y_title) = if scatter {
         let axes = plot.children_of("valAx");
         let xi = axes
@@ -191,4 +196,94 @@ pub(crate) fn read_chart_xml(xml: &str, warnings: &mut Vec<String>) -> Option<Ch
         hole_size,
         scatter_style,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_chart_xml;
+    use crate::model::{ChartData, ChartSeries};
+    use crate::ooxml_chart::{chart_part_xml, chart_text_summary, embedded_workbook};
+    use crate::xlsx::read_workbook_bytes;
+
+    fn sample(kind: &str, stacked: bool, scatter_style: Option<&str>) -> ChartData {
+        let cats = if kind == "scatter" { vec!["1".into(), "2".into()] } else { vec!["Jan".into(), "Feb".into()] };
+        ChartData {
+            kind: kind.into(),
+            title: format!("{kind} Chart"),
+            categories: String::new(),
+            series: vec![ChartSeries { name: "Rev".into(), range: String::new(), color: Some("#2563EB".into()) }],
+            legend: true,
+            x_title: "X".into(),
+            y_title: "Y".into(),
+            stacked,
+            show_labels: kind == "pie" || kind == "column",
+            categories_cache: cats,
+            series_values_cache: vec![vec![10.5, 25.0]],
+            hole_size: if kind == "doughnut" { Some(65) } else { None },
+            scatter_style: scatter_style.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn chart_xml_and_workbook_round_trip_all_kinds() {
+        for (kind, stacked, style) in [
+            ("column", true, None),
+            ("bar", false, None),
+            ("line", false, None),
+            ("area", true, None),
+            ("pie", false, None),
+            ("doughnut", false, None),
+            ("scatter", false, Some("line")),
+            ("scatter", false, Some("lineMarker")),
+            ("scatter", false, Some("smooth")),
+            ("scatter", false, Some("smoothMarker")),
+        ] {
+            let chart = sample(kind, stacked, style);
+            let xml = chart_part_xml(&chart, Some("rId1")).expect("serialize chart");
+            let mut warnings = Vec::new();
+            let parsed = read_chart_xml(&xml, &mut warnings).expect("parse chart");
+            assert_eq!(parsed.kind, kind);
+            assert_eq!(parsed.title, chart.title);
+            assert_eq!(parsed.stacked, stacked);
+            assert_eq!(parsed.hole_size, chart.hole_size);
+            assert!(warnings.is_empty());
+        }
+        let mut text_scatter = sample("scatter", false, None);
+        text_scatter.categories_cache = vec!["low".into(), "high".into()];
+        let xml = chart_part_xml(&text_scatter, None).unwrap();
+        let parsed = read_chart_xml(&xml, &mut Vec::new()).unwrap();
+        assert_eq!(parsed.categories_cache, vec!["low", "high"]);
+
+        let wb_bytes = embedded_workbook(&sample("column", false, None)).unwrap();
+        let wb = read_workbook_bytes(&wb_bytes).unwrap();
+        assert_eq!(wb.workbook.sheets[0].name, "Sheet1");
+    }
+
+    #[test]
+    fn chart_xml_errors_summary_and_unknown_warnings() {
+        let mut chart = sample("radar", false, None);
+        assert!(chart_part_xml(&chart, None).is_err());
+        chart.kind = "column".into();
+        chart.series_values_cache.clear();
+        chart.categories_cache.clear();
+        assert!(chart_part_xml(&chart, None).is_err());
+        chart.series.clear();
+        assert!(chart_part_xml(&chart, None).is_err());
+
+        let summary_cap = chart_text_summary(&sample("bar", false, None), "Cap");
+        assert!(summary_cap.contains("Cap"));
+        assert!(chart_text_summary(&sample("bar", false, None), "").contains("bar Chart"));
+        assert!(chart_text_summary(&chart, "").contains("[Chart (column): column]"));
+
+        let radar = concat!(
+            "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">",
+            "<c:chart><c:plotArea><c:radarChart><c:ser><c:tx><c:v>R</c:v></c:tx></c:ser>",
+            "</c:radarChart></c:plotArea></c:chart></c:chartSpace>",
+        );
+        let mut warnings = Vec::new();
+        let parsed = read_chart_xml(radar, &mut warnings).unwrap();
+        assert_eq!(parsed.kind, "radar");
+        assert_eq!(warnings.len(), 1);
+        assert!(read_chart_xml("<not-xml", &mut warnings).is_none());
+    }
 }

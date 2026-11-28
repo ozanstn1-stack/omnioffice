@@ -6,6 +6,7 @@ pub(super) const CONTENT_TYPE_HEADER: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml";
 pub(super) const CONTENT_TYPE_FOOTER: &str =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml";
+const CONTENT_TYPE_XLSX: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 #[derive(Clone)]
 pub(super) struct RelLink {
@@ -63,10 +64,7 @@ pub(super) fn content_types(
     );
     writer.empty("Default", &[("Extension", "xml"), ("ContentType", "application/xml")]);
     if has_embeddings {
-        writer.empty(
-            "Default",
-            &[("Extension", "xlsx"), ("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")],
-        );
+        writer.empty("Default", &[("Extension", "xlsx"), ("ContentType", CONTENT_TYPE_XLSX)]);
     }
     for (extension, mime) in [
         ("png", "image/png"),

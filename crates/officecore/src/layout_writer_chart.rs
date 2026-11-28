@@ -98,3 +98,82 @@ pub(crate) fn render_writer_chart(
         canvas.end_marked();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::layout::document_to_pdf;
+    use crate::model::{Block, ChartData, ChartSeries, TableCell, TableData, TableRow, TextDocument};
+
+    fn make_chart(kind: &str, title: &str, stacked: bool, scatter_style: Option<&str>) -> ChartData {
+        let categories_cache = if kind == "scatter" {
+            vec!["1".into(), "2".into(), "3".into()]
+        } else {
+            vec!["Q1".into(), "Q2".into(), "Q3".into()]
+        };
+        ChartData {
+            kind: kind.into(),
+            title: title.into(),
+            categories: "Sheet1!A2:A4".into(),
+            series: vec![
+                ChartSeries { name: "Alpha".into(), range: "Sheet1!B2:B4".into(), color: Some("#2563eb".into()) },
+                ChartSeries { name: "Beta".into(), range: "Sheet1!C2:C4".into(), color: Some("#16a34a".into()) },
+            ],
+            legend: true,
+            x_title: "Period".into(),
+            y_title: "Revenue".into(),
+            stacked,
+            show_labels: kind == "column" || kind == "pie",
+            categories_cache,
+            series_values_cache: vec![vec![12.0, 28.0, 19.0], vec![8.0, 14.0, 24.0]],
+            hole_size: if kind == "doughnut" { Some(60) } else { None },
+            scatter_style: scatter_style.map(str::to_string),
+        }
+    }
+
+    fn chart_block(chart: ChartData, width_pt: f64, height_pt: f64, align: &str, caption: &str) -> Block {
+        Block::Chart { chart, width_pt, height_pt, align: align.into(), caption: caption.into() }
+    }
+
+    #[test]
+    fn renders_all_chart_kinds_and_table_cells_to_pdf() {
+        let mut doc = TextDocument::new_blank("Charts");
+        doc.blocks = vec![
+            chart_block(make_chart("column", "Stacked Col", true, None), 380.0, 220.0, "left", "Figure 1"),
+            chart_block(make_chart("bar", "Bar", false, None), 360.0, 200.0, "center", ""),
+            chart_block(make_chart("line", "Line", false, None), 360.0, 200.0, "right", "Trend"),
+            chart_block(make_chart("area", "Area", true, None), 360.0, 200.0, "center", ""),
+            chart_block(make_chart("pie", "Pie", false, None), 280.0, 220.0, "center", "Share"),
+            chart_block(make_chart("doughnut", "Ring", false, None), 280.0, 220.0, "center", ""),
+            chart_block(make_chart("scatter", "", false, Some("smoothMarker")), 900.0, 900.0, "center", ""),
+            chart_block(
+                make_chart("scatter", "Points", false, None),
+                320.0,
+                180.0,
+                "center",
+                "Very long descriptive caption trimmed cleanly when wider than container box",
+            ),
+            Block::Table {
+                table: TableData {
+                    rows: vec![TableRow {
+                        cells: vec![TableCell {
+                            blocks: vec![chart_block(
+                                make_chart("line", "Cell", false, None),
+                                240.0,
+                                150.0,
+                                "center",
+                                "In cell",
+                            )],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }],
+                    column_widths_pt: vec![420.0],
+                    ..Default::default()
+                },
+            },
+        ];
+        let pdf = document_to_pdf(&doc);
+        assert!(pdf.starts_with(b"%PDF-"));
+        assert!(pdf.len() > 2000);
+    }
+}

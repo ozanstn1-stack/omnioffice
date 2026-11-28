@@ -134,3 +134,80 @@ pub(super) fn read_chart_block(
     };
     Some(Block::Chart { chart, width_pt, height_pt, align, caption })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{read_chart_block, RelLink};
+    use crate::docx::{read_docx, write_docx};
+    use crate::model::{Block, ChartData, ChartSeries, TextDocument};
+    use crate::xml::parse_xml;
+    use crate::zip::{ZipReader, ZipWriter};
+    use std::collections::HashMap;
+
+    fn chart_for(kind: &str) -> ChartData {
+        ChartData {
+            kind: kind.into(),
+            title: format!("{kind} title"),
+            categories: String::new(),
+            series: vec![ChartSeries { name: "S1".into(), range: String::new(), color: Some("#1d4ed8".into()) }],
+            legend: true,
+            x_title: "X".into(),
+            y_title: "Y".into(),
+            stacked: kind == "column",
+            show_labels: kind == "pie",
+            categories_cache: vec!["10".into(), "20".into()],
+            series_values_cache: vec![vec![5.0, 12.0]],
+            hole_size: if kind == "doughnut" { Some(65) } else { None },
+            scatter_style: if kind == "scatter" { Some("line".into()) } else { None },
+        }
+    }
+
+    #[test]
+    fn docx_round_trips_seven_chart_kinds_and_fallbacks() {
+        let mut doc = TextDocument::new_blank("DOCX charts");
+        for (i, kind) in ["column", "bar", "line", "area", "pie", "doughnut", "scatter"].iter().enumerate() {
+            let align = ["left", "center", "right"][i % 3];
+            doc.blocks.push(Block::Chart {
+                chart: chart_for(kind),
+                width_pt: 360.0,
+                height_pt: 220.0,
+                align: align.into(),
+                caption: format!("Cap {kind}"),
+            });
+        }
+        doc.blocks.push(Block::Chart {
+            chart: chart_for("radar"),
+            width_pt: 300.0,
+            height_pt: 180.0,
+            align: "center".into(),
+            caption: "Fallback".into(),
+        });
+        let bytes = write_docx(&doc).expect("write docx");
+        let zip = ZipReader::open(bytes.clone()).expect("open zip");
+        assert!(zip.contains("word/charts/chart1.xml"));
+        assert!(zip.contains("word/embeddings/Microsoft_Excel_Worksheet1.xlsx"));
+        let read = read_docx(&bytes).expect("read docx");
+        let count = read.document.blocks.iter().filter(|b| matches!(b, Block::Chart { .. })).count();
+        assert_eq!(count, 7);
+    }
+
+    #[test]
+    fn read_chart_block_warns_on_missing_rel_and_part() {
+        let xml = concat!(
+            "<w:p xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">",
+            "<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" ",
+            "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:id=\"rId9\"/>",
+            "</w:p>",
+        );
+        let root = parse_xml(xml).unwrap();
+        let node = root.children.first().unwrap();
+        let reader = ZipReader::open(ZipWriter::new().finish()).unwrap();
+        let mut warnings = Vec::new();
+        assert!(read_chart_block(node, &HashMap::new(), &reader, "center", &mut warnings).is_none());
+        assert_eq!(warnings.len(), 1);
+        let mut rels = HashMap::new();
+        rels.insert("rId9".into(), RelLink { target: "charts/missing.xml".into(), external: false });
+        assert!(read_chart_block(node, &rels, &reader, "center", &mut warnings).is_none());
+        assert_eq!(warnings.len(), 2);
+    }
+}

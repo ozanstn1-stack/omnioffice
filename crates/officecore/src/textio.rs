@@ -5,6 +5,7 @@
 //! never the primary save format.
 
 use crate::model::*;
+use crate::ooxml_chart::chart_text_summary;
 use crate::xml::escape_text;
 
 fn run_markdown(run: &Run) -> String {
@@ -75,9 +76,7 @@ fn block_to_markdown(block: &Block) -> String {
             let alt = if caption.is_empty() { image.alt.clone() } else { caption.clone() };
             format!("![{alt}](embedded-image.{})", image.extension())
         }
-        Block::Chart { chart, caption, .. } => {
-            format!("> {}", crate::ooxml_chart::chart_text_summary(chart, caption))
-        }
+        Block::Chart { chart, caption, .. } => format!("> {}", chart_text_summary(chart, caption)),
         Block::PageBreak => "\n---\n".into(),
         Block::SectionBreak { .. } => "\n---\n".into(),
         Block::Rule => "---".into(),
@@ -145,7 +144,7 @@ pub fn document_to_text(document: &TextDocument) -> String {
                 }
             }
             Block::Chart { chart, caption, .. } => {
-                out.push_str(&crate::ooxml_chart::chart_text_summary(chart, caption));
+                out.push_str(&chart_text_summary(chart, caption));
                 out.push('\n');
             }
             Block::PageBreak => out.push('\n'),
@@ -296,25 +295,22 @@ fn block_html(block: &Block) -> String {
             )
         }
         Block::Chart { chart, caption, .. } => {
-            let summary = crate::ooxml_chart::chart_text_summary(chart, caption);
+            let summary = chart_text_summary(chart, caption);
             format!("<figure class=\"chart-fallback\"><figcaption>{}</figcaption></figure>", escape_text(&summary))
         }
         Block::PageBreak => "<div class=\"page-break\"></div>".into(),
         Block::SectionBreak { .. } => "<div class=\"page-break\"></div>".into(),
         Block::Rule => "<hr/>".into(),
         Block::Toc { entries } => {
-            let items = entries
+            let items: String = entries
                 .iter()
                 .map(|entry| {
-                    let page = if entry.page > 0 {
-                        format!(" <span class=\"toc-page\">{}</span>", entry.page)
-                    } else {
-                        String::new()
-                    };
-                    format!("<li class=\"toc-level-{}\">{}{page}</li>", entry.level.clamp(1, 6), escape_text(&entry.text))
+                    let (lvl, title) = (entry.level.clamp(1, 6), escape_text(&entry.text));
+                    let pg = if entry.page > 0 { entry.page.to_string() } else { String::new() };
+                    let suffix = if pg.is_empty() { pg } else { format!(" <span class=\"toc-page\">{pg}</span>") };
+                    format!("<li class=\"toc-level-{lvl}\">{title}{suffix}</li>")
                 })
-                .collect::<Vec<_>>()
-                .join("");
+                .collect();
             format!("<nav class=\"toc\"><ul>{items}</ul></nav>")
         }
     }

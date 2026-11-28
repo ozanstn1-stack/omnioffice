@@ -7,8 +7,8 @@ pub(crate) use read::{first_descendant, read_chart_xml};
 use crate::address::column_name;
 use crate::error::OfficeResult;
 use crate::model::{Cell, CellValue, ChartData, Sheet, Workbook};
-use crate::xml::{escape_attr, escape_text};
 use crate::xlsx::scatter_flavour;
+use crate::xml::{escape_attr, escape_text};
 
 const CHART_CATEGORY_AXIS: u64 = 111_111_111;
 const CHART_VALUE_AXIS: u64 = 222_222_222;
@@ -93,7 +93,9 @@ fn scatter_look_xml(color: Option<&str>, lines: bool, markers: bool) -> String {
     let line = match (&rgb, lines) {
         (_, false) => "<a:ln w=\"19050\"><a:noFill/></a:ln>".to_string(),
         (Some(hex), true) => {
-            format!("<a:ln w=\"28575\" cap=\"rnd\"><a:solidFill><a:srgbClr val=\"{hex}\"/></a:solidFill><a:round/></a:ln>")
+            format!(
+                "<a:ln w=\"28575\" cap=\"rnd\"><a:solidFill><a:srgbClr val=\"{hex}\"/></a:solidFill><a:round/></a:ln>"
+            )
         }
         (None, true) => String::new(),
     };
@@ -226,36 +228,51 @@ pub(crate) fn chart_part_xml(chart: &ChartData, external_rid: Option<&str>) -> R
     } else {
         ""
     };
+    let mut plot = String::new();
     let mut axes = String::new();
-    let plot = match kind {
+    match kind {
         "column" | "bar" => {
             axes = axes_xml(chart, false);
             let dir = if kind == "bar" { "bar" } else { "col" };
             let grp = if chart.stacked { "stacked" } else { "clustered" };
             let ov = if chart.stacked { "<c:overlap val=\"100\"/>" } else { "" };
-            format!("<c:barChart><c:barDir val=\"{dir}\"/><c:grouping val=\"{grp}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:gapWidth val=\"150\"/>{ov}<c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:barChart>")
+            plot.push_str(&format!(
+                "<c:barChart><c:barDir val=\"{dir}\"/><c:grouping val=\"{grp}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:gapWidth val=\"150\"/>{ov}<c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:barChart>"
+            ));
         }
         "line" => {
             axes = axes_xml(chart, false);
-            format!("<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:marker val=\"1\"/><c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:lineChart>")
+            plot.push_str(&format!(
+                "<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:marker val=\"1\"/><c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:lineChart>"
+            ));
         }
         "area" => {
             axes = axes_xml(chart, false);
             let grp = if chart.stacked { "stacked" } else { "standard" };
-            format!("<c:areaChart><c:grouping val=\"{grp}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:areaChart>")
+            plot.push_str(&format!(
+                "<c:areaChart><c:grouping val=\"{grp}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:areaChart>"
+            ));
         }
-        "pie" => format!("<c:pieChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/></c:pieChart>"),
+        "pie" => {
+            plot.push_str(&format!(
+                "<c:pieChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/></c:pieChart>"
+            ));
+        }
         "doughnut" => {
             let hole = chart.hole_size.unwrap_or(DOUGHNUT_DEFAULT_HOLE).clamp(10, 90);
-            format!("<c:doughnutChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/><c:holeSize val=\"{hole}\"/></c:doughnutChart>")
+            plot.push_str(&format!(
+                "<c:doughnutChart><c:varyColors val=\"1\"/>{series_xml}{labels}<c:firstSliceAng val=\"0\"/><c:holeSize val=\"{hole}\"/></c:doughnutChart>"
+            ));
         }
         "scatter" => {
             axes = axes_xml(chart, true);
             let style = if scatter_smooth { "smoothMarker" } else { "lineMarker" };
-            format!("<c:scatterChart><c:scatterStyle val=\"{style}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:scatterChart>")
+            plot.push_str(&format!(
+                "<c:scatterChart><c:scatterStyle val=\"{style}\"/><c:varyColors val=\"0\"/>{series_xml}{labels}<c:axId val=\"{CHART_CATEGORY_AXIS}\"/><c:axId val=\"{CHART_VALUE_AXIS}\"/></c:scatterChart>"
+            ));
         }
         _ => return Err(format!("the chart type \"{kind}\" is not representable yet")),
-    };
+    }
 
     let title = if chart.title.is_empty() { String::new() } else { title_xml(&chart.title) };
     let legend = if chart.legend { "<c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>" } else { "" };
