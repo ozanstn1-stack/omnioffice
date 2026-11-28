@@ -749,9 +749,23 @@ fn write_block(writer: &mut String, block: &Block, cursor: &mut usize) {
                 ));
             }
         }
-        // A UDF has no model for these; they are reported by `write_udf`.
+        Block::Chart { chart, caption, .. } => {
+            let run = Run { text: crate::ooxml_chart::chart_text_summary(chart, caption), ..Default::default() };
+            write_paragraph(writer, &ParaProps::default(), &[run], cursor);
+        }
         _ => {}
     }
+}
+
+fn wrap_hf(tag: &str, blocks: &[Block], cursor: &mut usize) -> String {
+    let mut body = String::new();
+    for block in blocks {
+        write_block(&mut body, block, cursor);
+    }
+    if body.is_empty() {
+        return body;
+    }
+    format!("<{tag}s><{tag} type=\"default\">{body}</{tag}></{tag}s>")
 }
 
 /// Writes a Writer document as a UDF package.
@@ -761,19 +775,12 @@ pub fn write_udf(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     for block in &document.blocks {
         write_block(&mut elements, block, &mut cursor);
     }
-    // Unknown elements read from a file are written back verbatim.
     for preserved in &document.preserved_udf {
         elements.push_str(&preserved.xml);
     }
-    let mut headers = String::new();
-    for block in &document.header {
-        write_block(&mut headers, block, &mut cursor);
-    }
-    let mut footers = String::new();
-    for block in &document.footer {
-        write_block(&mut footers, block, &mut cursor);
-    }
     let page = &document.page;
+    let headers_section = wrap_hf("header", &document.header, &mut cursor);
+    let footers_section = wrap_hf("footer", &document.footer, &mut cursor);
     let content = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
          <template format_id=\"1.8\" producer=\"OmniOffice {version}\">\
@@ -796,16 +803,6 @@ pub fn write_udf(document: &TextDocument) -> OfficeResult<Vec<u8>> {
         title = escape_attr(&document.title),
         date = escape_attr(&document.metadata.created),
         author = escape_attr(&document.metadata.author),
-        headers_section = if headers.is_empty() {
-            String::new()
-        } else {
-            format!("<headers><header type=\"default\">{headers}</header></headers>")
-        },
-        footers_section = if footers.is_empty() {
-            String::new()
-        } else {
-            format!("<footers><footer type=\"default\">{footers}</footer></footers>")
-        },
     );
     let mut zip = ZipWriter::new();
     zip.add_text("content.xml", &content);

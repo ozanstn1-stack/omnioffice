@@ -136,7 +136,11 @@ const baseName = (file) => file.replace(/\.js$/, "").replace(/-[A-Za-z0-9_-]{8}$
 // Reader AI multi-turn report export add ~3.9 KB across lazy chunks (total
 // measured at 565.0 KB; entry stays 60.2 / 62 KB and Reader stays 11.7 / 12 KB
 // via dynamic e-Devlet verification import).
-const TOTAL_BUDGET_KB = 567;
+// Raised to 570 in 8.5.0: Writer Native Chart UI (`WriterChartBlock`, `WriterChartModal`),
+// shared `ChartPlots` (`ScatterPlot`, doughnut `holePct`), and `ChartDialog` (`holeSize`,
+// `scatterStyle`) add ~3.0 KB gzip across lazy/shared chunks (`568.0 / 570 KB`); `entry`
+// stays at 60.0 / 62 KB and all per-route caps hold.
+const TOTAL_BUDGET_KB = 570;
 
 const failures = [];
 if (!sizes.has(entry)) failures.push(`entry chunk ${entry} is missing from dist/assets`);

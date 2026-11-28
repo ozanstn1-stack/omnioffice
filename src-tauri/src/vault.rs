@@ -641,7 +641,7 @@ fn writer_extract(
                 tables += 1;
                 push_location(&mut locations, format!("table {tables}"), &text, path, warnings);
             }
-            Block::Image { .. } => {
+            Block::Image { .. } | Block::Chart { .. } => {
                 figures += 1;
                 push_location(&mut locations, format!("figure {figures}"), &text, path, warnings);
             }

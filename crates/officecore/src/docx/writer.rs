@@ -1,6 +1,7 @@
 //! DOCX writer: package parts, styles, numbering, notes and the document body.
 //! The reader lives in `reader`; the public entry points are re-exported by `mod.rs`.
 
+use super::package::{app_properties, content_types, core_properties, root_relationships};
 use super::*;
 
 const NS_DECL: &str = concat!(
@@ -84,159 +85,6 @@ impl Media {
         self.entries.push((path.clone(), image.bytes()));
         Some(path)
     }
-}
-
-const CONTENT_TYPE_HEADER: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml";
-const CONTENT_TYPE_FOOTER: &str = "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml";
-
-fn content_types(
-    header_parts: &[String],
-    footer_parts: &[String],
-    footnotes: bool,
-    endnotes: bool,
-    comments: bool,
-) -> String {
-    let mut writer = XmlWriter::new();
-    writer.declaration();
-    writer.open("Types", &[("xmlns", "http://schemas.openxmlformats.org/package/2006/content-types")]);
-    writer.empty(
-        "Default",
-        &[("Extension", "rels"), ("ContentType", "application/vnd.openxmlformats-package.relationships+xml")],
-    );
-    writer.empty("Default", &[("Extension", "xml"), ("ContentType", "application/xml")]);
-    for (extension, mime) in [
-        ("png", "image/png"),
-        ("jpg", "image/jpeg"),
-        ("jpeg", "image/jpeg"),
-        ("gif", "image/gif"),
-        ("bmp", "image/bmp"),
-        ("webp", "image/webp"),
-        ("tiff", "image/tiff"),
-    ] {
-        writer.empty("Default", &[("Extension", extension), ("ContentType", mime)]);
-    }
-    let mut overrides: Vec<(String, &str)> = vec![
-        (
-            "/word/document.xml".into(),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
-        ),
-        ("/word/styles.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"),
-        ("/word/numbering.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"),
-        ("/word/settings.xml".into(), "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"),
-        ("/docProps/core.xml".into(), "application/vnd.openxmlformats-package.core-properties+xml"),
-        ("/docProps/app.xml".into(), "application/vnd.openxmlformats-officedocument.extended-properties+xml"),
-    ];
-    for part in header_parts {
-        overrides.push((format!("/word/{part}"), CONTENT_TYPE_HEADER));
-    }
-    for part in footer_parts {
-        overrides.push((format!("/word/{part}"), CONTENT_TYPE_FOOTER));
-    }
-    if footnotes {
-        overrides.push((
-            "/word/footnotes.xml".into(),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
-        ));
-    }
-    if endnotes {
-        overrides.push((
-            "/word/endnotes.xml".into(),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
-        ));
-    }
-    if comments {
-        overrides.push((
-            "/word/comments.xml".into(),
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
-        ));
-    }
-    for (part, mime) in overrides {
-        writer.empty("Override", &[("PartName", &part), ("ContentType", mime)]);
-    }
-    writer.close("Types");
-    writer.finish()
-}
-
-fn root_relationships() -> String {
-    let mut writer = XmlWriter::new();
-    writer.declaration();
-    writer.open("Relationships", &[("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships")]);
-    writer.empty(
-        "Relationship",
-        &[
-            ("Id", "rId1"),
-            ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"),
-            ("Target", "word/document.xml"),
-        ],
-    );
-    writer.empty(
-        "Relationship",
-        &[
-            ("Id", "rId2"),
-            ("Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"),
-            ("Target", "docProps/core.xml"),
-        ],
-    );
-    writer.empty(
-        "Relationship",
-        &[
-            ("Id", "rId3"),
-            ("Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties"),
-            ("Target", "docProps/app.xml"),
-        ],
-    );
-    writer.close("Relationships");
-    writer.finish()
-}
-
-fn core_properties(document: &TextDocument) -> String {
-    let created = if document.metadata.created.is_empty() {
-        "1970-01-01T00:00:00Z".to_string()
-    } else {
-        document.metadata.created.clone()
-    };
-    let modified =
-        if document.metadata.modified.is_empty() { created.clone() } else { document.metadata.modified.clone() };
-    let mut writer = XmlWriter::new();
-    writer.declaration();
-    writer.open(
-        "cp:coreProperties",
-        &[
-            ("xmlns:cp", "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"),
-            ("xmlns:dc", "http://purl.org/dc/elements/1.1/"),
-            ("xmlns:dcterms", "http://purl.org/dc/terms/"),
-            ("xmlns:dcmitype", "http://purl.org/dc/dcmitype/"),
-            ("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"),
-        ],
-    );
-    writer.open("dc:title", &[]).text(&document.title).close("dc:title");
-    writer.open("dc:creator", &[]).text(&document.metadata.author).close("dc:creator");
-    writer.open("dc:subject", &[]).text(&document.metadata.subject).close("dc:subject");
-    writer.open("cp:keywords", &[]).text(&document.metadata.keywords).close("cp:keywords");
-    writer.open("cp:lastModifiedBy", &[]).text(&document.metadata.last_modified_by).close("cp:lastModifiedBy");
-    writer.open("dcterms:created", &[("xsi:type", "dcterms:W3CDTF")]).text(&created).close("dcterms:created");
-    writer.open("dcterms:modified", &[("xsi:type", "dcterms:W3CDTF")]).text(&modified).close("dcterms:modified");
-    writer.close("cp:coreProperties");
-    writer.finish()
-}
-
-fn app_properties(document: &TextDocument) -> String {
-    let words = document.word_count();
-    let mut writer = XmlWriter::new();
-    writer.declaration();
-    writer.open(
-        "Properties",
-        &[
-            ("xmlns", "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"),
-            ("xmlns:vt", "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"),
-        ],
-    );
-    writer.open("Application", &[]).text("OmniOffice").close("Application");
-    writer.open("AppVersion", &[]).text("2.0000").close("AppVersion");
-    writer.open("Words", &[]).text(&words.to_string()).close("Words");
-    writer.open("Paragraphs", &[]).text(&document.blocks.len().to_string()).close("Paragraphs");
-    writer.close("Properties");
-    writer.finish()
 }
 
 fn write_paragraph_properties(writer: &mut XmlWriter, props: &ParaProps, sect: Option<&str>, num_id: Option<u32>) {
@@ -367,6 +215,7 @@ fn highlight_value(color: &str) -> String {
 struct DocxState {
     rels: Relationships,
     media: Media,
+    charts: chart::DocxCharts,
     id_counter: usize,
     footnote_ids: HashMap<String, u32>,
     endnote_ids: HashMap<String, u32>,
@@ -904,6 +753,21 @@ fn write_block(state: &mut DocxState, writer: &mut XmlWriter, block: &Block, dep
         Block::Table { table } => write_table(state, writer, table, depth),
         Block::Image { image, width_pt, height_pt, align, wrap, .. } => {
             write_image(state, writer, image, *width_pt, *height_pt, align, wrap)
+        }
+        Block::Chart { chart, width_pt, height_pt, align, caption } => {
+            let rels = &mut state.rels;
+            let mut add_rel = |kind: &str, target: &str| rels.add(kind, target, false);
+            chart::write_chart_block(
+                &mut state.charts,
+                &mut add_rel,
+                &mut state.id_counter,
+                writer,
+                chart,
+                *width_pt,
+                *height_pt,
+                align,
+                caption,
+            );
         }
         Block::PageBreak => {
             writer.raw("<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>");
@@ -1525,6 +1389,8 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
             footnotes_xml.is_some(),
             endnotes_xml.is_some(),
             comments_xml.is_some(),
+            state.charts.parts.len(),
+            state.charts.embed_count > 0,
         ),
     );
     zip.add_text("_rels/.rels", &root_relationships());
@@ -1547,6 +1413,15 @@ pub fn write_docx(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     }
     if let Some(xml) = comments_xml {
         zip.add_text("word/comments.xml", &xml);
+    }
+    for part in &state.charts.parts {
+        zip.add_text(&part.chart_path, &part.chart_xml);
+        if let (Some(path), Some(xml)) = (&part.rels_path, &part.rels_xml) {
+            zip.add_text(path, xml);
+        }
+        if let (Some(path), Some(bytes)) = (&part.workbook_path, &part.workbook_bytes) {
+            zip.add(path, bytes);
+        }
     }
     for (name, data) in &state.media.entries {
         zip.add(&format!("word/{name}"), data);

@@ -101,7 +101,7 @@ impl CompatibilityReport {
     }
 }
 
-fn feature(feature: &str, level: SupportLevel, note: &str) -> FeatureSupport {
+pub(crate) fn feature(feature: &str, level: SupportLevel, note: &str) -> FeatureSupport {
     FeatureSupport { feature: feature.to_string(), level, note: note.to_string() }
 }
 
@@ -109,91 +109,9 @@ fn feature(feature: &str, level: SupportLevel, note: &str) -> FeatureSupport {
 pub fn format_capabilities(extension: &str) -> FormatCapabilities {
     let extension = extension.trim_start_matches('.').to_ascii_lowercase();
     let (open, edit, save, pdf_export, features): (bool, bool, bool, bool, Vec<FeatureSupport>) = match extension.as_str() {
-        "docx" | "docm" | "dotx" => (
-            true,
-            true,
-            true,
-            true,
-            vec![
-                feature("sections", SupportLevel::Full, "Section breaks with per-section page setup, headers and footers."),
-                feature("footnotes", SupportLevel::Full, "Footnotes and endnotes round-trip."),
-                feature("trackChanges", SupportLevel::Partial, "Insertions, deletions and formatting revisions round-trip; paragraph-level move revisions are simplified."),
-                feature("comments", SupportLevel::Partial, "Comments round-trip; DOCX has no native reply threading, so replies are stored as reply paragraphs."),
-                feature("fields", SupportLevel::Partial, "PAGE, NUMPAGES, DATE, TIME, TITLE, AUTHOR, REF and PAGEREF are written as real fields."),
-                feature("styles", SupportLevel::Full, "Based-on inheritance and next styles."),
-                feature("tables", SupportLevel::Full, "Merged cells round-trip: colspans as w:gridSpan and rowspans as w:vMerge with continuation cells."),
-                feature("images", SupportLevel::Full, "Anchored images with square or top-and-bottom wrap round-trip."),
-                feature("tabStops", SupportLevel::Full, "Custom tab stops round-trip as w:tabs."),
-                feature("watermark", SupportLevel::Full, "Text watermarks round-trip through the default header's VML shape."),
-                feature("charts", SupportLevel::Unsupported, "Writer charts are not implemented."),
-                feature("digitalSignature", SupportLevel::Partial, "Existing signatures are preserved but the writer does not create new ones."),
-                feature("macros", SupportLevel::Unsupported, "Macros are detected and never executed; saving writes the macro-free document, so the VBA project is dropped."),
-            ],
-        ),
-        "odt" => (
-            true,
-            true,
-            true,
-            true,
-            vec![
-                feature("sections", SupportLevel::Partial, "Section breaks are written as page breaks; per-section page setup is not exported to ODT."),
-                feature("footnotes", SupportLevel::Full, "Footnotes and endnotes round-trip as text:note elements with matching citation numbers."),
-                feature("trackChanges", SupportLevel::Partial, "Insertions and deletions round-trip via text:tracked-changes; formatting-only revisions are simplified."),
-                feature("comments", SupportLevel::Partial, "Comments round-trip as office:annotation ranges with LibreOffice's resolved flag; ODF has no portable reply threading, so replies are stored as reply paragraphs."),
-                feature("fields", SupportLevel::Unsupported, "Fields export as their cached text."),
-                feature("tables", SupportLevel::Full, "Merged cells round-trip as table:number-columns-spanned / table:number-rows-spanned with covered-table-cell placeholders."),
-                feature("images", SupportLevel::Partial, "Anchored images keep their wrap style (parallel/none); a wrap the model cannot name imports as top-and-bottom."),
-                feature("tabStops", SupportLevel::Full, "Custom tab stops round-trip as style:tab-stops."),
-                feature("watermark", SupportLevel::Full, "The watermark is written as a run-through frame and kept losslessly in meta:user-defined."),
-            ],
-        ),
-        "udf" => (
-            true,
-            true,
-            true,
-            true,
-            vec![
-                feature("paragraphs", SupportLevel::Full, "Paragraphs, headings and lists round-trip as UDF paragraphs."),
-                feature("characterFormatting", SupportLevel::Full, "Bold, italic, underline, strikethrough, font, size, colour and super/subscript round-trip per segment."),
-                feature("alignment", SupportLevel::Full, "Left, centre, right and justified alignment, indents, spacing and line height round-trip."),
-                feature("tables", SupportLevel::Partial, "Tables, header rows, spans and cell backgrounds round-trip; nested tables are not written."),
-                feature("images", SupportLevel::Partial, "Embedded base64 images (<image imageData=\"...\"/>) round-trip and display in the editor; other picture/object tags are preserved verbatim."),
-                feature("rtfFragments", SupportLevel::Partial, "An embedded base64 RTF fragment is imported as plain text and reported."),
-                feature("unknownElements", SupportLevel::Partial, "Elements this build does not model are preserved verbatim and reported, so a round trip does not drop them."),
-                feature("pageSetup", SupportLevel::Partial, "Page size, margins and orientation round-trip; columns and header/footer distance do not."),
-                feature("signature", SupportLevel::Unsupported, "A PKCS#7 signature block in the package is left untouched but not verified; editing the document invalidates it."),
-            ],
-        ),
-        "rtf" => (
-            true,
-            true,
-            true,
-            true,
-            vec![
-                feature("sections", SupportLevel::Partial, "Sections become page breaks."),
-                feature("footnotes", SupportLevel::Partial, "Footnotes are written as real \\footnote destinations; the endnote class survives through an ignorable \\* marker because RTF has no per-note endnote class."),
-                feature("trackChanges", SupportLevel::Partial, "Insertions and deletions are written as \\revised/\\deleted marks with a \\revtbl author table; formatting revisions are not representable."),
-                feature("comments", SupportLevel::Partial, "Comments are written as Word annotations (\\atrfstart/\\atrfend ranges and \\annotation groups); replies are stored as reply paragraphs, timestamps keep minute precision and the resolved state survives only through an ignorable \\* marker."),
-                feature("tables", SupportLevel::Partial, "Rows and cells are written, but colspan/rowspan merging is not representable."),
-                feature("images", SupportLevel::Partial, "Images are embedded inline; wrapping and cropping are not representable."),
-                feature("tabStops", SupportLevel::Unsupported, "Custom tab stops are not written; tab characters stay in the text."),
-                feature("watermark", SupportLevel::Unsupported, "The watermark is not written to RTF."),
-            ],
-        ),
-        "txt" | "md" | "markdown" | "html" | "htm" => (
-            true,
-            true,
-            true,
-            true,
-            vec![
-                feature("sections", SupportLevel::Partial, "Sections become page breaks."),
-                feature("footnotes", SupportLevel::Partial, "Note text is appended at the end of the document."),
-                feature("trackChanges", SupportLevel::Unsupported, "Tracked changes are applied visually only."),
-                feature("tables", SupportLevel::Partial, "Tables export as tab-separated text (TXT), pipe tables (Markdown) or HTML; merged cells are flattened."),
-                feature("images", SupportLevel::Partial, "HTML embeds image data; Markdown writes a reference without the data and TXT drops images."),
-                feature("watermark", SupportLevel::Unsupported, "The watermark is not written to text formats."),
-            ],
-        ),
+        "docx" | "docm" | "dotx" | "odt" | "udf" | "rtf" | "txt" | "md" | "markdown" | "html" | "htm" => {
+            (true, true, true, true, crate::compat_writer::writer_format_capabilities(&extension))
+        }
         "xlsx" | "xlsm" => (
             true,
             true,
@@ -298,7 +216,7 @@ pub fn format_capabilities(extension: &str) -> FormatCapabilities {
             false,
             vec![
                 feature("editing", SupportLevel::Partial, "Page tools, annotations, forms and object editing where the PDF allows it."),
-                feature("officeExport", SupportLevel::Partial, "Writer, Calc and Impress export to PDF: paragraph/run formatting, tab stops, merged table cells and text watermarks are rendered; hidden slides are skipped; footer/date/slide-number placeholders and image crops are resolved; Calc and Impress charts (column, bar, line, area, pie, doughnut, scatter) are rendered as vector graphics, and image wrap is block-level."),
+                feature("officeExport", SupportLevel::Partial, "Writer, Calc and Impress export to PDF: paragraph/run formatting, tab stops, merged table cells and text watermarks are rendered; hidden slides are skipped; footer/date/slide-number placeholders and image crops are resolved; Writer, Calc and Impress charts (column, bar, line, area, pie, doughnut, scatter) are rendered as vector graphics, and image wrap is block-level."),
                 feature("pdfa", SupportLevel::Partial, "Validation and best-effort conversion: non-embedded simple fonts and Identity Type0 fonts with a ToUnicode map are embedded as substitute programs subset to the characters the document uses, and the output intent carries an sRGB profile; Type0/CID fonts without ToUnicode, symbolic and custom-encoded fonts are reported instead of embedded."),
                 feature("signatures", SupportLevel::Partial, "Detached CMS/PKCS#7 signatures are created and validated (digest, coverage, signer, chain); archived validation data (DSS) is written for offline PAdES B-LT; an optional TSA URL adds an RFC 3161 timestamp (its time is reported, the TSA chain is not validated) and an optional OCSP/CRL check reports revocation, while trust stays unknown without a trust store."),
             ],
@@ -382,12 +300,14 @@ fn has_tab_stops(document: &TextDocument) -> bool {
     })
 }
 
-/// Whether the document contains a table / image block.
+/// Whether the document contains a table / image / chart block.
 fn has_block(document: &TextDocument, kind: &str) -> bool {
-    document
-        .blocks
-        .iter()
-        .any(|block| matches!((kind, block), ("table", Block::Table { .. }) | ("image", Block::Image { .. })))
+    document.blocks.iter().any(|block| {
+        matches!(
+            (kind, block),
+            ("table", Block::Table { .. }) | ("image", Block::Image { .. }) | ("chart", Block::Chart { .. })
+        )
+    })
 }
 
 /// What a Writer document loses when saved as `format`.
@@ -443,6 +363,15 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
                 ));
             }
         }
+        "udf" => {
+            if has_block(document, "chart") {
+                items.push(item(
+                    "charts",
+                    "transformed",
+                    "Charts are written as text summaries in UDF; DOCX, ODT, PDF and .oswk keep full charts.",
+                ));
+            }
+        }
         "rtf" => {
             if sections > 0 {
                 items.push(item("sections", "transformed", "Sections become page breaks."));
@@ -469,6 +398,13 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
                     "tabStops",
                     "lost",
                     "Custom tab stops are not written to RTF; the tab characters stay in the text.",
+                ));
+            }
+            if has_block(document, "chart") {
+                items.push(item(
+                    "charts",
+                    "transformed",
+                    "Charts export as text summaries in RTF; DOCX, ODT, PDF and .oswk keep full charts.",
                 ));
             }
             if document.watermark.is_some() {
@@ -516,6 +452,13 @@ pub fn document_feature_report(document: &TextDocument, format: &str) -> Compati
                     _ => ("lost", "Images are not written to plain text."),
                 };
                 items.push(item("images", status, message));
+            }
+            if has_block(document, "chart") {
+                items.push(item(
+                    "charts",
+                    "transformed",
+                    "Charts export as text summaries; DOCX, ODT, PDF and .oswk keep full charts.",
+                ));
             }
             if document.watermark.is_some() {
                 items.push(item("watermark", "lost", "The watermark is not written to text formats."));
@@ -763,7 +706,7 @@ pub fn model_capabilities(kind: &str) -> DocumentCapabilities {
             supports_fields: true,
             supports_bookmarks: true,
             supports_structured_references: false,
-            supports_charts: false,
+            supports_charts: true,
             supports_animations: false,
             supports_masters: false,
             supports_groups: false,

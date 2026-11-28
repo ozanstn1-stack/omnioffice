@@ -418,9 +418,8 @@ function pushBlockText(lines: string[], block: Block): void {
     return;
   }
   if (block.type === "image" && block.caption) lines.push(block.caption);
-  if (block.type === "toc") {
-    for (const entry of block.entries) lines.push(entry.text);
-  }
+  if (block.type === "chart" && (block.caption || block.chart.title)) lines.push(block.caption || block.chart.title);
+  if (block.type === "toc") for (const entry of block.entries) lines.push(entry.text);
 }
 
 function writerText(document: TextDocument): string {

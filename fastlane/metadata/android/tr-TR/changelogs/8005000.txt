@@ -1,0 +1,1 @@
+8.5.0: Writer'da yerleşik grafik desteği ve Calc, Impress, Writer genelinde gerçek vektörel PDF grafik motoru eklendi. Sütun, çubuk, çizgi, alan, pasta, halka ve dağılım grafiklerini doğrudan belgeye ekleyin; boyut, hizalama, alt yazı ve elektronik tablo verilerini düzenleyin. Tam DOCX/ODT gidiş-dönüş desteği ve RTF, HTML, Markdown, TXT, UDF özet dışa aktarımı sunar.

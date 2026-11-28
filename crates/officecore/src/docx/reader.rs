@@ -1,6 +1,7 @@
 //! DOCX reader: relationships, styles, tables, notes, fields and warnings.
 //! The writer lives in `writer`; the public entry points are re-exported by `mod.rs`.
 
+use super::package::{read_relationships, resolve_media_path, RelLink};
 use super::*;
 
 #[derive(Debug, Clone)]
@@ -21,12 +22,6 @@ struct Numbering {
     levels: HashMap<(u32, u32), (String, u32)>,
 }
 
-#[derive(Clone)]
-struct RelLink {
-    target: String,
-    external: bool,
-}
-
 struct PartContext {
     rels: HashMap<String, RelLink>,
     warnings: Vec<String>,
@@ -44,6 +39,8 @@ struct PartContext {
     bookmarks: Vec<Bookmark>,
     /// Starting block index for the paragraph currently being read.
     current_block: u32,
+    /// Paragraph alignment in effect for embedded drawing blocks.
+    para_align: String,
 }
 
 impl PartContext {
@@ -58,40 +55,9 @@ impl PartContext {
             field_capture: None,
             bookmarks: Vec::new(),
             current_block: 0,
+            para_align: "center".into(),
         }
     }
-}
-
-fn read_relationships(reader: &ZipReader, part: &str) -> HashMap<String, RelLink> {
-    let (dir, file) = match part.rsplit_once('/') {
-        Some((dir, file)) => (format!("{dir}/"), file.to_string()),
-        None => (String::new(), part.to_string()),
-    };
-    let rels_name = format!("{dir}_rels/{file}.rels");
-    let mut map = HashMap::new();
-    let Ok(text) = reader.read_text(&rels_name) else {
-        return map;
-    };
-    let Ok(root) = parse_xml(&text) else {
-        return map;
-    };
-    for node in root.children_named("Relationship") {
-        let Some(id) = node.attr("Id") else { continue };
-        let Some(target) = node.attr("Target") else { continue };
-        let external = node.attr("TargetMode").map(|value| value.eq_ignore_ascii_case("external")).unwrap_or(false);
-        map.insert(id.to_string(), RelLink { target: target.to_string(), external });
-    }
-    map
-}
-
-fn resolve_media_path(target: &str) -> String {
-    if target.starts_with('/') {
-        return target.trim_start_matches('/').to_string();
-    }
-    if target.contains("://") {
-        return String::new();
-    }
-    format!("word/{}", target.trim_start_matches("./"))
 }
 
 fn read_numbering(reader: &ZipReader) -> Numbering {
@@ -468,7 +434,15 @@ fn read_runs(
                                 runs.push(run.clone());
                                 run.text.clear();
                             }
-                            if let Some(block) = read_image_block(part, &context.rels, reader, &mut context.warnings) {
+                            let chart_or_img = super::chart::read_chart_block(
+                                part,
+                                &context.rels,
+                                reader,
+                                &context.para_align,
+                                &mut context.warnings,
+                            )
+                            .or_else(|| read_image_block(part, &context.rels, reader, &mut context.warnings));
+                            if let Some(block) = chart_or_img {
                                 flush_paragraph(runs, blocks, None);
                                 blocks.push(block);
                             }
@@ -706,10 +680,12 @@ fn read_paragraph(node: &XmlNode, context: &mut PartContext, reader: &ZipReader,
             }
         }
     }
+    context.para_align = props.align.clone();
     let mut runs = Vec::new();
     let mut blocks = Vec::new();
     let mut first_break = true;
     read_runs(node, context, reader, &mut runs, &mut blocks, &mut first_break);
+    context.para_align = "center".into();
     flush_paragraph(&mut runs, &mut blocks, Some(props));
     if blocks.is_empty() {
         blocks.push(Block::Paragraph { props: ParaProps::default(), runs: vec![Run::default()] });
