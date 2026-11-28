@@ -37,7 +37,10 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 imageproc = { version = "0.27", default-features = false }
 lopdf = "0.46.0"
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "std"] }
-pdfium-render = "0.9.4"
+# Pin PDFium bindings to pdfium_7881 to match the bundled chromium/8057
+# binary (scripts/fetch-engines.mjs & engines.lock.json); default
+# `pdfium_latest` advanced to pdfium_8125 in 0.9.5 and fails GetProcAddress.
+pdfium-render = { version = "0.9.4", default-features = false, features = ["pdfium_7881", "image_latest", "thread_safe"] }
 pkcs12 = { version = "0.1", features = ["kdf"] }
 pkcs8 = "0.10"
 # PBES2 only; the PKCS#12 PBES1 (3DES) path is implemented in sign.rs because
