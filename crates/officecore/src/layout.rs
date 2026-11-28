@@ -1904,28 +1904,9 @@ fn draw_slide_table(canvas: &mut Canvas<'_>, object: &SlideObject, table: &Table
     }
 }
 
-fn draw_slide_chart(canvas: &mut Canvas<'_>, object: &SlideObject, chart: &ChartData, fonts: &FontSet) {
-    let title_style = TextStyle { size_pt: 12.0, bold: true, ..Default::default() };
-    canvas.text(object.x, object.y + 12.0, &chart.title, &title_style);
-    let plot_x = object.x;
-    let plot_y = object.y + 20.0;
-    let plot_w = object.w;
-    let plot_h = (object.h - 20.0).max(20.0);
-    canvas.stroke_rect(plot_x, plot_y, plot_w, plot_h, Rgb(203, 213, 225), 0.6);
-    // Charts from spreadsheets are resolved by the UI; here we draw a labelled
-    // placeholder that makes the data range explicit and never fakes values.
-    let note = format!(
-        "{} chart · {}",
-        chart.kind,
-        if chart.series.is_empty() {
-            "no series".to_string()
-        } else {
-            chart.series.iter().map(|series| series.range.clone()).collect::<Vec<_>>().join(", ")
-        }
-    );
-    let note_style = TextStyle { size_pt: 9.5, color: Rgb(100, 116, 139), ..Default::default() };
-    let wrapped = truncate_to_width(fonts, &note, &note_style, plot_w - 12.0);
-    canvas.text(plot_x + 6.0, plot_y + plot_h / 2.0, &wrapped, &note_style);
+fn draw_slide_chart(canvas: &mut Canvas<'_>, object: &SlideObject, chart: &ChartData, _fonts: &FontSet) {
+    let rect = crate::pdfchart::ChartRect { x: object.x, y: object.y, w: object.w, h: object.h };
+    crate::pdfchart::draw_chart(canvas, _fonts, rect, chart, None);
 }
 
 #[cfg(test)]
