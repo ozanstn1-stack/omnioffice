@@ -16,10 +16,6 @@ pub struct RtfRead {
     pub warnings: Vec<String>,
 }
 
-// ---------------------------------------------------------------------------
-// Export
-// ---------------------------------------------------------------------------
-
 fn hex_color(value: &str) -> Option<(u8, u8, u8)> {
     let cleaned = value.trim().trim_start_matches('#');
     let expanded = if cleaned.len() == 3 {
@@ -64,36 +60,29 @@ struct RtfTables {
     authors: Vec<String>,
 }
 
+fn intern<T: PartialEq>(list: &mut Vec<T>, item: T) -> usize {
+    if let Some(i) = list.iter().position(|e| *e == item) {
+        return i;
+    }
+    list.push(item);
+    list.len() - 1
+}
+
 impl RtfTables {
     fn font_index(&mut self, font: &str) -> usize {
-        if let Some(index) = self.fonts.iter().position(|existing| existing == font) {
-            return index;
-        }
-        self.fonts.push(font.to_string());
-        self.fonts.len() - 1
+        intern(&mut self.fonts, font.to_string())
     }
 
     fn color_index(&mut self, color: &str) -> Option<usize> {
-        let rgb = hex_color(color)?;
-        if let Some(index) = self.colors.iter().position(|existing| *existing == rgb) {
-            return Some(index);
-        }
-        self.colors.push(rgb);
-        Some(self.colors.len() - 1)
+        Some(intern(&mut self.colors, hex_color(color)?))
     }
 
     fn author_index(&mut self, author: &str) -> usize {
-        if let Some(index) = self.authors.iter().position(|existing| existing == author) {
-            return index;
-        }
-        self.authors.push(author.to_string());
-        self.authors.len() - 1
+        intern(&mut self.authors, author.to_string())
     }
 }
 
-/// Note bodies keyed by id, resolved while writing runs. RTF footnotes cannot
-/// nest, so note bodies are written with an empty context. `comments` places
-/// the body's annotations; it stays empty for headers, footers and notes.
+/// Note bodies keyed by id; `comments` stays empty for headers, footers and notes.
 #[derive(Default, Clone)]
 struct RtfNotes {
     footnotes: HashMap<String, Footnote>,
@@ -447,12 +436,12 @@ fn write_block(
             let mut indent_left = props.indent_left_pt;
             if let Some(list) = &props.list {
                 indent_left += 18.0 * (list.level as f64 + 1.0);
-                let marker =
-                    if list.kind == "number" { format!("{}.\\tab ", list.start) } else { "\\u8226?\\tab ".to_string() };
-                out.push_str(&format!("\\li{} \\fi-360 ", (indent_left * 20.0).round() as i64));
-                out.push('{');
-                out.push_str(&marker);
-                out.push('}');
+                let marker = if list.kind == "number" {
+                    format!("{}.\\tab ", list.start)
+                } else {
+                    "\\u8226?\\tab ".to_string()
+                };
+                out.push_str(&format!("\\li{} \\fi-360 {{{marker}}}", (indent_left * 20.0).round() as i64));
             } else {
                 if indent_left > 0.0 {
                     out.push_str(&format!("\\li{}", (indent_left * 20.0).round() as i64));
@@ -529,6 +518,12 @@ fn write_block(
         Block::PageBreak => out.push_str("\\page\n"),
         Block::SectionBreak { .. } => out.push_str("\\page\n"),
         Block::Rule => out.push_str("\\pard\\brdrb\\brdrs\\brdrw6 \\par\n"),
+        Block::Chart { chart, caption, .. } => {
+            out.push_str(&format!(
+                "\\pard {}\\par\n",
+                escape_rtf(&crate::ooxml_chart::chart_text_summary(chart, caption))
+            ));
+        }
         Block::Toc { entries } => {
             for entry in entries {
                 let text =

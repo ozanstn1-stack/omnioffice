@@ -75,6 +75,9 @@ fn block_to_markdown(block: &Block) -> String {
             let alt = if caption.is_empty() { image.alt.clone() } else { caption.clone() };
             format!("![{alt}](embedded-image.{})", image.extension())
         }
+        Block::Chart { chart, caption, .. } => {
+            format!("> {}", crate::ooxml_chart::chart_text_summary(chart, caption))
+        }
         Block::PageBreak => "\n---\n".into(),
         Block::SectionBreak { .. } => "\n---\n".into(),
         Block::Rule => "---".into(),
@@ -140,6 +143,10 @@ pub fn document_to_text(document: &TextDocument) -> String {
                     out.push_str(&cells.join("\t"));
                     out.push('\n');
                 }
+            }
+            Block::Chart { chart, caption, .. } => {
+                out.push_str(&crate::ooxml_chart::chart_text_summary(chart, caption));
+                out.push('\n');
             }
             Block::PageBreak => out.push('\n'),
             _ => {}
@@ -222,14 +229,7 @@ fn block_html(block: &Block) -> String {
                 "Subtitle" => "h2",
                 style if style.starts_with("Heading") => {
                     let level = style.trim_start_matches("Heading").parse::<usize>().unwrap_or(1).clamp(1, 6);
-                    match level {
-                        1 => "h1",
-                        2 => "h2",
-                        3 => "h3",
-                        4 => "h4",
-                        5 => "h5",
-                        _ => "h6",
-                    }
+                    ["h1", "h2", "h3", "h4", "h5", "h6"][level - 1]
                 }
                 _ => "p",
             };
@@ -285,7 +285,6 @@ fn block_html(block: &Block) -> String {
             out
         }
         Block::Image { image, width_pt, height_pt, caption, .. } => {
-            let _ = crate::io::normalize_hex("#000000");
             format!(
                 "<figure><img src=\"data:{};base64,{}\" style=\"width:{}pt;height:{}pt;object-fit:contain\" alt=\"{}\"/>{}</figure>",
                 escape_text(&image.mime),
@@ -296,6 +295,10 @@ fn block_html(block: &Block) -> String {
                 if caption.is_empty() { String::new() } else { format!("<figcaption>{}</figcaption>", escape_text(caption)) }
             )
         }
+        Block::Chart { chart, caption, .. } => {
+            let summary = crate::ooxml_chart::chart_text_summary(chart, caption);
+            format!("<figure class=\"chart-fallback\"><figcaption>{}</figcaption></figure>", escape_text(&summary))
+        }
         Block::PageBreak => "<div class=\"page-break\"></div>".into(),
         Block::SectionBreak { .. } => "<div class=\"page-break\"></div>".into(),
         Block::Rule => "<hr/>".into(),
@@ -303,16 +306,12 @@ fn block_html(block: &Block) -> String {
             let items = entries
                 .iter()
                 .map(|entry| {
-                    format!(
-                        "<li class=\"toc-level-{}\">{}{}</li>",
-                        entry.level.clamp(1, 6),
-                        escape_text(&entry.text),
-                        if entry.page > 0 {
-                            format!(" <span class=\"toc-page\">{}</span>", entry.page)
-                        } else {
-                            String::new()
-                        }
-                    )
+                    let page = if entry.page > 0 {
+                        format!(" <span class=\"toc-page\">{}</span>", entry.page)
+                    } else {
+                        String::new()
+                    };
+                    format!("<li class=\"toc-level-{}\">{}{page}</li>", entry.level.clamp(1, 6), escape_text(&entry.text))
                 })
                 .collect::<Vec<_>>()
                 .join("");

@@ -78,6 +78,7 @@ function measureBlock(element: HTMLElement, block: Block, index: number): BlockM
       return { ...base, kind: "table", rows, headerHeightPx };
     }
     case "image":
+    case "chart":
       return { ...base, kind: "image" };
     case "pageBreak":
       return { ...base, kind: "pageBreak", heightPx: 0 };
@@ -97,7 +98,7 @@ function fallbackMetric(block: Block, index: number): BlockMetrics {
         ? "pageBreak"
         : block.type === "table"
           ? "table"
-          : block.type === "image"
+          : block.type === "image" || block.type === "chart"
             ? "image"
             : block.type === "toc"
               ? "toc"

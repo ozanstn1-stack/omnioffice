@@ -31,6 +31,7 @@ mod slides_masters;
 mod slides_read;
 mod slides_read_timing;
 use sheets_read::{ods_annotation, ods_href, read_ods_chart};
+mod text_objects;
 mod text_read;
 use text_read::{collect_styles, node_text_runs, paragraph_props, wrap_trailing_text, NoteReadState};
 mod text_write;
@@ -60,7 +61,7 @@ struct GraphicStyle {
 /// Named styles resolved from content.xml's automatic styles and styles.xml:
 /// paragraph formatting, run formatting and graphic styles.
 #[derive(Default)]
-struct ReadStyles {
+pub(super) struct ReadStyles {
     paragraphs: HashMap<String, ParaProps>,
     texts: HashMap<String, Run>,
     graphics: HashMap<String, GraphicStyle>,
@@ -136,14 +137,10 @@ fn cell_style_xml(style: &CellStyle) -> String {
 
 /// Namespaces a chart sub-document needs on top of [`NS`]. `loext` carries the
 /// literal series names; ODF 1.2 can only name a series through a cell.
-const CHART_NS: &str = concat!(
+pub(super) const CHART_NS: &str = concat!(
     "xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\" ",
     "xmlns:loext=\"urn:org:documentfoundation:names:experimental:office:xmlns:loext:1.0\""
 );
-
-/// LibreOffice's default column width (2.258cm) and row height (0.452cm) in
-/// points. Only used to find an anchor cell for a chart that sits on the sheet
-/// (`table:shapes`) instead of inside a cell.
 const ODS_DEFAULT_COLUMN_PT: f64 = 64.0;
 const ODS_DEFAULT_ROW_PT: f64 = 12.8;
 
@@ -162,9 +159,9 @@ const ODS_MAX_READ_ROW: u32 = 100_000;
 const ODS_MAX_READ_COLUMN: u32 = 1_000;
 
 /// A chart written as the `Object N/` sub-document of an ODS package.
-struct OdsChartObject {
-    name: String,
-    content: String,
+pub(super) struct OdsChartObject {
+    pub(super) name: String,
+    pub(super) content: String,
 }
 
 /// Why a sheet chart cannot be written to ODS, if it cannot. The writer skips
@@ -331,11 +328,7 @@ fn ods_chart_local_table(chart: &ChartData, cells: &std::collections::BTreeMap<S
     out
 }
 
-/// `Object N/content.xml` for one sheet chart, following LibreOffice's layout:
-/// `chart:chart` with title, legend and plot area (axes, series pointing at the
-/// sheet ranges) plus the local table with the cached values. A column chart
-/// is `chart:bar`; a bar chart is the same class with `chart:vertical`.
-fn ods_chart_content(
+pub(super) fn ods_chart_content(
     placement: &ChartPlacement,
     sheet_name: &str,
     cells: &std::collections::BTreeMap<String, Cell>,

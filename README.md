@@ -10,7 +10,7 @@ telemetry, AI is opt-in with your own provider, cloud sync is off until you
 configure it, and the app stays useful without an internet connection. Macros
 and embedded scripts in office files are never executed.
 
-**Version 8.4.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
+**Version 8.5.0** · Platforms: Windows, Linux (`.deb` and `.AppImage` built by
 CI) and Android (arm64-v8a, armeabi-v7a); Tauri also targets macOS and the
 desktop CI builds and tests all three, but only Windows, Linux and Android are
 packaged · UI languages: English, Turkish.
@@ -23,24 +23,24 @@ packaged · UI languages: English, Turkish.
   <img src="docs/screenshots/43-android-tools.png" alt="The Tools hub on Android" width="180">
 </p>
 
-## What's new in 8.4.0
+## What's new in 8.5.0
 
-- **Workbench Tabs & Split View v2 (`useWorkbench`, `WorkbenchTabMenu`, `WorkbenchSplitHost`):** drag-and-drop tab reordering, tab pinning/unpinning, right-click context menu (`Open in split view`, `Close tabs to right`, `Close other tabs`), one-click **Swap panes**, and splitter double-click / `0` **50/50 reset**.
-- **Reader Text Selection Toolbar & AI Transcript Export (`ReaderSelectionBar`, `ReaderAiHeaderActions`):** select any passage in PDF Reader for instant Copy, pre-filled Ask AI (keeping AI data consent intact), Annotate handoff, or Send to Writer, plus full-conversation Markdown copy and Writer report export.
-- **Direct APK+EXE Verification Trigger (`verify-release.yml`):** `Release` and `Android` workflows now dispatch release completeness checks directly on tagged builds.
+- **Vector PDF Charts (`crates/officecore/src/pdfchart.rs`):** Calc, Impress, and Writer PDF exports now draw real vector charts across all 7 chart types (`column`, `bar`, `line`, `area`, `pie`, `doughnut`, `scatter`) inside Tagged-PDF `/Figure` containers with axis ticks, legends, and labels.
+- **Writer Chart Engine (`Block::Chart`, `ooxml_chart`, `docx/chart.rs`, `odf/text_objects.rs`):** insert, edit, align, caption, and resize charts natively in Writer with full DOCX ChartML + embedded `.xlsx` workbook and ODT `Object N/` round-trip, plus text-summary fallbacks in RTF, HTML, Markdown, TXT, and UDF.
+- **Shared React Chart UI (`src/office/charts/*`, `WriterChartBlock.tsx`):** unified preview and spreadsheet-paste chart editor shared by Impress and Writer.
 
 Earlier in the 8.0–8.3 series: Android CI emulator Vulkan fix & direct verification dispatch (8.3.1), APK+EXE release completeness gate & 3-layer storage cleanup (8.3.0), radical hybrid Windows Workbench & Android Bottom-First UI with Bento Studio Home (8.2.0), mobile full-width reader margins (8.1.4), local calendar/date fixes & mobile layout polish (8.1.3), Writer ribbon focus & recents (8.1.2), whole-document Reader AI (8.1.1), Focus Reading + "Ask this document" panel (8.1.0), AcroForm Field Builder & multi-doc AI matrix (8.0.0), worker isolation & fidelity updates (7.38–7.51). Every release, with its details, is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Download
 
-**Downloads (v8.4.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
-APK/AAB and SHA-256 manifests: [Release v8.4.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v8.4.0)
-· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.4.0/OmniOffice-Setup-8.4.0.exe)
-· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.4.0/OmniOffice-Portable-8.4.0.zip)
-· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.4.0/OmniOffice-Linux-8.4.0-amd64.deb)
-· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.4.0/OmniOffice-Linux-8.4.0-amd64.AppImage)
-· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.4.0/OmniOffice-Android-8.4.0-arm64-v8a.apk)
-· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.4.0/OmniOffice-Android-8.4.0-armeabi-v7a.apk)
+**Downloads (v8.5.0)** — Windows Setup/Portable, Linux .deb/.AppImage, Android
+APK/AAB and SHA-256 manifests: [Release v8.5.0](https://github.com/ozanstn1-stack/omnioffice/releases/tag/v8.5.0)
+· [Setup .exe](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.5.0/OmniOffice-Setup-8.5.0.exe)
+· [Portable .zip](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.5.0/OmniOffice-Portable-8.5.0.zip)
+· [Linux .deb](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.5.0/OmniOffice-Linux-8.5.0-amd64.deb)
+· [Linux .AppImage](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.5.0/OmniOffice-Linux-8.5.0-amd64.AppImage)
+· [APK arm64](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.5.0/OmniOffice-Android-8.5.0-arm64-v8a.apk)
+· [APK armv7](https://github.com/ozanstn1-stack/omnioffice/releases/download/v8.5.0/OmniOffice-Android-8.5.0-armeabi-v7a.apk)
 
 ## Release history
 
@@ -771,9 +771,9 @@ Next (architecture prepared, not implemented):
 | --- | --- |
 | Screens | 56 |
 | Tauri commands | 256 |
-| Rust tests | 1964 |
-| TypeScript test files | 279 |
-| TypeScript test cases (approx.) | 2834 |
+| Rust tests | 1968 |
+| TypeScript test files | 280 |
+| TypeScript test cases (approx.) | 2837 |
 <!-- stats:end -->
 
 ## License

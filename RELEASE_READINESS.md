@@ -1,4 +1,4 @@
-# Release Readiness — OmniOffice 8.4.0
+# Release Readiness — OmniOffice 8.5.0
 
 This file states what is actually implemented, tested and benchmarked, and
 what is not. It is deliberately conservative: nothing is claimed as released,
@@ -11,6 +11,30 @@ the test that proves it (or an explicit `(no test: …)` reason);
 test cannot leave an unsupported claim behind. Since v6.0.1 the CI jobs that
 run the suites also verify the markers against the test output
 (`--rust-log` / `--junit`), so a claim cannot outlive its passing test.
+
+## Implemented (this cycle, 8.5.0) - Vector PDF Charts & Writer Native Chart Engine
+
+- **Vector PDF chart rendering across all 7 chart kinds (column, bar, line, area, pie, doughnut, scatter) in Impress, Calc, and Writer with Tagged-PDF `/Figure` & `/Caption` elements and live cell-range resolution:**
+  `test:crates/officecore/tests/pdf_vector_charts_test.rs#impress_renders_all_seven_chart_kinds_as_vectors`
+  `test:crates/officecore/tests/pdf_vector_charts_test.rs#impress_handles_stacked_negative_values_and_turkish_labels`
+  `test:crates/officecore/tests/pdf_vector_charts_test.rs#calc_resolves_live_cell_ranges_onto_dedicated_chart_page`
+  `test:crates/officecore/tests/pdf_vector_charts_test.rs#calc_batches_two_charts_per_page_after_table`
+  `test:crates/officecore/tests/writer_charts_test.rs#writer_chart_pdf_vector_export_and_tagged_figure`
+- **Writer `Block::Chart` native round-trip across DOCX ChartML (with embedded `.xlsx` workbook), ODT `Object N/`, text-summary fallbacks (RTF/HTML/Markdown/TXT/UDF), and compatibility reporting:**
+  `test:crates/officecore/tests/writer_charts_test.rs#writer_chart_docx_roundtrip_all_seven_kinds`
+  `test:crates/officecore/tests/writer_charts_test.rs#writer_chart_odt_roundtrip_all_seven_kinds`
+  `test:crates/officecore/tests/writer_charts_test.rs#writer_chart_fallback_formats_and_compat_report`
+- **Shared React chart editor (`ChartDialog`, `ChartPreview`, `ChartDataGrid`) and interactive Writer chart block (ribbon insert, selection handles, alignment, inline caption, Edit data, delete):**
+  `test:src/office/writer/WriterChartBlock.test.tsx#renders WriterChartBlock toolbar on selection and updates alignment, caption, edit, and delete`
+  `test:src/office/writer/WriterChartBlock.test.tsx#supports all 7 chart kinds, doughnut holeSize, scatter style, and clipboard paste in ChartDialog`
+  `test:src/office/writer/WriterChartBlock.test.tsx#inserts a chart block from the Writer Insert ribbon and saves modal data`
+
+### Not done / Known limitations (8.5.0)
+
+- **Chart exports in RTF, HTML, Markdown, TXT, and UDF write concise text summaries instead of embedded chart objects:** users needing full round-trip fidelity save as `.docx`, `.odt`, `.oswk`, or PDF.
+  (no test: documented format capability limitation.)
+- **Windows installer Authenticode signing & IzzyOnDroid catalogue listing remain owner-gated:** workflows (`release.yml`, `android.yml`, `fastlane`) stay ready without external signing or Codeberg secrets.
+  (no test: requires external accounts/secrets.)
 
 ## Implemented (this cycle, 8.4.0) - Hybrid Workbench v2, Reader selection bar & AI transcript export
 

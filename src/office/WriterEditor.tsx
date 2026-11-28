@@ -24,7 +24,6 @@ import {
   type Block,
   type DocComment,
   type FieldRef,
-  type Footnote,
   type ImageData,
   type ParaProps,
   type Run,
@@ -109,6 +108,15 @@ import { RegulationPane } from "./writer/panels/RegulationPane";
 import { CrossReferenceDialog } from "./writer/panels/CrossReferenceDialog";
 import { SectionsDialog, sizeDimensions } from "./writer/panels/SectionsDialog";
 import { WriterRibbon } from "./writer/panels/WriterRibbon";
+import { defaultWriterChart } from "./charts/chart-helpers";
+import { WriterChartModal, type WriterChartDialogState } from "./writer/WriterChartBlock";
+import {
+  applyVisualStyle,
+  estimateNoteHeight,
+  mimeFromName,
+  noteNumber,
+  selectionShownIn,
+} from "./writer/editor-dom-helpers";
 import { BlockView, PageFragmentView, StaticBlocks } from "./writer/views";
 import type { StructureAction } from "./writer/views";
 import { openDocument } from "../lib/office-api";
@@ -137,37 +145,6 @@ interface SelectionInfo {
   run: Run;
 }
 
-/**
- * Footnote area reservation: notes are rendered at 8.5pt with a 1.0 line
- * height, so a rough line count is accurate enough for pagination while the
- * real text is drawn by the same renderer that draws the page.
- */
-function estimateNoteHeight(note: Footnote, contentWidthPx: number): number {
-  const text = note.runs.map((run) => run.text).join("");
-  const charsPerLine = Math.max(40, Math.floor(contentWidthPx / 4.6));
-  const lines = Math.max(1, Math.ceil((text.length + 4) / charsPerLine));
-  return lines * 13 + 6;
-}
-
-/** Footnote number in reference order (1-based). */
-function noteNumber(document: TextDocument, id: string): number {
-  const order: string[] = [];
-  const collect = (runs: Run[]) => {
-    for (const run of runs) {
-      const reference = run.footnote ?? run.endnote;
-      if (reference && !order.includes(reference)) order.push(reference);
-    }
-  };
-  for (const block of document.blocks) {
-    if (block.type === "paragraph") collect(block.runs);
-    if (block.type === "table")
-      for (const row of block.table.rows)
-        for (const cell of row.cells)
-          for (const inner of cell.blocks) if (inner.type === "paragraph") collect(inner.runs);
-  }
-  return order.indexOf(id) + 1;
-}
-
 export function WriterEditor({ tab }: { tab: WriterTab }) {
   const t = useT();
   const { edit } = useOfficeTabs();
@@ -187,6 +164,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [insertTable, setInsertTable] = useState(false);
   const [selectedImage, setSelectedImage] = useState<number | null>(null);
+  const [chartDialog, setChartDialog] = useState<WriterChartDialogState>(null);
   const [watermarkOpen, setWatermarkOpen] = useState(false);
   // Format painter: captures the focused paragraph's formatting and applies it
   // to the next paragraph the user clicks (one-shot, like Word's single click).
@@ -655,7 +633,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const blocks = currentBlocks().filter((_, position) => position !== index);
     withBlocks(blocks.length > 0 ? blocks : [newParaBlock()]);
   };
-  void removeBlock;
+
+  const deleteBlock = (index: number) => {
+    removeBlock(index);
+    setSelectedImage(null);
+  };
 
   // -------------------------------------------------------------------------
   // Selection tracking (focusin gives the edited paragraph)
@@ -1156,6 +1138,17 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
     const active = window.document.activeElement as HTMLElement | null;
     const index = active?.dataset?.blockIndex ? Number(active.dataset.blockIndex) : currentBlocks().length - 1;
     insertBlockAfter(index, { type: "rule" });
+  };
+
+  const openInsertChart = () => {
+    setChartDialog({
+      mode: "insert",
+      chart: defaultWriterChart(
+        t("writer.chartDefaultTitle"),
+        t("writer.chartDefaultCategory"),
+        t("writer.chartDefaultSeries"),
+      ),
+    });
   };
 
   // -------------------------------------------------------------------------
@@ -1757,6 +1750,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
       pendingFocus.current = { index, offset, scope: "body" };
       return;
     }
+    if (block?.type === "chart") setSelectedImage(index);
     window.setTimeout(() => {
       window.document
         .querySelector<HTMLElement>(`[data-scope="body"][data-block-index="${index}"]`)
@@ -1901,6 +1895,11 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
             onSyncCell={(path, element) => syncCell(path[0], path[1], path[2], path[3], element)}
             onStructure={(action) => handleStructure(action, scope)}
             onOpenBlock={editBlock}
+            onEditChart={(idx) => {
+              const target = blocks[idx];
+              if (target?.type === "chart") setChartDialog({ mode: "edit", index: idx, chart: target.chart });
+            }}
+            onDeleteBlock={deleteBlock}
           />
         ))}
       </>
@@ -1948,6 +1947,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           openFind: () => setFindOpen(true),
           startAi,
           insertImageBlock,
+          insertChartBlock: openInsertChart,
           openTableDialog: () => setInsertTable(true),
           insertLink,
           insertPageBreak,
@@ -2291,7 +2291,7 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
         </Dialog>
       ) : null}
 
-      {selectedImage !== null ? (
+      {selectedImage !== null && document.blocks[selectedImage]?.type === "image" ? (
         <Dialog title={t("writer.imageOptions")} onClose={() => setSelectedImage(null)}>
           <ImageOptions
             block={document.blocks[selectedImage]}
@@ -2307,6 +2307,15 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
           />
         </Dialog>
       ) : null}
+
+      <WriterChartModal
+        dialog={chartDialog}
+        currentBlocks={currentBlocks}
+        insertBlockAfter={insertBlockAfter}
+        updateBlock={updateBlock}
+        selectBlock={setSelectedImage}
+        onClose={() => setChartDialog(null)}
+      />
 
       {watermarkOpen ? (
         <Dialog title={t("writer.watermark")} onClose={() => setWatermarkOpen(false)}>
@@ -2401,40 +2410,6 @@ export function WriterEditor({ tab }: { tab: WriterTab }) {
 // ---------------------------------------------------------------------------
 
 const emptyRun = emptyWriterRun;
-
-function applyVisualStyle(element: HTMLElement, property: string, value: string) {
-  element.style.setProperty(property, value);
-}
-
-/** True when the selection overlaps `box` vertically, or when there is no layout to tell (jsdom). */
-function selectionShownIn(box: HTMLElement): boolean {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return true;
-  const range = selection.getRangeAt(0);
-  const rect = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
-  const bounds = box.getBoundingClientRect();
-  if (!rect || rect.height === 0 || bounds.height === 0) return true;
-  return rect.bottom > bounds.top && rect.top < bounds.bottom;
-}
-
-function mimeFromName(name: string): string {
-  const extension = name.split(".").pop()?.toLowerCase() ?? "";
-  switch (extension) {
-    case "jpg":
-    case "jpeg":
-      return "image/jpeg";
-    case "gif":
-      return "image/gif";
-    case "bmp":
-      return "image/bmp";
-    case "webp":
-      return "image/webp";
-    case "svg":
-      return "image/svg+xml";
-    default:
-      return "image/png";
-  }
-}
 
 export function blankWriterDocument(title: string): TextDocument {
   return newTextDocument(title);

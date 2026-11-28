@@ -152,26 +152,25 @@ export function diffRuns(base: Run[], revised: Run[], author: string): Run[] {
   return runs.length ? runs : [emptyRun()];
 }
 
-/** The text of a table, so a removed table can be shown as a deletion. */
-function cellText(cell: TableCell): string {
-  return cell.blocks
-    .map((block) =>
-      block.type === "paragraph" ? runsText(block.runs) : block.type === "table" ? tableText(block) : "",
-    )
-    .join(" ")
-    .trim();
+function tableText(block: Extract<Block, { type: "table" }>): string {
+  const cell = (c: TableCell) =>
+    c.blocks
+      .map((b) => (b.type === "paragraph" ? runsText(b.runs) : b.type === "table" ? tableText(b) : ""))
+      .join(" ")
+      .trim();
+  return block.table.rows.map((row) => row.cells.map(cell).join(" | ")).join(" ¶ ");
 }
 
-function tableText(block: Block): string {
-  if (block.type !== "table") return "";
-  return block.table.rows.map((row) => row.cells.map(cellText).join(" | ")).join(" ¶ ");
-}
-
-/** A base-only block as a delete-marked paragraph (the model has no block-level
- * revision mark, so a removed table/image becomes deleted text). */
+/** A base-only block as a delete-marked paragraph (model lacks block-level revision marks). */
 function deletedBlock(block: Block, author: string): Block {
   const text =
-    block.type === "paragraph" ? runsText(block.runs) : block.type === "table" ? tableText(block) : `[${block.type}]`;
+    block.type === "paragraph"
+      ? runsText(block.runs)
+      : block.type === "table"
+        ? tableText(block)
+        : block.type === "chart"
+          ? `[chart: ${block.chart.title || block.caption || block.chart.kind}]`
+          : `[${block.type}]`;
   const template = block.type === "paragraph" ? block.runs[0] : undefined;
   return {
     type: "paragraph",
@@ -185,16 +184,10 @@ function insertedBlock(block: Block, author: string): Block {
   if (block.type === "paragraph") {
     return { ...block, runs: block.runs.map((run) => ({ ...run, revision: newRevision("insert", author) })) };
   }
-  // Tables and other blocks have no revision mark; keep them as they are.
   return structuredClone(block);
 }
 
-/**
- * Returns the revised document with the differences against `base` marked as
- * tracked changes. Blocks are aligned by type: paragraphs pair with paragraphs
- * (word-level diff), and a block present on only one side is inserted or
- * deleted. A matched table is carried over from the revised document.
- */
+/** Returns `revised` with differences against `base` marked as tracked changes. */
 export function diffDocuments(base: TextDocument, revised: TextDocument, author = "Comparison"): TextDocument {
   const document: TextDocument = structuredClone(revised);
   const baseTypes = base.blocks.map((block) => block.type);

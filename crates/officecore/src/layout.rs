@@ -5,6 +5,7 @@
 //! `{{pages}}` tokens) and produces selectable text via the embedded font in
 //! `pdfcanvas`. The Calc and Impress renderers share the same primitives.
 
+use crate::layout_writer_blocks::{image_box, table_cell_layout, table_column_widths, table_grid_columns};
 use crate::model::*;
 use crate::pdfcanvas::{parse_hex, write_pdf, BuiltPage, Canvas, FontSet, Rgb, TextStyle};
 
@@ -1040,26 +1041,12 @@ impl<'a> Renderer<'a> {
         if bytes.is_empty() {
             return;
         }
-        let (pixel_width, pixel_height) = image.pixel_size();
-        let aspect = if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
-        let mut width = width_pt.max(24.0);
-        let mut height = height_pt.max(18.0);
-        if width > self.column_width {
-            width = self.column_width;
-            height = width * aspect;
-        }
-        if height > (self.bottom - self.top) * 0.92 {
-            height = (self.bottom - self.top) * 0.92;
-            width = height / aspect.max(0.05);
-        }
+        let max_h = (self.bottom - self.top) * 0.92;
+        let (width, height) = image_box(image, width_pt, height_pt, self.column_width, Some(max_h));
         if self.remaining() < height {
             self.next_column();
         }
-        let x = match align {
-            "center" => self.column_x(self.column) + (self.column_width - width) / 2.0,
-            "right" => self.column_x(self.column) + self.column_width - width,
-            _ => self.column_x(self.column),
-        };
+        let x = crate::layout_writer_chart::chart_x(align, self.column_x(self.column), self.column_width, width);
         let y = self.y;
         let alt = if image.alt.trim().is_empty() { None } else { Some(image.alt.as_str()) };
         let canvas = self.canvas();
@@ -1092,6 +1079,23 @@ impl<'a> Renderer<'a> {
             Block::Image { image, width_pt, height_pt, align, .. } => {
                 self.numbering.reset();
                 self.draw_image(image, *width_pt, *height_pt, align)
+            }
+            Block::Chart { chart, width_pt, height_pt, align, caption } => {
+                self.numbering.reset();
+                let (w, h, total_h) = crate::layout_writer_chart::measure_chart_box(
+                    *width_pt,
+                    *height_pt,
+                    self.column_width,
+                    (self.bottom - self.top) * 0.90,
+                    caption,
+                );
+                if self.remaining() < total_h {
+                    self.next_column();
+                }
+                let x = crate::layout_writer_chart::chart_x(align, self.column_x(self.column), self.column_width, w);
+                let (y, fonts) = (self.y, self.fonts);
+                crate::layout_writer_chart::render_writer_chart(self.canvas(), fonts, chart, x, y, w, h, caption);
+                self.y += total_h + 8.0;
             }
             Block::PageBreak => {
                 self.numbering.reset();
@@ -1134,104 +1138,6 @@ impl<'a> Renderer<'a> {
             }
         }
     }
-}
-
-/// The number of grid columns a table needs, counting colspans and the
-/// columns an open rowspan keeps covered in the rows below. `TableRow.cells`
-/// holds only the cells that start in a row, so the plain `cells.len()`
-/// undercounts merged tables.
-fn table_grid_columns(table: &TableData) -> usize {
-    let mut open: Vec<usize> = Vec::new();
-    let mut columns = 0usize;
-    for row in &table.rows {
-        // `open` counts the rows still covered after the current one.
-        for remaining in open.iter_mut() {
-            *remaining = remaining.saturating_sub(1);
-        }
-        let mut column = 0usize;
-        for cell in &row.cells {
-            while column < open.len() && open[column] > 0 {
-                column += 1;
-            }
-            let span = cell.colspan.max(1) as usize;
-            while open.len() < column + span {
-                open.push(0);
-            }
-            if cell.rowspan > 1 {
-                for slot in open.iter_mut().skip(column).take(span) {
-                    *slot = cell.rowspan as usize;
-                }
-            }
-            column += span;
-        }
-        while column < open.len() && open[column] > 0 {
-            column += 1;
-        }
-        columns = columns.max(column);
-    }
-    columns.max(1)
-}
-
-/// Column widths for the grid: `column_widths_pt` when it covers the grid
-/// (padded with the average of what it provides otherwise), scaled to the
-/// available width.
-fn table_column_widths(table: &TableData, columns: usize, available: f64) -> Vec<f64> {
-    let mut widths: Vec<f64> = table.column_widths_pt.clone();
-    let fallback =
-        if widths.is_empty() { available / columns as f64 } else { widths.iter().sum::<f64>() / widths.len() as f64 };
-    while widths.len() < columns {
-        widths.push(fallback);
-    }
-    widths.truncate(columns);
-    for width in widths.iter_mut() {
-        if !width.is_finite() || *width < 1.0 {
-            *width = 1.0;
-        }
-    }
-    let total: f64 = widths.iter().sum();
-    if total > 0.0 && (total - available).abs() > 1.0 {
-        let scale = available / total;
-        for width in widths.iter_mut() {
-            *width *= scale;
-        }
-    }
-    widths
-}
-
-/// Lays out every row's origin cells on the table grid: each cell gets its
-/// starting x (relative to the table's left edge) and its combined width, so a
-/// colspan/rowspan cell covers exactly the grid columns it spans. Covered grid
-/// positions have no cell of their own in the model, so they are skipped.
-fn table_cell_layout<'a>(table: &'a TableData, widths: &[f64]) -> Vec<Vec<(f64, f64, &'a TableCell)>> {
-    let mut open: Vec<usize> = Vec::new();
-    let mut rows = Vec::with_capacity(table.rows.len());
-    for row in &table.rows {
-        for remaining in open.iter_mut() {
-            *remaining = remaining.saturating_sub(1);
-        }
-        let mut column = 0usize;
-        let mut cells = Vec::with_capacity(row.cells.len());
-        for cell in &row.cells {
-            while column < open.len() && open[column] > 0 {
-                column += 1;
-            }
-            let span = cell.colspan.max(1) as usize;
-            while open.len() < column + span {
-                open.push(0);
-            }
-            if cell.rowspan > 1 {
-                for slot in open.iter_mut().skip(column).take(span) {
-                    *slot = cell.rowspan as usize;
-                }
-            }
-            let x: f64 = widths.iter().take(column).sum();
-            let width: f64 = widths.iter().skip(column).take(span).sum();
-            cells.push((x, width, cell));
-            column += span;
-        }
-        rows.push(cells);
-    }
-    rows
 }
 
 /// Current UTC date and time as `(yyyy-mm-dd, hh:mm:ss)` without a date crate.
@@ -1292,14 +1198,12 @@ fn measure_blocks(fonts: &FontSet, document: &TextDocument, blocks: &[Block], wi
                 height += block_height + base.space_after_pt;
             }
             Block::Image { height_pt, width_pt, image, .. } => {
-                let (pixel_width, pixel_height) = image.pixel_size();
-                let aspect =
-                    if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
-                let mut image_height = height_pt.max(18.0);
-                if *width_pt > width {
-                    image_height = width * aspect;
-                }
+                let (_, image_height) = image_box(image, *width_pt, *height_pt, width, None);
                 height += image_height + 6.0;
+            }
+            Block::Chart { width_pt, height_pt, caption, .. } => {
+                let (_, ch) = crate::layout_writer_chart::clamp_chart_box(*width_pt, *height_pt, width, 680.0);
+                height += ch + crate::layout_writer_chart::caption_extra_height(caption) + 8.0;
             }
             Block::Rule => height += 14.0,
             Block::PageBreak => {}
@@ -1382,17 +1286,28 @@ fn draw_blocks_in_cell(renderer: &mut Renderer<'_>, blocks: &[Block], x: f64, y:
                     continue;
                 }
                 let image_width = width_pt.min(width).max(16.0);
-                let (pixel_width, pixel_height) = image.pixel_size();
-                let aspect =
-                    if pixel_width > 0 && pixel_height > 0 { pixel_height as f64 / pixel_width as f64 } else { 0.66 };
-                let image_height =
-                    (height_pt * (image_width / width_pt.max(1.0))).max(12.0).min(width * aspect.max(0.1) * 4.0);
+                let (_, capped_h) = image_box(image, *width_pt, *height_pt, width, None);
+                let image_height = (height_pt * (image_width / width_pt.max(1.0))).max(12.0).min(capped_h * 4.0);
                 let alt = if image.alt.trim().is_empty() { None } else { Some(image.alt.as_str()) };
                 let canvas = renderer.canvas();
                 canvas.begin_marked("Figure", alt);
                 canvas.image(x, cursor, image_width, image_height, &bytes, &image.mime);
                 canvas.end_marked();
                 cursor += image_height + 4.0;
+            }
+            Block::Chart { chart, width_pt, height_pt, caption, .. } => {
+                let fonts = renderer.fonts;
+                cursor += crate::layout_writer_chart::render_cell_chart(
+                    renderer.canvas(),
+                    fonts,
+                    chart,
+                    x,
+                    cursor,
+                    width,
+                    *width_pt,
+                    *height_pt,
+                    caption,
+                );
             }
             Block::Rule => {
                 let canvas = renderer.canvas();

@@ -1,5 +1,6 @@
 //! ODT (Writer) import: content, styles, notes, frames and watermarks.
 
+use super::text_objects::{frame_run_through, read_image_block, read_odt_chart_block};
 use super::*;
 use crate::error::{OfficeError, OfficeResult};
 use crate::xml::{parse_xml, XmlNode};
@@ -100,6 +101,8 @@ pub(super) struct NoteReadState {
     tracked_regions: HashMap<String, TrackedRegionRead>,
     /// Active insertion revision between `<text:change-start>` and `<text:change-end>`.
     active_revision: Option<RevisionMark>,
+    seen_objects: std::collections::HashSet<String>,
+    imported_objects: std::collections::HashSet<String>,
 }
 
 impl NoteReadState {
@@ -431,65 +434,6 @@ pub(super) fn paragraph_props(node: &XmlNode, styles: &ReadStyles) -> ParaProps 
     }
 }
 
-/// The wrapping of a frame's graphic style, mapped to the model's `inline` /
-/// `square` / `topBottom`.
-fn frame_wrap(frame: &XmlNode, styles: &ReadStyles) -> String {
-    let wrap = frame
-        .attr_any_ns("style-name")
-        .and_then(|name| styles.graphics.get(name))
-        .map(|style| style.wrap.as_str())
-        .unwrap_or_default();
-    match wrap {
-        "parallel" | "dynamic" | "left" | "right" | "biggest" => "square".into(),
-        "none" | "run-through" => "topBottom".into(),
-        _ => "inline".into(),
-    }
-}
-
-/// Whether a frame's graphic style puts it behind the text (a watermark or
-/// another decoration that is not document content).
-fn frame_run_through(frame: &XmlNode, styles: &ReadStyles) -> bool {
-    let styled = frame
-        .attr_any_ns("style-name")
-        .and_then(|name| styles.graphics.get(name))
-        .map(|style| style.run_through)
-        .unwrap_or(false);
-    styled || frame.attr_any_ns("run-through") == Some("background")
-}
-
-/// Reads a `draw:frame` (or a bare `draw:image`) into a `Block::Image`. `None`
-/// when the node holds no image or its bytes are missing from the package.
-fn read_image_block(
-    node: &XmlNode,
-    styles: &ReadStyles,
-    reader: &ZipReader,
-    warnings: &mut Vec<String>,
-) -> Option<Block> {
-    let mut images = Vec::new();
-    node.find_all("image", &mut images);
-    let image_node = images.first()?;
-    let href = image_node.attr_any_ns("href")?;
-    let width = node.attr_any_ns("width").and_then(parse_cm).unwrap_or(320.0);
-    let height = node.attr_any_ns("height").and_then(parse_cm).unwrap_or(200.0);
-    let path = href.trim_start_matches("./");
-    let data = match reader.read(path) {
-        Ok(data) => data,
-        Err(_) => {
-            warnings.push("An embedded image could not be read from the package.".into());
-            return None;
-        }
-    };
-    let name = path.rsplit('/').next().unwrap_or("image.png").to_string();
-    Some(Block::Image {
-        image: ImageData::from_bytes(&name, &data),
-        width_pt: width,
-        height_pt: height,
-        align: "center".into(),
-        caption: String::new(),
-        wrap: frame_wrap(node, styles),
-    })
-}
-
 fn read_blocks(
     node: &XmlNode,
     styles: &ReadStyles,
@@ -501,31 +445,36 @@ fn read_blocks(
     for child in &node.children {
         match child.local_name() {
             "p" | "h" => {
+                let mut props = paragraph_props(child, styles);
                 let mut runs = Vec::new();
                 if !child.text.is_empty() {
                     runs.push(Run { text: child.text.clone(), ..Default::default() });
                 }
-                // Images written inside a paragraph (`<text:p><draw:frame>`)
-                // used to be dropped: the frame walker only produced text. A
-                // frame with an image becomes a block of its own, and the
-                // paragraph is kept when it still has text.
-                let mut images = Vec::new();
+                let mut media_blocks = Vec::new();
                 for inner in &child.children {
                     if matches!(inner.local_name(), "frame" | "image") {
                         if frame_run_through(inner, styles) {
-                            // Behind-text decoration (the watermark), read
-                            // separately from meta.xml or the frame itself.
+                            continue;
+                        }
+                        if let Some(chart) = read_odt_chart_block(
+                            inner,
+                            reader,
+                            &mut notes.seen_objects,
+                            &mut notes.imported_objects,
+                            &props.align,
+                            warnings,
+                        ) {
+                            media_blocks.push(chart);
                             continue;
                         }
                         if let Some(image) = read_image_block(inner, styles, reader, warnings) {
-                            images.push(image);
+                            media_blocks.push(image);
                             continue;
                         }
                     }
                     node_text_runs(inner, &mut runs, notes, styles);
                 }
                 notes.anchor_paragraph(&mut runs);
-                let mut props = paragraph_props(child, styles);
                 if child.local_name() == "h" {
                     let level =
                         child.attr_any_ns("outline-level").and_then(|value| value.parse::<u32>().ok()).unwrap_or(1);
@@ -534,9 +483,9 @@ fn read_blocks(
                 let has_text = runs
                     .iter()
                     .any(|run| !run.text.trim().is_empty() || run.footnote.is_some() || run.endnote.is_some());
-                let has_images = !images.is_empty();
-                blocks.extend(images);
-                if !has_images || has_text {
+                let has_media = !media_blocks.is_empty();
+                blocks.extend(media_blocks);
+                if !has_media || has_text {
                     blocks.push(Block::Paragraph { props, runs });
                 }
             }
@@ -1026,7 +975,11 @@ pub fn read_odt(bytes: &[u8]) -> OfficeResult<TextRead> {
     document.footnotes = note_state.footnotes;
     document.endnotes = note_state.endnotes;
     document.comments = note_state.comments;
-    if reader.names().any(|name| name.starts_with("Object")) {
+    let has_unimported_object = reader.names().any(|name| {
+        name.starts_with("Object")
+            && !name.split('/').next().is_some_and(|dir| note_state.imported_objects.contains(dir))
+    });
+    if has_unimported_object {
         warnings.push("Embedded objects in the document were not imported.".into());
     }
     warnings.sort();

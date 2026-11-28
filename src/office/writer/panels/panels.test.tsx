@@ -100,6 +100,7 @@ function makeRibbonActions(): WriterRibbonActions {
     openFind: vi.fn(),
     startAi: vi.fn(),
     insertImageBlock: vi.fn(),
+    insertChartBlock: vi.fn(),
     openTableDialog: vi.fn(),
     insertLink: vi.fn(),
     insertPageBreak: vi.fn(),

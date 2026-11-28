@@ -6,7 +6,7 @@
  * are pure - they take the model and callbacks as props and never reach into
  * the editor controller.
  */
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../lib/i18n";
 import { type Block, type Run, type TableData, type TocEntry } from "../../lib/office-types";
 import {
@@ -18,8 +18,10 @@ import {
   setCaretOffset,
 } from "./caret";
 import type { Fragment } from "./pagination";
+import { ObjectSizeHandles } from "./object-handles";
 import { replaceRange, runsText, wordRangeAt } from "./runs";
 import { TableView } from "./table-view";
+import { StaticChartBlock, WriterChartBlock } from "./WriterChartBlock";
 import { domToRuns, fieldValuesFor, orderedListMarker, runsToHtml } from "./writerDom";
 
 /** Structural edits the paragraph component asks the document to perform. */
@@ -312,6 +314,7 @@ export const StaticBlocks = memo(function StaticBlocks({
                 <figcaption>{block.caption || block.image.name}</figcaption>
               </figure>
             ) : null}
+            {block.type === "chart" ? <StaticChartBlock block={block} zoom={zoom} /> : null}
             {block.type === "pageBreak" ? (
               <div className="writer-page-break">
                 <span>{t("writer.pageBreakMarker")}</span>
@@ -702,6 +705,8 @@ export function BlockView({
   onSyncCell,
   onStructure,
   onOpenBlock,
+  onEditChart,
+  onDeleteBlock,
 }: {
   block: Block;
   index: number;
@@ -719,6 +724,8 @@ export function BlockView({
   onSyncCell: (path: [number, number, number, number], element: HTMLElement) => void;
   onStructure: (action: StructureAction) => void;
   onOpenBlock: (index: number) => void;
+  onEditChart?: (index: number) => void;
+  onDeleteBlock?: (index: number) => void;
 }) {
   const t = useT();
   // Live size while an image handle is dragged. The model is only written on
@@ -766,7 +773,7 @@ export function BlockView({
             />
           </button>
           {selectedImage === index ? (
-            <ImageSizeHandles
+            <ObjectSizeHandles
               widthPt={widthPt}
               heightPt={heightPt}
               zoom={zoom}
@@ -797,6 +804,20 @@ export function BlockView({
       </figure>
     );
   }
+  if (block.type === "chart") {
+    return (
+      <WriterChartBlock
+        block={block}
+        index={index}
+        zoom={zoom}
+        selected={selectedImage === index}
+        onSelect={onSelectImage}
+        onUpdate={onUpdate}
+        onEditData={onEditChart}
+        onDelete={onDeleteBlock}
+      />
+    );
+  }
   if (block.type === "pageBreak") {
     return (
       <div className="writer-page-break" contentEditable={false}>
@@ -808,104 +829,6 @@ export function BlockView({
     return <TocView entries={block.entries} onOpen={onOpenBlock} />;
   }
   return <hr className="writer-rule" />;
-}
-
-/**
- * The four corner grips of a selected image.
- *
- * A drag always preserves the aspect ratio (the horizontal delta drives the
- * width; the height follows), clamps to a 24pt minimum, previews locally and
- * commits the final size once on pointerup.
- */
-function ImageSizeHandles({
-  widthPt,
-  heightPt,
-  zoom,
-  onPreview,
-  onCommit,
-}: {
-  widthPt: number;
-  heightPt: number;
-  zoom: number;
-  onPreview: (size: { widthPt: number; heightPt: number }) => void;
-  onCommit: (size: { widthPt: number; heightPt: number }) => void;
-}) {
-  const dragRef = useRef<{
-    startX: number;
-    startWidthPt: number;
-    directionX: 1 | -1;
-    widthPt: number;
-    heightPt: number;
-    aspect: number;
-  } | null>(null);
-
-  useEffect(() => {
-    const move = (event: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const dx = ((event.clientX - drag.startX) * 72) / 96 / zoom;
-      let width = Math.max(24, drag.startWidthPt + drag.directionX * dx);
-      let height = width / drag.aspect;
-      if (height < 24) {
-        height = 24;
-        width = height * drag.aspect;
-      }
-      drag.widthPt = width;
-      drag.heightPt = height;
-      onPreview({ widthPt: width, heightPt: height });
-    };
-    const up = () => {
-      const drag = dragRef.current;
-      dragRef.current = null;
-      if (!drag) return;
-      onCommit({ widthPt: drag.widthPt, heightPt: drag.heightPt });
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-    };
-  });
-
-  const start = (event: React.PointerEvent<HTMLSpanElement>, directionX: 1 | -1) => {
-    event.preventDefault();
-    event.stopPropagation();
-    dragRef.current = {
-      startX: event.clientX,
-      startWidthPt: widthPt,
-      directionX,
-      widthPt,
-      heightPt,
-      aspect: widthPt / Math.max(1, heightPt),
-    };
-    try {
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-    } catch {
-      // Pointer capture is unavailable (jsdom, older webviews).
-    }
-  };
-
-  const corners: Array<{ corner: string; directionX: 1 | -1 }> = [
-    { corner: "nw", directionX: -1 },
-    { corner: "ne", directionX: 1 },
-    { corner: "sw", directionX: -1 },
-    { corner: "se", directionX: 1 },
-  ];
-  return (
-    <>
-      {corners.map(({ corner, directionX }) => (
-        <span
-          key={corner}
-          className={`writer-image-handle is-${corner}`}
-          data-image-handle={corner}
-          onPointerDown={(event) => start(event, directionX)}
-        />
-      ))}
-    </>
-  );
 }
 
 /**

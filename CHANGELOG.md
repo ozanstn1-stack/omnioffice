@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [8.5.0] - 2026-11-28
+
+### Added
+
+- **Vector PDF Chart Rendering (`crates/officecore/src/pdfchart.rs`, `#798`):** replaces placeholder boxes in Calc and Impress PDF exports with vector bars, stacked series, polylines, filled area polygons, pie/doughnut wedges with configurable `hole_size`, scatter markers/smooth Bezier curves, gridlines, dynamic ticks, centered rotated titles, legends, data labels, and Tagged-PDF `/Figure` containers using embedded subset fonts.
+- **Writer Native Charts (`Block::Chart`, `ooxml_chart`, `docx/chart.rs`, `odf/text_objects.rs`, `layout_writer_chart.rs`, `compat_writer.rs`):** adds full 7-kind chart support (`column`, `bar`, `line`, `area`, `pie`, `doughnut`, `scatter`) to Writer with DOCX ChartML + embedded `.xlsx` workbook round-trip, ODT `Object N/` chart round-trip, vector Tagged-PDF `Figure`/`Caption` export, concise text-summary fallbacks for RTF/HTML/Markdown/TXT/UDF, and updated format compatibility reports.
+- **Shared Cross-Module Chart UI (`src/office/charts/*`, `WriterChartBlock.tsx`, `WriterRibbonTabs.tsx`):** unifies `ChartPreview`, `ChartDataGrid`, and `ChartDialog` across Impress and Writer with spreadsheet TSV/CSV clipboard paste, `holeSize`, and `scatterStyle` controls, plus Insert -> Chart ribbon action, corner drag resize handles, alignment, caption editing, Edit data modal, and delete controls in Writer.
+
 ## [8.4.0] - 2026-11-27
 
 ### Added

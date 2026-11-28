@@ -114,6 +114,7 @@ impl AutoStyles {
 pub(crate) struct Media {
     items: Vec<(String, Vec<u8>)>,
     index: usize,
+    charts: Vec<super::OdsChartObject>,
 }
 
 impl Media {
@@ -613,6 +614,18 @@ fn write_blocks(
                     name
                 ));
             }
+            Block::Chart { chart, width_pt, height_pt, align, caption } => {
+                super::text_objects::write_odt_chart(
+                    writer,
+                    styles,
+                    &mut media.charts,
+                    chart,
+                    *width_pt,
+                    *height_pt,
+                    align,
+                    caption,
+                );
+            }
             Block::PageBreak => {
                 let props = ParaProps { page_break_before: true, ..Default::default() };
                 let name = styles.paragraph(paragraph_style_xml(&props, true));
@@ -897,88 +910,7 @@ fn master_styles_xml(document: &TextDocument) -> String {
     )
 }
 
-/// Media type for a package entry. Chart sub-documents are directories; every
-/// other entry is a file whose type follows its extension.
-fn entry_media_type(name: &str) -> &'static str {
-    if name.ends_with('/') {
-        return "application/vnd.oasis.opendocument.chart";
-    }
-    let lower = name.to_ascii_lowercase();
-    if lower.ends_with(".png") {
-        "image/png"
-    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
-        "image/jpeg"
-    } else if lower.ends_with(".gif") {
-        "image/gif"
-    } else if lower.ends_with(".svg") {
-        "image/svg+xml"
-    } else if lower.ends_with(".webp") {
-        "image/webp"
-    } else {
-        "text/xml"
-    }
-}
-
-/// Builds the package manifest from the entries actually written.
-///
-/// LibreOffice refuses a package whose manifest and contents disagree (a
-/// dangling entry or an unlisted file is "source file could not be loaded"),
-/// so the manifest is generated from the same list the zip is filled with
-/// instead of a static template. `mimetype` and the manifest itself are the
-/// only entries a manifest never lists.
-pub(crate) fn manifest_for(mime: &str, files: &[String]) -> String {
-    let mut out = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.2\"><manifest:file-entry manifest:full-path=\"/\" manifest:media-type=\"{mime}\"/>"
-    );
-    for file in files {
-        let name = escape(file);
-        if file.ends_with('/') {
-            out.push_str(&format!(
-                "<manifest:file-entry manifest:full-path=\"{name}\" manifest:version=\"1.2\" manifest:media-type=\"{}\"/>",
-                entry_media_type(file)
-            ));
-        } else {
-            out.push_str(&format!(
-                "<manifest:file-entry manifest:full-path=\"{name}\" manifest:media-type=\"{}\"/>",
-                entry_media_type(file)
-            ));
-        }
-    }
-    out.push_str("</manifest:manifest>");
-    out
-}
-
-/// The `meta:user-defined` entries that carry a watermark losslessly; the
-/// visible run-through frame is only the fallback for foreign files.
-fn watermark_meta_xml(watermark: &Watermark) -> String {
-    let entries = [
-        ("OSAK:Watermark:Text", watermark.text.clone()),
-        ("OSAK:Watermark:Color", watermark.color.clone().unwrap_or_default()),
-        ("OSAK:Watermark:Opacity", watermark.opacity.to_string()),
-        ("OSAK:Watermark:Rotation", watermark.rotation.to_string()),
-        ("OSAK:Watermark:FontPt", watermark.font_pt.to_string()),
-        ("OSAK:Watermark:Bold", watermark.bold.to_string()),
-    ];
-    entries
-        .iter()
-        .map(|(name, value)| {
-            format!("<meta:user-defined meta:name=\"{}\" meta:value=\"{}\"/>", escape(name), escape(value))
-        })
-        .collect()
-}
-
-pub(crate) fn meta_xml(title: &str, generator: &str, watermark: Option<&Watermark>) -> String {
-    let user_defined = watermark.map(watermark_meta_xml).unwrap_or_default();
-    format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-meta {NS} office:version=\"1.2\"><office:meta><meta:generator>{}</meta:generator><dc:title>{}</dc:title>{user_defined}</office:meta></office:document-meta>",
-        crate::xml::escape_text(generator),
-        crate::xml::escape_text(title)
-    )
-}
-
-fn settings_xml() -> String {
-    format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-settings {NS} office:version=\"1.2\"><office:settings/></office:document-settings>")
-}
+pub(crate) use super::text_objects::{manifest_for, meta_xml, settings_xml};
 
 #[derive(Debug, Clone)]
 pub struct TextRead {
@@ -1015,6 +947,11 @@ pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     );
     let mut files =
         vec!["content.xml".to_string(), "styles.xml".to_string(), "meta.xml".to_string(), "settings.xml".to_string()];
+    for object in &media.charts {
+        files.push(format!("{}/", object.name));
+        files.push(format!("{}/content.xml", object.name));
+        files.push(format!("{}/styles.xml", object.name));
+    }
     for (name, _) in &media.items {
         files.push(format!("Pictures/{name}"));
     }
@@ -1025,6 +962,16 @@ pub fn write_odt(document: &TextDocument) -> OfficeResult<Vec<u8>> {
     zip.add_text("styles.xml", &styles_xml);
     zip.add_text("meta.xml", &meta_xml(&document.title, "OmniOffice", document.watermark.as_ref()));
     zip.add_text("settings.xml", &settings_xml());
+    for object in &media.charts {
+        zip.add_text(&format!("{}/content.xml", object.name), &object.content);
+        zip.add_text(
+            &format!("{}/styles.xml", object.name),
+            &format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-styles {NS} {} office:version=\"1.2\"><office:styles/></office:document-styles>",
+                super::CHART_NS
+            ),
+        );
+    }
     for (name, data) in &media.items {
         zip.add(&format!("Pictures/{name}"), data);
     }

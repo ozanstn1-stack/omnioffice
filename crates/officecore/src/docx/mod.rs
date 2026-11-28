@@ -6,6 +6,8 @@
 //! constructs are skipped with a user-facing warning instead of failing, and
 //! macros/embedded scripts are never executed or imported.
 
+mod chart;
+mod package;
 mod reader;
 mod writer;
 
